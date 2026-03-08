@@ -1,0 +1,9 @@
+{
+  "doctype": "Report",
+  "name": "Open Tasks",
+  "ref_doctype": "Secretariat Task",
+  "report_type": "Script Report",
+  "is_standard": 0,
+  "report_is_standard": 0,
+  "onload": ""
+}

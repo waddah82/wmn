@@ -1,0 +1,24 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Journal Entry",
+  "enabled": 1,
+  "modified": "2026-02-13 18:06:58.816124",
+  "module": "Wmn",
+  "name": "party account",
+  "script": "frappe.ui.form.on('Journal Entry', {\n\trefresh(frm) {\n\t\t// your code here\n\t}\n})\n\nfrappe.ui.form.on('Journal Entry Account', {\n    party: function(frm, cdt, cdn) {\n        var d = frappe.get_doc(cdt, cdn);\n\n        if (!d.account && d.party_type && d.party && (d.party_type === 'Receivable' || d.party_type === 'Payable' )) {\n            frappe.db.get_value(d.party_type , d.party, 'account', (r) => {\n                if(r && r.account) {\n                    // نملأ حقل الحساب في السطر الحالي\n                    // frappe.model.set_value(cdt, cdn, 'account', r.account);\n                    // frappe.model.set_value(cdt, cdn, 'party_type', d.party_type);\n                    d.account=r.account;\n                    frm.refresh_field('accounts');\n                }\n            });\n        }\n    }\n});\n\n\n",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Payment Entry",
+  "enabled": 1,
+  "modified": "2026-02-13 19:03:19.231958",
+  "module": "Wmn",
+  "name": "Payment Entry",
+  "script": "frappe.ui.form.on('Payment Entry', {\n    party: function(frm) {\n        if((frm.doc.party_type === 'Receivable' ) && frm.doc.party) {\n            frappe.db.get_value('Receivable', frm.doc.party, 'account', (r) => {\n                if(r && r.account) {\n                    if(frm.doc.payment_type === 'Pay') {\n                        frm.set_value('paid_to', r.account);\n                    } else if(frm.doc.payment_type === 'Receive') {\n                        frm.set_value('paid_from', r.account);\n                    }\n                }\n            });\n        }\n        if(( frm.doc.party_type === 'Payable' ) && frm.doc.party) {\n            frappe.db.get_value('Payable', frm.doc.party, 'account', (r) => {\n                if(r && r.account) {\n                    if(frm.doc.payment_type === 'Pay') {\n                        frm.set_value('paid_to', r.account);\n                    } else if(frm.doc.payment_type === 'Receive') {\n                        frm.set_value('paid_from', r.account);\n                    }\n                }\n            });\n        }\n    },\n    refresh(frm) {\n        if (frm.doc.docstatus == 1) {\n            frm.set_df_property('party_type', 'depends_on', '');\n            frm.refresh_field('party_type');\n           // frm.set_df_property('party_type', 'read_only', 1);\n        }\n    },\n\n    paid_amount: function(frm) {\n        update_received_amount(frm);\n    },\n    \n    received_amount: function(frm) {\n        update_paid_amount(frm);\n    }\n});\n\nfunction update_received_amount(frm) {\n    const rate = frm.doc.source_exchange_rate || 0;\n    const trate = frm.doc.target_exchange_rate || 0;\n    const paid = frm.doc.paid_amount || 0;\n    const base_paid = frm.doc.base_paid_amount || 0;\n\n    const base_received = rate * base_paid;\n    \n    var received = rate * paid;\n    \n    if(trate!=0){\n        received = received / trate;\n    }\n\n    if(frm.doc.payment_type == \"Pay\"){\n        if(frm.doc.received_amount !== received) {\n            //frm.doc.received_amount = received;\n            //frm.refresh_field('received_amount');\n            frm.set_value(\"received_amount\", received);\n        }\n    }\n}\n\n\n\nfunction update_paid_amount(frm) {\n    const rate = frm.doc.target_exchange_rate || 0;\n    const srate = frm.doc.source_exchange_rate || 0;\n    const received = frm.doc.received_amount || 0;\n    const base_received = frm.doc.base_received_amount || 0;\n\n    var base_paid = rate * base_received ;\n    var paid = rate * received ;\n    if(srate!=0){\n        paid = paid / srate;\n        base_paid = paid * srate;\n    }\n    if(frm.doc.payment_type == \"Receive\"){\n        if(frm.doc.paid_amount !== paid) {\n            frm.set_value(\"paid_amount\", paid);\n            //frm.doc.paid_amount = paid;\n            //frm.refresh_field('paid_amount');\n            //frm.set_value(\"base_paid_amount\", base_paid);\n        }\n    }\n}",
+  "view": "Form"
+ }
+]

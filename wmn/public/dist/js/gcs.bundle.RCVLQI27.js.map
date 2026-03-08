@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../../../../apps/restaurant/restaurant/public/js/gcs.bundle.js"],
+  "sourcesContent": ["window.onload = function() {\n    setTimeout(applyCustomStyles, 500);\n};\n\nfunction applyCustomStyles() {\n    const css = `\n             body, html {\n  background-color: #f9f9fb !important;\n  color: #222 !important;\n  font-family: 'Segoe UI', sans-serif !important;\n  font-size: 14px !important;\n}\n\na {\n  color: #071879ff;\n}\n\na:hover {\n  color: #020b38ff ;\n}\n\n::selection {\n  background-color: #d0d0ff ;\n}\n\n.widget.links-widget-box .link-item {\n    color: #180101 !important;\n    font-weight: 500 !important;\n    font-size: larger !important;\n}\n    `;\n    \n    let style = document.createElement('style');\n    style.id = 'custom-global-styles';\n    style.innerHTML = css;\n    document.head.appendChild(style);\n}\n"],
+  "mappings": ";;AAAA,SAAO,SAAS,WAAW;AACvB,eAAW,mBAAmB,GAAG;AAAA,EACrC;AAEA,WAAS,oBAAoB;AACzB,UAAM,MAAM;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AA2BZ,QAAI,QAAQ,SAAS,cAAc,OAAO;AAC1C,UAAM,KAAK;AACX,UAAM,YAAY;AAClB,aAAS,KAAK,YAAY,KAAK;AAAA,EACnC;",
+  "names": []
+}

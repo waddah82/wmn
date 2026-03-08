@@ -1,0 +1,18 @@
+[
+ {
+  "account_type": "Payable",
+  "docstatus": 0,
+  "doctype": "Party Type",
+  "modified": "2026-02-13 17:17:57.639279",
+  "name": "Payable",
+  "party_type": "Payable"
+ },
+ {
+  "account_type": "Receivable",
+  "docstatus": 0,
+  "doctype": "Party Type",
+  "modified": "2026-02-13 17:18:19.065614",
+  "name": "Receivable",
+  "party_type": "Receivable"
+ }
+]
