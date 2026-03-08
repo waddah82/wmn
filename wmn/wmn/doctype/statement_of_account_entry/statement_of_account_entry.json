@@ -1,0 +1,112 @@
+{
+  "actions": [],
+  "allow_auto_repeat": 0,
+  "allow_copy": 0,
+  "allow_events_in_timeline": 0,
+  "allow_guest_to_view": 0,
+  "allow_import": 0,
+  "allow_rename": 0,
+  "beta": 0,
+  "creation": "2025-12-07 20:34:45.565798",
+  "custom": 0,
+  "docstatus": 0,
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "email_append_to": 0,
+  "engine": "InnoDB",
+  "field_order": [
+    "date",
+    "voucher_type",
+    "voucher_no",
+    "remarks",
+    "debit",
+    "credit",
+    "running_balance",
+    "currency"
+  ],
+  "fields": [
+    {
+      "fieldname": "date",
+      "fieldtype": "Date",
+      "in_list_view": 1,
+      "label": "التاريخ"
+    },
+    {
+      "fieldname": "voucher_type",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "نوع المستند"
+    },
+    {
+      "fieldname": "voucher_no",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "رقم المستند"
+    },
+    {
+      "fieldname": "remarks",
+      "fieldtype": "Small Text",
+      "in_list_view": 1,
+      "precision": "3",
+      "label": "ملاحظات"
+    },
+    {
+      "fieldname": "debit",
+      "fieldtype": "Currency",
+      "in_list_view": 1,
+      "label": "مدين",
+      "options": "currency"
+    },
+    {
+      "fieldname": "credit",
+      "fieldtype": "Currency",
+      "in_list_view": 1,
+      "label": "دائن",
+      "options": "currency"
+    },
+    {
+      "fieldname": "running_balance",
+      "fieldtype": "Currency",
+      "in_list_view": 1,
+      "label": "الرصيد",
+      "options": "currency"
+    },
+    {
+      "fieldname": "currency",
+      "fieldtype": "Link",
+      "label": "currency",
+      "options": "Currency"
+    }
+  ],
+  "has_web_view": 0,
+  "hide_toolbar": 0,
+  "idx": 0,
+  "in_create": 0,
+  "index_web_pages_for_search": 0,
+  "is_calendar_and_gantt": 0,
+  "is_submittable": 0,
+  "is_tree": 0,
+  "is_virtual": 0,
+  "issingle": 0,
+  "istable": 1,
+  "links": [],
+  "max_attachments": 0,
+  "module": "Wmn",
+  "modified": "2025-12-11 23:06:30.553326",
+  "modified_by": "Administrator",
+  "name": "Statement of Account Entry",
+  "owner": "Administrator",
+  "permissions": [],
+  "quick_entry": 0,
+  "read_only": 0,
+  "show_name_in_global_search": 0,
+  "show_preview_popup": 0,
+  "show_title_field_in_link": 0,
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 0,
+  "track_seen": 0,
+  "track_views": 0,
+  "translated_doctype": 0
+}

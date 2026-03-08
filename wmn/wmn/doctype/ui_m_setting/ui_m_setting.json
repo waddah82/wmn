@@ -1,0 +1,46 @@
+{
+  "docstatus": 0,
+  "doctype": "DocType", 
+  "module": "Wmn",
+  "name": "UI M Setting",
+  "custom": 1,
+  "autoname": "field:title",
+  "fields": [
+    {
+      "fieldname": "title",
+      "fieldtype": "Data", 
+      "label": "Title",
+      "default": "UI Settings",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_css",
+      "fieldtype": "Section Break",
+      "label": "Custom CSS"
+    },
+    {
+      "fieldname": "custom_css",
+      "fieldtype": "Code",
+      "label": "Custom CSS Code",
+      "options": "CSS"
+    },
+    {
+      "fieldname": "enable_custom_css", 
+      "fieldtype": "Check",
+      "label": "Enable Custom CSS",
+      "default": 0
+    }
+  ],
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1,
+      "write": 1
+    },
+    {
+      "role": "All", 
+      "read": 1,
+      "write": 0
+    }
+  ]
+}

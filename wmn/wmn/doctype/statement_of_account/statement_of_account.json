@@ -1,0 +1,96 @@
+{
+  "doctype": "DocType",
+  "name": "Statement of Account",
+  "module": "Wmn",
+  "custom": 0,
+  "autoname": "format:{party}-{from_date}-{to_date}-.{#####}",
+  "fields": [
+    {
+      "fieldname": "section_break_4rv7",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "party_type",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "نوع الطرف",
+      "options": "Customer\nSupplier\nEmployee\nAccount",
+      "reqd": 1
+    },
+    {
+      "fieldname": "column_break_xqg7",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "party",
+      "fieldtype": "Dynamic Link",
+      "in_list_view": 1,
+      "label": "الطرف",
+      "options": "party_type",
+      "reqd": 1
+    },
+    {
+      "fieldname": "column_break_wwiy",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "from_date",
+      "fieldtype": "Date",
+      "in_list_view": 1,
+      "label": "من تاريخ",
+      "reqd": 1
+    },
+    {
+      "fieldname": "column_break_ifwn",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "to_date",
+      "fieldtype": "Date",
+      "in_list_view": 1,
+      "label": "إلى تاريخ",
+      "reqd": 1
+    },
+    {
+      "fieldname": "section_break_sibw",
+      "fieldtype": "Section Break"
+    },
+    {
+      "default": "0",
+      "fieldname": "use_transaction_currency",
+      "fieldtype": "Check",
+      "label": "use_transaction_currency"
+    },
+    {
+      "fieldname": "currency",
+      "fieldtype": "Link",
+      "label": "العملة",
+      "options": "Currency"
+    },
+    {
+      "fieldname": "entries",
+      "fieldtype": "Table",
+      "label": "الحركات",
+      "options": "Statement of Account Entry"
+    },
+    {
+      "fieldname": "aging",
+      "fieldtype": "Small Text",
+      "label": "اعمار الديون"
+    }
+  ],
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "delete": 1,
+      "report": 1,
+      "export": 1,
+      "share": 1,
+      "print": 1,
+      "email": 1
+    }
+  ]
+}
