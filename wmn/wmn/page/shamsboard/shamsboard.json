@@ -1,0 +1,9 @@
+{
+  "doctype": "Page",
+  "name": "shamsboard",
+  "module": "Wmn",
+  "title": "ShamsBoard",
+  "page_name": "shamsboard",
+  "standard": "Yes",
+  "icon": "fa fa-dashboard"
+}
