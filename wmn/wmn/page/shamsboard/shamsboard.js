@@ -221,7 +221,6 @@ function initShamsBoardNativeSearch() {
                 style.innerHTML = `
                     .app-logo { display: none !important; }
                     body { padding: 0 !important; }
-                    .sticky-top, .page-head { margin: 0 !important; padding: 0 !important; min-height: 0 !important; }
                     .layout-main-section-wrapper { padding-right: 0 !important; padding-left: 0 !important; padding-top: 40px !important; }
                     .layout-main-section { padding: 0 !important; margin: 0 !important; width: 100% !important; }
                 `;
@@ -779,10 +778,11 @@ function initShamsBoard(page, wrapper) {
                         width: 100% !important;
                         box-sizing: border-box !important;
                     }
-                    .sticky-top, .page-head { margin: 0 !important; padding: 0 !important; min-height: 0 !important; }
+                    .sticky-top, .header.navbar, .navbar { margin: 0 !important; padding: 0 !important; min-height: 0 !important; }
                     .desk-sidebar, .standard-sidebar, .sticky-top { display: none !important; }
                     .layout-main-section-wrapper { padding-right: 0 !important; padding-left: 0 !important; padding-top: 40px !important; }
                     .layout-main-section { padding-right: 0 !important; padding-left: 0 !important; padding-top: 0 !important; box-sizing: border-box !important;}
+                    .page-head, .page-title { top: 3px !important; background: #ffffff !important; color: #153351 !important; border-bottom: 2px solid #BA9F63 !important; font-weight: 700 !important; }
 
                 `;
                 fDoc.head.appendChild(style);
@@ -1814,12 +1814,12 @@ frappe.dom.set_style(`
     align-items: center;
     min-width: 0;
     flex: 1 1 auto;
-    max-width: 55%;
+    max-width: 100%;
     margin: 0 16px;
     height: 100%;
 }
 
-.workspace-menu {
+.workspace-menuccc {
     display: flex;
     align-items: center;
     gap: 18px;
@@ -1836,7 +1836,22 @@ frappe.dom.set_style(`
 .workspace-menu::-webkit-scrollbar {
     display: none;
 }
+.workspace-menu {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    
+    width: 100%;
+    height: auto;
+    min-height: min-content; 
+    
 
+    overflow-x: visible; 
+    overflow-y: visible;
+    white-space: normal; 
+}
 .workspace-btn {
     background: transparent !important;
     border: none !important;
@@ -2000,5 +2015,10 @@ frappe.dom.set_style(`
 body[data-route="shamsboard"] {
     overflow: hidden !important;
 }
-
+.layout-main-section-wrapper { padding-right: 0 !important; padding-left: 0 !important; padding-top: 0 !important; }
+.layout-main-section { padding-right: 0 !important; padding-left: 0 !important; padding-top: 0 !important; box-sizing: border-box !important; }
+                    
+                    
+                    
+                   
 `);
