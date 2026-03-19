@@ -5,83 +5,83 @@ def execute(filters=None):
     # =========================
     # تفقيط عربي بدون import + تقريب رقمين عشريين
     # =========================
-    def tafqeet_0_99(n):
+    def amount_to_arabic_words(amount, currency_code="SAR"):
         ones = ["", "واحد", "اثنان", "ثلاثة", "أربعة", "خمسة", "ستة", "سبعة", "ثمانية", "تسعة"]
         tens = ["", "عشرة", "عشرون", "ثلاثون", "أربعون", "خمسون", "ستون", "سبعون", "ثمانون", "تسعون"]
-
-        if n == 0:
-            return ""
-        if n < 10:
-            return ones[n]
-        if 10 <= n <= 19:
-            if n == 10: return "عشرة"
-            if n == 11: return "أحد عشر"
-            if n == 12: return "اثنا عشر"
-            return ones[n - 10] + " عشر"
-
-        u = n % 10
-        t = n // 10
-        if u:
-            return ones[u] + " و " + tens[t]
-        return tens[t]
-
-    def tafqeet_0_999(n):
         hundreds = ["", "مائة", "مئتان", "ثلاثمائة", "أربعمائة", "خمسمائة", "ستمائة", "سبعمائة", "ثمانمائة", "تسعمائة"]
-        if n == 0:
-            return ""
-        h = n // 100
-        r = n % 100
-        parts = []
-        if h:
-            parts.append(hundreds[h])
-        if r:
-            parts.append(tafqeet_0_99(r))
-        return " و ".join([p for p in parts if p])
 
-    def tafqeet_arabic(n):
-        if n == 0:
-            return "صفر"
+        def tafqeet_0_99(n):
+            if n == 0: return ""
+            if n < 10: return ones[n]
+            if 10 <= n <= 19:
+                if n == 10: return "عشرة"
+                if n == 11: return "أحد عشر"
+                if n == 12: return "اثنا عشر"
+                return ones[n - 10] + " عشر"
+            
+            # تم فصل المتغيرات لتجنب خطأ _unpack_sequence_
+            u = n % 10
+            t = n // 10
+            
+            if u > 0:
+                return ones[u] + " و " + tens[t]
+            return tens[t]
 
-        def group_name(value, singular, dual, plural):
-            if value == 1:
-                return singular
-            if value == 2:
-                return dual
-            if 3 <= value <= 10:
-                return plural
-            return singular
+        def tafqeet_0_999(n):
+            if n == 0: return ""
+            # تم فصل المتغيرات لتجنب خطأ _unpack_sequence_
+            h = n // 100
+            r = n % 100
+            
+            parts = []
+            if h > 0: 
+                parts.append(hundreds[h])
+            if r > 0: 
+                parts.append(tafqeet_0_99(r))
+            return " و ".join(parts)
 
-        parts = []
-        billions = n // 1000000000
-        n = n % 1000000000
-        millions = n // 1000000
-        n = n % 1000000
-        thousands = n // 1000
-        rest = n % 1000
+        def tafqeet_full(n):
+            if n == 0: return "صفر"
+            
+            # تقسيم يدوي للمجموعات
+            billions = n // 1000000000
+            rem_billions = n % 1000000000
+            
+            millions = rem_billions // 1000000
+            rem_millions = rem_billions % 1000000
+            
+            thousands = rem_millions // 1000
+            rest = rem_millions % 1000
+            
+            res = []
+            
+            if billions == 1: res.append("مليار")
+            elif billions == 2: res.append("ملياران")
+            elif billions > 2:
+                b_suffix = "مليارات" if 3 <= billions <= 10 else "مليار"
+                res.append(tafqeet_0_999(billions) + " " + b_suffix)
 
-        if billions:
-            parts.append(tafqeet_0_999(billions) + " " + group_name(billions, "مليار", "ملياران", "مليارات"))
-        if millions:
-            parts.append(tafqeet_0_999(millions) + " " + group_name(millions, "مليون", "مليونان", "ملايين"))
-        if thousands:
-            parts.append(tafqeet_0_999(thousands) + " " + group_name(thousands, "ألف", "ألفان", "آلاف"))
-        if rest:
-            parts.append(tafqeet_0_999(rest))
+            if millions == 1: res.append("مليون")
+            elif millions == 2: res.append("مليونان")
+            elif millions > 2:
+                m_suffix = "ملايين" if 3 <= millions <= 10 else "مليون"
+                res.append(tafqeet_0_999(millions) + " " + m_suffix)
 
-        return " و ".join(parts)
+            if thousands == 1: res.append("ألف")
+            elif thousands == 2: res.append("ألفان")
+            elif thousands > 2:
+                t_suffix = "آلاف" if 3 <= thousands <= 10 else "ألف"
+                res.append(tafqeet_0_999(thousands) + " " + t_suffix)
 
-    # =========================
-    # تفقيط حسب العملة
-    # =========================
-    def amount_to_arabic_words(amount, currency_code="SAR"):
+            if rest > 0:
+                res.append(tafqeet_0_999(rest))
+            
+            return " و ".join(res)
 
-        if amount < 0:
-            amount = abs(amount)
-
-        amount = frappe.utils.flt(amount or 0, 2)
-
-        integer_part = int(amount)
-        decimal_part = int(round((amount - integer_part) * 100))
+        # تحويل الرقم
+        val = frappe.utils.flt(amount or 0, 2)
+        integer_part = int(val)
+        decimal_part = int(round((val - integer_part) * 100))
 
         if decimal_part == 100:
             integer_part = integer_part + 1
@@ -91,105 +91,18 @@ def execute(filters=None):
             "SAR": {"main": "ريال سعودي", "sub": "هللة"},
             "YER": {"main": "ريال يمني", "sub": "فلس"},
             "USD": {"main": "دولار أمريكي", "sub": "سنت"},
-            "EUR": {"main": "يورو", "sub": "سنت"},
-            "AED": {"main": "درهم إماراتي", "sub": "فلس"},
+            "AED": {"main": "درهم إماراتي", "sub": "فلس"}
         }
+        curr = currency_map.get(currency_code, {"main": currency_code, "sub": ""})
 
-        currency_info = currency_map.get(currency_code, {"main": currency_code, "sub": ""})
-
-        text = tafqeet_arabic(integer_part) + " " + currency_info["main"]
-
-        if decimal_part > 0 and currency_info["sub"]:
-            text = text + " و " + tafqeet_arabic(decimal_part) + " " + currency_info["sub"]
-
-        return text
-    def tafqeet_0_9911(n):
-        ones = ["", "واحد", "اثنان", "ثلاثة", "أربعة", "خمسة", "ستة", "سبعة", "ثمانية", "تسعة"]
-        tens = ["", "عشرة", "عشرون", "ثلاثون", "أربعون", "خمسون", "ستون", "سبعون", "ثمانون", "تسعون"]
-
-        if n == 0:
-            return ""
-        if n < 10:
-            return ones[n]
-        if 10 <= n <= 19:
-            if n == 10: return "عشرة"
-            if n == 11: return "أحد عشر"
-            if n == 12: return "اثنا عشر"
-            return ones[n - 10] + " عشر"
-
-        u = n % 10
-        t = n // 10
-        if u:
-            return ones[u] + " و " + tens[t]
-        return tens[t]
-
-    def tafqeet_0_99911(n):
-        hundreds = ["", "مائة", "مئتان", "ثلاثمائة", "أربعمائة", "خمسمائة", "ستمائة", "سبعمائة", "ثمانمائة", "تسعمائة"]
-        if n == 0:
-            return ""
-        h = n // 100
-        r = n % 100
-        parts = []
-        if h:
-            parts.append(hundreds[h])
-        if r:
-            parts.append(tafqeet_0_99(r))
-        return " و ".join([p for p in parts if p])
-
-    def tafqeet_arabic11(n):
-        if n == 0:
-            return "صفر"
-
-        def group_name(value, singular, dual, plural):
-            if value == 1:
-                return singular
-            if value == 2:
-                return dual
-            if 3 <= value <= 10:
-                return plural
-            return singular
-
-        parts = []
-        billions = n // 1000000000
-        n = n % 1000000000
-        millions = n // 1000000
-        n = n % 1000000
-        thousands = n // 1000
-        rest = n % 1000
-
-        if billions:
-            parts.append(tafqeet_0_999(billions) + " " + group_name(billions, "مليار", "ملياران", "مليارات"))
-        if millions:
-            parts.append(tafqeet_0_999(millions) + " " + group_name(millions, "مليون", "مليونان", "ملايين"))
-        if thousands:
-            parts.append(tafqeet_0_999(thousands) + " " + group_name(thousands, "ألف", "ألفان", "آلاف"))
-        if rest:
-            parts.append(tafqeet_0_999(rest))
-
-        return " و ".join([p for p in parts if p])
-
-    def amount_to_arabic_words11(amount):
-        try:
-            # تقريب ثابت لرقمين عشريين (مهم جدًا)
-            if amount < 0:
-                amount = amount * -1
-            amount = frappe.utils.flt(amount or 0, 2)
-
-            integer_part = int(amount)
-            decimal_part = int(round((amount - integer_part) * 100))
-
-            # معالجة حالة 99.999 -> 100 هللة
-            if decimal_part == 100:
-                integer_part = integer_part + 1
-                decimal_part = 0
-
-            text = tafqeet_arabic(integer_part) + " ريال"
-            if decimal_part > 0:
-                text = text + " و " + tafqeet_arabic(decimal_part) + " هللة"
-            return text
-        except Exception:
-            # لو صار أي خطأ، لا نرجع الرقم الخام الطويل: نرجع رقم مقرب
-            return str(frappe.utils.flt(amount or 0, 2))
+        main_words = tafqeet_full(integer_part) + " " + curr["main"]
+        
+        final_output = main_words
+        if decimal_part > 0 and curr["sub"]:
+            sub_words = tafqeet_full(decimal_part) + " " + curr["sub"]
+            final_output = main_words + " و " + sub_words
+        
+        return final_output + " لا غير"
 
 
     # تحقق من الفلاتر الأساسية
