@@ -8,7 +8,7 @@ from frappe.utils import flt, getdate, get_datetime_str
 COMP_CURRENCY = "SAR"
 
 
-def tafqeet_0_99(n):
+def tafqeet_0_9911(n):
     ones = ["", "واحد", "اثنان", "ثلاثة", "أربعة", "خمسة", "ستة", "سبعة", "ثمانية", "تسعة"]
     tens = ["", "عشرة", "عشرون", "ثلاثون", "أربعون", "خمسون", "ستون", "سبعون", "ثمانون", "تسعون"]
 
@@ -32,7 +32,7 @@ def tafqeet_0_99(n):
     return tens[t]
 
 
-def tafqeet_0_999(n):
+def tafqeet_0_99911(n):
     hundreds = ["", "مائة", "مئتان", "ثلاثمائة", "أربعمائة", "خمسمائة", "ستمائة", "سبعمائة", "ثمانمائة", "تسعمائة"]
     if n == 0:
         return ""
@@ -46,7 +46,7 @@ def tafqeet_0_999(n):
     return " و ".join([p for p in parts if p])
 
 
-def tafqeet_arabic(n):
+def tafqeet_arabic11(n):
     if n == 0:
         return "صفر"
 
@@ -79,7 +79,7 @@ def tafqeet_arabic(n):
     return " و ".join(parts)
 
 
-def amount_to_arabic_words(amount, currency_code="SAR"):
+def amount_to_arabic_words11(amount, currency_code="SAR"):
     if amount < 0:
         amount = abs(amount)
 
@@ -108,6 +108,85 @@ def amount_to_arabic_words(amount, currency_code="SAR"):
         text += " و " + tafqeet_arabic(decimal_part) + " " + currency_info["sub"]
 
     return text
+
+
+def amount_to_arabic_words(amount, currency_code="SAR"):
+    ones = ["", "واحد", "اثنان", "ثلاثة", "أربعة", "خمسة", "ستة", "سبعة", "ثمانية", "تسعة"]
+    tens = ["", "عشرة", "عشرون", "ثلاثون", "أربعون", "خمسون", "ستون", "سبعون", "ثمانون", "تسعون"]
+    hundreds = ["", "مائة", "مئتان", "ثلاثمائة", "أربعمائة", "خمسمائة", "ستمائة", "سبعمائة", "ثمانمائة", "تسعمائة"]
+
+    def tafqeet_0_99(n):
+        if n == 0: return ""
+        if n < 10: return ones[n]
+        if 10 <= n <= 19:
+            special = {10: "عشرة", 11: "أحد عشر", 12: "اثنا عشر"}
+            if n in special: return special[n]
+            return f"{ones[n - 10]} عشر"
+        
+        u, t = n % 10, n // 10
+        return f"{ones[u]} و {tens[t]}" if u else tens[t]
+
+    def tafqeet_0_999(n):
+        if n == 0: return ""
+        h, r = n // 100, n % 100
+        parts = []
+        if h: parts.append(hundreds[h])
+        if r: parts.append(tafqeet_0_99(r))
+        return " و ".join(parts)
+
+    def tafqeet_full(n):
+        if n == 0: return "صفر"
+        
+        # تقسيم الأرقام الكبيرة
+        billions, rem = divmod(n, 1000000000)
+        millions, rem = divmod(rem, 1000000)
+        thousands, rest = divmod(rem, 1000)
+        
+        res = []
+        
+        # معالجة المجموعات (مليار، مليون، ألف)
+        groups = [
+            (billions, "مليار", "ملياران", "مليارات"),
+            (millions, "مليون", "مليونان", "ملايين"),
+            (thousands, "ألف", "ألفان", "آلاف")
+        ]
+
+        for val, sing, dual, plur in groups:
+            if val == 1: res.append(sing)
+            elif val == 2: res.append(dual)
+            elif val > 2:
+                suffix = plur if 3 <= val <= 10 else sing
+                res.append(f"{tafqeet_0_999(val)} {suffix}")
+
+        if rest:
+            res.append(tafqeet_0_999(rest))
+        
+        return " و ".join(res)
+
+    # معالجة المبلغ والكسور
+    val = frappe.utils.flt(amount or 0, 2)
+    integer_part = int(val)
+    decimal_part = int(round((val - integer_part) * 100))
+
+    if decimal_part == 100:
+        integer_part += 1
+        decimal_part = 0
+
+    currency_map = {
+        "SAR": {"main": "ريال سعودي", "sub": "هللة"},
+        "YER": {"main": "ريال يمني", "sub": "فلس"},
+        "USD": {"main": "دولار أمريكي", "sub": "سنت"},
+        "AED": {"main": "درهم إماراتي", "sub": "فلس"}
+    }
+    curr = currency_map.get(currency_code, {"main": currency_code, "sub": ""})
+
+    main_words = f"{tafqeet_full(integer_part)} {curr['main']}"
+    
+    if decimal_part > 0 and curr["sub"]:
+        sub_words = f"{tafqeet_full(decimal_part)} {curr['sub']}"
+        return f"{main_words} و {sub_words} فقط لا غير"
+    
+    return f"{main_words} لا غير"
 
 
 def convert_date(date_str):
