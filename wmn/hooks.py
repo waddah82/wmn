@@ -11,8 +11,11 @@ app_license = "mit"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/wmn/css/wmn.css"
-app_include_js = "/assets/wmn/js/ui_setting.js"
-
+#app_include_js = "/assets/wmn/js/ui_setting.js"
+app_include_js = [
+    "/assets/wmn/js/ui_setting.js",
+    "assets/wmn/js/workspace_header.js",
+]
 # include js, css files in header of web template
 # web_include_css = "/assets/wmn/css/wmn.css"
 # web_include_js = "/assets/wmn/js/wmn.js"
