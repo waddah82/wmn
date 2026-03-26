@@ -39,7 +39,7 @@ function addGlobalHeader() {
                 display: flex;
                 align-items: center;
                 padding: 0 20px;
-                height: 48px;
+                height: auto !important;
                 position: relative;
             ">
                 <div id="workspace-menu" style=" 
