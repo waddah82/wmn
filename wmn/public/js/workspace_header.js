@@ -83,7 +83,6 @@ function addGlobalHeader() {
 
             <div id="dropdown-panel" class="workspace-dropdown" style="
                 position: absolute;
-                top: 48px;
                 left: 0;
                 right: 0;
                 background: white;
@@ -134,7 +133,7 @@ function addStyles() {
 function toggleWorkspaceHeader(event) {
     if (event) event.stopPropagation();
     const header = document.querySelector('.dashboard-header');
-    const mainContainer = document.querySelector('.main-content-container');
+    const mainContainer = document.querySelector('.main-content-container1');
     const icon = document.getElementById('toggle-icon');
     const dropdown = document.getElementById('dropdown-panel');
 
@@ -142,7 +141,7 @@ function toggleWorkspaceHeader(event) {
 
     if (header.classList.contains('collapsed')) {
         header.classList.remove('collapsed');
-        header.style.height = '48px';
+        header.style.height = 'auto';
         if (mainContainer) {
             mainContainer.style.marginTop = '48px';
             mainContainer.style.height = 'calc(100vh - 48px)';
