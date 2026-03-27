@@ -1,9 +1,7 @@
-// 1. تشغيل الكود عند جاهزية النظام
 $(document).on('app_ready', function () {
     initGlobalWorkspace();
 });
 
-// لضمان ظهور الهيدر عند التنقل بين الصفحات المختلفة داخل ERPNext
 frappe.router.on('change', () => {
     setTimeout(() => {
         if (!document.querySelector('.global-workspace-header')) {
@@ -146,7 +144,7 @@ function toggleWorkspaceHeader(event) {
             mainContainer.style.marginTop = '48px';
             mainContainer.style.height = 'calc(100vh - 48px)';
         }
-        if (icon) icon.style.transform = 'rotate(0deg)'; // السهم للأعلى (الوضع الطبيعي)
+        if (icon) icon.style.transform = 'rotate(0deg)'; 
     } else {
         header.classList.add('collapsed');
         header.style.height = '0';
@@ -154,9 +152,8 @@ function toggleWorkspaceHeader(event) {
             mainContainer.style.marginTop = '0';
             mainContainer.style.height = '100vh';
         }
-        if (icon) icon.style.transform = 'rotate(180deg)'; // قلب السهم للأسفل
+        if (icon) icon.style.transform = 'rotate(180deg)'; 
         
-        // إغلاق الدروب داون فوراً عند إخفاء الهيدر
         if (dropdown) {
             dropdown.classList.remove('show');
             document.querySelectorAll('.workspace-btn').forEach(b => b.classList.remove('active'));
@@ -164,40 +161,13 @@ function toggleWorkspaceHeader(event) {
     }
 }
 
-function toggleWorkspaceHeader111(event) {
-    if (event) event.stopPropagation();
-    const header = document.querySelector('.dashboard-header');
-    const mainContainer = document.querySelector('.main-content-container');
-    const icon = document.getElementById('toggle-icon');
-    const dropdown = document.getElementById('dropdown-panel');
 
-    if (!header) return;
-
-    if (header.classList.contains('collapsed')) {
-        header.classList.remove('collapsed');
-        header.style.height = '48px';
-        mainContainer.style.marginTop = '48px';
-        mainContainer.style.height = 'calc(100vh - 48px)';
-        if (icon) icon.style.transform = 'rotate(0deg)';
-        if (dropdown) dropdown.classList.remove('show');
-    } else {
-        header.classList.add('collapsed');
-        header.style.height = '0';
-        mainContainer.style.marginTop = '0';
-        mainContainer.style.height = '100vh';
-        if (icon) icon.style.transform = 'rotate(180deg)';
-        if (dropdown) {
-            dropdown.classList.remove('show');
-            document.querySelectorAll('.workspace-btn').forEach(b => b.classList.remove('active'));
-        }
-    }
-}
 
 function addStyles() {
     if (document.getElementById('workspace-styles')) return;
     const styles = `
         <style id="workspace-styles">
-            body { margin: 0; padding: 0; overflow: hidden; }
+            body { margin: 0; padding: 0;  }
             .dashboard-header { transition: height 0.3s ease; overflow: hidden; }
             .dashboard-header.collapsed { height: 0 !important; border-bottom: none !important; }
             .dashboard-header.collapsed #workspace-menu { display: none !important; }
