@@ -1,6 +1,8 @@
+
 $(document).on('app_ready', function () {
     initGlobalWorkspace();
 });
+
 
 frappe.router.on('change', () => {
     setTimeout(() => {
@@ -161,7 +163,34 @@ function toggleWorkspaceHeader(event) {
     }
 }
 
+function toggleWorkspaceHeader111(event) {
+    if (event) event.stopPropagation();
+    const header = document.querySelector('.dashboard-header');
+    const mainContainer = document.querySelector('.main-content-container');
+    const icon = document.getElementById('toggle-icon');
+    const dropdown = document.getElementById('dropdown-panel');
 
+    if (!header) return;
+
+    if (header.classList.contains('collapsed')) {
+        header.classList.remove('collapsed');
+        header.style.height = '48px';
+        mainContainer.style.marginTop = '48px';
+        mainContainer.style.height = 'calc(100vh - 48px)';
+        if (icon) icon.style.transform = 'rotate(0deg)';
+        if (dropdown) dropdown.classList.remove('show');
+    } else {
+        header.classList.add('collapsed');
+        header.style.height = '0';
+        mainContainer.style.marginTop = '0';
+        mainContainer.style.height = '100vh';
+        if (icon) icon.style.transform = 'rotate(180deg)';
+        if (dropdown) {
+            dropdown.classList.remove('show');
+            document.querySelectorAll('.workspace-btn').forEach(b => b.classList.remove('active'));
+        }
+    }
+}
 
 function addStyles() {
     if (document.getElementById('workspace-styles')) return;
@@ -195,6 +224,12 @@ function addStyles() {
             .shortcuts-horizontal-wrapper { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
             .shortcut-main-title { font-size: 14px; font-weight: bold; color: #1d1d1d; margin-bottom: 12px; }
             .shortcuts-flex-row { display: flex; flex-wrap: wrap; gap: 12px; }
+            .workspace-btn { flex: 1 1 40px; min-width: 40px; max-width: 100%; font-size: var(--text-base) !important;  color: var(--text-color); overflow: hidden;  text-overflow: ellipsis; white-space: nowrap; }
+            .tab-btn { flex: 1 1 40px;  min-width: 40px;  max-width: 15%;  font-size: var(--text-base) !important; color: var(--text-color);  overflow: hidden;  text-overflow: ellipsis;  white-space: nowrap; }
+            .card-title { max-width: 100%; vertical-align: middle; overflow: hidden; text-align: left; text-overflow: ellipsis;  -webkit-font-smoothing: antialiased;  font-family: inherit; text-size-adjust: 100%; font-variation-settings: "opsz" 24; font-size: var(--text-lg); font-weight: var(--weight-semibold); letter-spacing: 0.015em; color: var(--text-color) !important; white-space: nowrap; }
+            .shortcut-main-title { font-weight: 600 !important; font-variation-settings: "opsz" 24; font-size: var(--text-xl); letter-spacing: .01em; }
+            .link-item { font-family: var(--font-stack); font-variation-settings: "opsz" 24;  font-size: var(--text-base); font-weight: var(--weight-regular); letter-spacing: .02em; color: var(--text-color); white-space: nowrap; }
+
         </style>
     `;
     document.head.insertAdjacentHTML('beforeend', styles);
@@ -346,7 +381,7 @@ function fetchAndRenderWorkspace(name, container) {
             if (r.message) {
                 renderWorkspaceHTML(r.message, container);
             } else {
-                container.innerHTML = `<div class="no-data">لم يتم العثور على بيانات أو لا تملك صلاحية</div>`;
+                container.innerHTML = `<div class="no-data">no data to be shown</div>`;
             }
         }
     });
@@ -425,7 +460,7 @@ function renderWorkspaceHTML(data, container) {
     }
 
     if (!hasVisibleContent) {
-        container.innerHTML = '<div class="no-data">الوركسبيس فارغ</div>';
+        container.innerHTML = '<div class="no-data">the workspace is empity</div>';
     }
 }
 
