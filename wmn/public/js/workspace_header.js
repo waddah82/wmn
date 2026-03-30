@@ -96,7 +96,7 @@ function addGlobalHeader() {
                 <div id="tab-header" class="tab-navbar"></div>
                 <div id="tabs-content" class="cards-grid-container" style="
                     display: grid;
-                    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+                    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
                     gap: 20px;
                 "></div>
             </div>
@@ -163,34 +163,7 @@ function toggleWorkspaceHeader(event) {
     }
 }
 
-function toggleWorkspaceHeader111(event) {
-    if (event) event.stopPropagation();
-    const header = document.querySelector('.dashboard-header');
-    const mainContainer = document.querySelector('.main-content-container');
-    const icon = document.getElementById('toggle-icon');
-    const dropdown = document.getElementById('dropdown-panel');
 
-    if (!header) return;
-
-    if (header.classList.contains('collapsed')) {
-        header.classList.remove('collapsed');
-        header.style.height = '48px';
-        mainContainer.style.marginTop = '48px';
-        mainContainer.style.height = 'calc(100vh - 48px)';
-        if (icon) icon.style.transform = 'rotate(0deg)';
-        if (dropdown) dropdown.classList.remove('show');
-    } else {
-        header.classList.add('collapsed');
-        header.style.height = '0';
-        mainContainer.style.marginTop = '0';
-        mainContainer.style.height = '100vh';
-        if (icon) icon.style.transform = 'rotate(180deg)';
-        if (dropdown) {
-            dropdown.classList.remove('show');
-            document.querySelectorAll('.workspace-btn').forEach(b => b.classList.remove('active'));
-        }
-    }
-}
 
 function addStyles() {
     if (document.getElementById('workspace-styles')) return;
@@ -209,16 +182,17 @@ function addStyles() {
             .tab-btn.active::after { content: ""; position: absolute; bottom: -1px; left: 8px; right: 8px; height: 2px; background-color: #ba9f63; }
             .workspace-btn.active::after { content: ""; position: absolute; bottom: -1px; left: 8px; right: 8px; height: 2px; background-color: #ba9f63; }
             .workspace-dropdown.show { display: block !important; }
-            .cards-grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+            .cards-grid-container { display: grid; g  rid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
             .card-group { background: #fafafa; padding: 15px; border-radius: 8px; flex-direction: column; }
             .card-title { font-weight: 600; padding-bottom: 10px; margin-bottom: 12px; font-size: 12px; color: #3e4047;  display: flex; align-items: center; gap: 8px; }
-            .link-item { display: flex; align-items: center; gap: 10px; padding: 4px 12px; color: #555b6b; text-decoration: none; font-size: 13.5px; cursor: pointer; border-radius: 6px; transition: all 0.2s; }
-            .link-item:hover { color: #ba9f63; background: #fff; padding-right: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+            .link-item { display: flex; align-items: center; gap: 10px; padding: 4px 12px; color: #555b6b; text-decoration: none  !important; font-size: 13.5px; cursor: pointer; border-radius: 6px; transition: all 0.2s; }
+            .link-item111:hover { color: var(--invert-neutral) !important; background: #fff; padding-right: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+            .link-item:hover { color: var(--invert-neutral) !important; font-weight: 500; }
             .loading-spinner { text-align: center; padding: 40px; color: #64748b; }
             .no-data { text-align: center; padding: 40px; color: #94a3b8; }
             .tab-navbar { display: flex; gap: 10px; padding: 15px; background: #f8f9fa; border-bottom: 1px solid #eee; }
             #workspace-search-input:focus { border-color: #ba9f63; }
-            .card-groups-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-top: 10px; }
+            .card-groups-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; margin-top: 10px; }
             @media (max-width: 768px) { .card-groups-container { grid-template-columns: 1fr; } }
             #tabs-content { display: inline !important; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
             .shortcuts-horizontal-wrapper { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
@@ -229,6 +203,47 @@ function addStyles() {
             .card-title { max-width: 100%; vertical-align: middle; overflow: hidden; text-align: left; text-overflow: ellipsis;  -webkit-font-smoothing: antialiased;  font-family: inherit; text-size-adjust: 100%; font-variation-settings: "opsz" 24; font-size: var(--text-lg); font-weight: var(--weight-semibold); letter-spacing: 0.015em; color: var(--text-color) !important; white-space: nowrap; }
             .shortcut-main-title { font-weight: 600 !important; font-variation-settings: "opsz" 24; font-size: var(--text-xl); letter-spacing: .01em; }
             .link-item { font-family: var(--font-stack); font-variation-settings: "opsz" 24;  font-size: var(--text-base); font-weight: var(--weight-regular); letter-spacing: .02em; color: var(--text-color); white-space: nowrap; }
+            .chart-section .chart-actions { display: none !important; }
+            .chart-section .filter-chart { display: none !important; }
+.shortcuts-flex-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 20px;
+    margin-top: 10px;
+}
+
+.card-main-title {
+    font-weight: 600 !important;
+    font-variation-settings: "opsz" 24;
+    font-size: var(--text-xl);
+    letter-spacing: .01em;
+    color: #1d1d1d;
+    margin-bottom: 12px;
+    padding: 15px;
+}
+.shortcut-item {
+
+    cursor: pointer!important;
+    text-decoration: none !important;
+    font-size: var(--text-base);
+    font-weight: var(--weight-medium);
+    letter-spacing: .025em;
+    font-family: inherit;
+    line-height: 1.3em;
+    color: var(--text-color);
+    box-sizing: border-box;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb-color) var(--scrollbar-track-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    vertical-align: middle;
+}   
+.shortcut-item:hover  {
+    color: var(--invert-neutral) !important;
+    font-weight: 500;
+}    
 
         </style>
     `;
@@ -327,6 +342,22 @@ function getLinkIcon(link) {
 }
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 async function loadWorkspaceCards(ws_name) {
     const content = document.getElementById('tabs-content');
     const dropdownPanel = document.getElementById('dropdown-panel');
@@ -370,6 +401,197 @@ function renderSubTabs(selectedName, container) {
     });
 }
 
+function createLinkElementsh(item) {
+    const a = document.createElement('a');
+    a.className = 'shortcut-item ellipsis';
+    a.setAttribute('type', item.type || 'Link');
+    
+    if (item.label) {
+        a.setAttribute('title', item.label);
+    }
+    
+    
+    
+    const get_route = (r) => {
+        let e = "";
+        let is_link = r.type === "Link";
+        let target_type = (is_link ? r.link_type : r.type || "").toLowerCase();
+        let target_name = r.link_to || r.name;
+
+        if (r.url) {
+            e = r.url;
+            if (r.type === "URL" && r.doc_view !== "New" ) return e;
+        } else if (r.link) {
+            e = r.link.replace(/^#/, "");
+        } else if (target_type === "doctype") {
+            let slug = frappe.router.slug(target_name);
+            if (frappe.model.is_single(target_name)) {
+                e = slug;
+            } else {
+                // If it's a "Link" type, it usually goes to List by default
+                // If it's a "Shortcut", it follows the doc_view logic
+                if (is_link || !r.doc_view) {
+                    e = `${slug}/view/list`;
+                } else {
+                    switch (r.doc_view) {
+                        case "List": e = `${slug}/view/list`; break;
+                        case "Tree": e = `${slug}/view/tree`; break;
+                        case "Report Builder": e = `${slug}/view/report`; break;
+                        case "Dashboard": e = `${slug}/view/dashboard`; break;
+                        case "New": e = `${slug}/new`; break;
+                        case "Calendar": e = `${slug}/view/calendar/default`; break;
+                        case "Kanban": 
+                            e = `${slug}/view/kanban`;
+                            if (r.kanban_board) e += `/${r.kanban_board}`;
+                            break;
+                        default: e = slug;
+                    }
+                }
+            }
+        } else if (target_type === "report") {
+            e = r.is_query_report ? `query-report/${target_name}` : (r.doctype ? `${frappe.router.slug(r.doctype)}/view/report/${target_name}` : `report/${target_name}`);
+        } else if (target_type === "page") {
+            e = target_name;
+        } else if (target_type === "dashboard") {
+            e = `dashboard-view/${target_name}`;
+        }
+
+        return `/app/${e}`;
+    };
+
+    
+    const linkContent = document.createElement('span');
+    linkContent.className = 'shortcut-content ellipsis';
+    
+    const linkText = document.createElement('span');
+    linkText.className = 'shortcut-text';
+    linkText.textContent = __(item.label);
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'es-icon es-line ml-2 icon-xs');
+    svg.setAttribute('aria-hidden', 'true');
+    
+    const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+    use.setAttribute('class', '');
+    use.setAttribute('href', '#es-line-arrow-up-right');
+    svg.appendChild(use);
+    
+    linkContent.appendChild(linkText);
+    linkContent.appendChild(svg);
+    a.appendChild(linkContent);
+    const url = get_route(item);
+
+    a.onclick = (e) => {
+       
+        if ( url) {
+            if (item.type !== "URL" || item.doc_view === "New" ) {
+                frappe.set_route(url);
+            } else {
+                window.open(url, '_blank');
+            }
+            //navigateTo(url);
+            document.getElementById('dropdown-panel').classList.remove('show');
+        }
+    };
+    
+    return a;
+}
+
+
+
+
+function fetchAndRenderWorkspace1111(name, container) {
+    const $container = $(container);
+    $container.empty();
+
+    const $wrapper = $(`
+        <div class="workspace-blocks">
+            <div class="layout-main-section">
+                <div class="widget-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; padding: 15px;">
+                </div>
+            </div>
+        </div>
+    `).appendTo($container);
+
+    const $grid = $wrapper.find('.widget-grid');
+
+    frappe.call({
+        method: "frappe.desk.desktop.get_desktop_page",
+        args: { page: { name: name, public: 1 } },
+        callback: function (r) {
+            if (!r.message) return;
+            const data = r.message;
+
+            if (data.shortcuts && data.shortcuts.items) {
+                data.shortcuts.items.forEach(item => {
+                    const $col = $('<div class="widget-column"></div>').appendTo($grid);
+                    
+                    let widget_options = {
+                        label: item.label,
+                        type: item.type || "DocType",
+                        link_to: item.link_to || item.doc_name,
+                        doc_view: item.doc_view || "List",
+                        route: item.route || ""
+                    };
+
+                    frappe.widget.make_widget({
+                        widget_type: "shortcut",
+                        widget_name: item.label,
+                        container: $col,
+                        label: item.label,
+                        options: widget_options
+                    });
+
+                    $col.find('.widget-ui').attr('onclick', '');
+                    $col.off('click').on('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        if (widget_options.route) {
+                            frappe.set_route(widget_options.route);
+                        } else {
+                            frappe.set_route("List", widget_options.link_to, widget_options.doc_view);
+                        }
+                        
+                        if ($('#dropdown-panel').length) {
+                            $('#dropdown-panel').removeClass('show');
+                        }
+                    });
+                });
+            }
+
+            if (data.cards && data.cards.items) {
+                data.cards.items.forEach(item => {
+                    const $col = $('<div class="widget-column"></div>').appendTo($grid);
+                    frappe.widget.make_widget({
+                        widget_type: "links",
+                        label: item.label,
+                        container: $col,
+                        links: item.links,
+                        options: item
+                    });
+                });
+            }
+
+            if (data.charts && data.charts.items) {
+                data.charts.items.forEach(item => {
+                    const $col = $('<div class="widget-column"></div>').appendTo($grid);
+                    frappe.widget.make_widget({
+                        widget_type: "chart",
+                        widget_name: item.chart_name,
+                        container: $col,
+                        label: item.label || item.chart_name,
+                        options: item
+                    });
+                });
+            }
+        }
+    });
+}
+
+
+
+
 
 function fetchAndRenderWorkspace(name, container) {
     container.innerHTML = `<div class="loading-spinner"><i class="fa fa-spinner fa-spin fa-2x"></i></div>`;
@@ -389,6 +611,486 @@ function fetchAndRenderWorkspace(name, container) {
 
 
 function renderWorkspaceHTML(data, container) {
+    container.innerHTML = ''; 
+    let hasVisibleContent = false;
+    
+
+    if (!document.getElementById('workspace-scoped-style')) {
+        $('head').append(`
+            <style id="workspace-scoped-style">
+              .number-card-section .widget-group-body.grid-col-4 {
+                    display: flex !important;
+                    flex-direction: row !important;
+                    flex-wrap: nowrap !important;
+                    grid-template-columns: none !important;
+                    gap: 15px !important;
+                    overflow-x: auto !important;
+                }
+
+                .number-card-section .widget.number-widget-box {
+                    flex: 1 0 220px !important;
+                    max-width: none !important;
+                    min-width: 200px !important;
+                }
+
+
+                .number-card-section .widget-group-body {
+                    display: flex !important;
+                    flex-direction: column !important;
+                    grid-template-columns: none !important;
+                    gap: 20px !important;
+                }
+
+                .number-card-section .widget {
+                    width: 100% !important;
+                    max-width: none !important;
+                }
+
+
+                .number-card-section .widget-group-body::-webkit-scrollbar { height: 4px; }
+                .number-card-section .widget-group-body::-webkit-scrollbar-thumb { background: #d1d8dd; border-radius: 10px; }
+            </style>
+        `);
+    }
+
+    const get_route = (r) => {
+        let e = "";
+        let is_link = r.type === "Link";
+        let target_type = (is_link ? r.link_type : r.type || "").toLowerCase();
+        let target_name = r.link_to || r.name;
+
+        if (r.url) {
+            e = r.url;
+        } else if (r.link) {
+            e = r.link.replace(/^#/, "");
+        } else if (target_type === "doctype") {
+            let slug = frappe.router.slug(target_name);
+            if (frappe.model.is_single(target_name)) {
+                e = slug;
+            } else {
+                // If it's a "Link" type, it usually goes to List by default
+                // If it's a "Shortcut", it follows the doc_view logic
+                if (is_link || !r.doc_view) {
+                    e = `${slug}/view/list`;
+                } else {
+                    switch (r.doc_view) {
+                        case "List": e = `${slug}/view/list`; break;
+                        case "Tree": e = `${slug}/view/tree`; break;
+                        case "Report Builder": e = `${slug}/view/report`; break;
+                        case "Dashboard": e = `${slug}/view/dashboard`; break;
+                        case "New": e = `${slug}/new`; break;
+                        case "Calendar": e = `${slug}/view/calendar/default`; break;
+                        case "Kanban": 
+                            e = `${slug}/view/kanban`;
+                            if (r.kanban_board) e += `/${r.kanban_board}`;
+                            break;
+                        default: e = slug;
+                    }
+                }
+            }
+        } else if (target_type === "report") {
+            e = r.is_query_report ? `query-report/${target_name}` : (r.doctype ? `${frappe.router.slug(r.doctype)}/view/report/${target_name}` : `report/${target_name}`);
+        } else if (target_type === "page") {
+            e = target_name;
+        } else if (target_type === "dashboard") {
+            e = `dashboard-view/${target_name}`;
+        }
+
+        return `/app/${e}`;
+    };
+
+    const create_element = (item, cls) => {
+        const route = get_route(item);
+        const a = document.createElement('a');
+        a.className = cls;
+        a.href = route;
+        a.innerHTML = `<span>${item.label || item.name}</span>`;
+        a.onclick = (e) => {
+            e.preventDefault();
+            frappe.set_route(route);
+        };
+        return a;
+    };
+
+    // 1. Number Cards
+   
+    // 3. Shortcuts
+    const shortcutItems = (data.shortcuts && data.shortcuts.items) ? data.shortcuts.items : [];
+    if (shortcutItems.length > 0) {
+        const shortcutsWrapper = document.createElement('div');
+        shortcutsWrapper.className = 'shortcuts-horizontal-wrapper';
+        shortcutsWrapper.innerHTML = `<div class="shortcut-main-title">${__('Your Shortcuts')}</div>`;
+        const shortcutsFlex = document.createElement('div');
+        shortcutsFlex.className = 'shortcuts-flex-row';
+        shortcutItems.forEach(s => {
+            const target = s.link_to || s.url || s.doc_name;
+            if (target) {
+                shortcutsFlex.appendChild(createLinkElementsh(s));
+                hasVisibleContent = true;
+            }
+        });
+        shortcutsWrapper.appendChild(shortcutsFlex);
+        container.appendChild(shortcutsWrapper);
+    }
+
+    const cards = (data.cards && data.cards.items) ? data.cards.items : [];
+    if (cards.length > 0) {
+        const shortcutsWrapper1 = document.createElement('div');
+        shortcutsWrapper1.className = 'card-horizontal-wrapper';
+        shortcutsWrapper1.innerHTML = `<div class="card-main-title">${__('Reports & Masters')}</div>`;
+        const cardGroupsContainer = document.createElement('div');
+        cardGroupsContainer.className = 'card-groups-container';
+        cards.forEach(card => {
+            if (card.links && card.links.length > 0) {
+                const group = createGroupContainer(card.label);
+                card.links.forEach(link => {
+                    group.appendChild(createLinkElement(link));
+                    hasVisibleContent = true;
+                });
+                cardGroupsContainer.appendChild(group);
+            }
+        });
+        shortcutsWrapper1.appendChild(cardGroupsContainer);
+        container.appendChild(shortcutsWrapper1);
+    }
+    
+    
+     if (data.number_cards && data.number_cards.items && data.number_cards.items.length > 0) {
+        const nc_container = document.createElement('div');
+        nc_container.className = 'number-card-section';
+        nc_container.style.marginBottom = '25px';
+        container.appendChild(nc_container);
+
+        new frappe.widget.WidgetGroup({
+            container: $(nc_container),
+            type: "number_card",
+            columns: 4,
+            widgets: data.number_cards.items,
+            options: {
+                allow_sorting: false,
+                allow_config: false
+            }
+        });
+        hasVisibleContent = true;
+    }
+
+    if (data.charts && data.charts.items && data.charts.items.length > 0) {
+        const chart_container = document.createElement('div');
+        chart_container.className = 'chart-section';
+        chart_container.style.marginBottom = '25px';
+        container.appendChild(chart_container);
+
+        new frappe.widget.WidgetGroup({
+            container: $(chart_container),
+            type: "chart",
+            columns: 1,
+            widgets: data.charts.items,
+            options: {
+                allow_sorting: false,
+                allow_config: false
+            }
+        });
+        hasVisibleContent = true;
+    }
+    
+    
+    $(container).on('click', '.number-card-section', function() {
+        document.getElementById('dropdown-panel').classList.remove('show');
+    });
+
+
+    if (!hasVisibleContent) {
+        container.innerHTML = '<div class="no-data">Empty Workspace</div>';
+    }
+}
+
+
+function renderWorkspaceHTML555(data, container) {
+    container.innerHTML = ''; 
+    let hasVisibleContent = false;
+
+    if (data.number_cards && data.number_cards.items && data.number_cards.items.length > 0) {
+        const nc_container = document.createElement('div');
+        nc_container.className = 'number-card-section';
+        nc_container.style.marginBottom = '25px';
+        container.appendChild(nc_container);
+
+        new frappe.widget.WidgetGroup({
+            container: $(nc_container),
+            type: "number_card",
+            columns: data.number_cards.items.length,
+            widgets: data.number_cards.items,
+            options: {
+                allow_sorting: false,
+                allow_config: false
+            }
+        });
+        hasVisibleContent = true;
+    }
+
+    if (data.charts && data.charts.items && data.charts.items.length > 0) {
+        const chart_container = document.createElement('div');
+        chart_container.className = 'chart-section';
+        chart_container.style.marginBottom = '25px';
+        container.appendChild(chart_container);
+
+        new frappe.widget.WidgetGroup({
+            container: $(chart_container),
+            type: "chart",
+            columns: 1,
+            widgets: data.charts.items,
+            options: {
+                allow_sorting: false,
+                allow_config: false
+            }
+        });
+        hasVisibleContent = true;
+    }
+
+    const shortcutItems = (data.shortcuts && data.shortcuts.items) ? data.shortcuts.items : [];
+    if (shortcutItems.length > 0) {
+        const shortcutsWrapper = document.createElement('div');
+        shortcutsWrapper.className = 'shortcuts-horizontal-wrapper';
+        shortcutsWrapper.innerHTML = `<div class="shortcut-main-title">${__('Your Shortcuts')}</div>`;
+        const shortcutsFlex = document.createElement('div');
+        shortcutsFlex.className = 'shortcuts-flex-row';
+        shortcutItems.forEach(s => {
+            const target = s.link_to || s.url || s.doc_name;
+            if (target) {
+                shortcutsFlex.appendChild(createLinkElement({
+                    label: s.label || s.name,
+                    link_to: target,
+                    type: s.type
+                }));
+                hasVisibleContent = true;
+            }
+        });
+        shortcutsWrapper.appendChild(shortcutsFlex);
+        container.appendChild(shortcutsWrapper);
+    }
+
+    const cards = (data.cards && data.cards.items) ? data.cards.items : [];
+    if (cards.length > 0) {
+        const cardGroupsContainer = document.createElement('div');
+        cardGroupsContainer.className = 'card-groups-container';
+        cards.forEach(card => {
+            if (card.links && card.links.length > 0) {
+                const group = createGroupContainer(card.label);
+                card.links.forEach(link => {
+                    group.appendChild(createLinkElement({
+                        label: link.label || link.link_to,
+                        link_to: link.link_to,
+                        type: link.link_type || link.type
+                    }));
+                    hasVisibleContent = true;
+                });
+                cardGroupsContainer.appendChild(group);
+            }
+        });
+        container.appendChild(cardGroupsContainer);
+    }
+
+    if (!hasVisibleContent) {
+        container.innerHTML = '<div class="no-data">the workspace is empty</div>';
+    }
+}
+function renderWorkspaceHTML44444(data, container) {
+    container.innerHTML = ''; 
+    let hasVisibleContent = false;
+
+    if (data.number_cards && data.number_cards.items && data.number_cards.items.length > 0) {
+        const nc_container = document.createElement('div');
+        nc_container.className = 'number-card-section';
+        container.appendChild(nc_container);
+
+        new frappe.widget.WidgetGroup({
+            container: $(nc_container),
+            type: "number_card",
+            columns: 4,
+            widgets: data.number_cards.items,
+            options: {
+                allow_sorting: false,
+                allow_config: false
+            }
+        });
+        hasVisibleContent = true;
+    }
+
+    if (data.charts && data.charts.items && data.charts.items.length > 0) {
+        const chart_container = document.createElement('div');
+        chart_container.className = 'chart-section';
+        container.appendChild(chart_container);
+
+        new frappe.widget.WidgetGroup({
+            container: $(chart_container),
+            type: "chart",
+            columns: 1,
+            widgets: data.charts.items,
+            options: {
+                allow_sorting: false,
+                allow_config: false
+            }
+        });
+        hasVisibleContent = true;
+    }
+
+    const shortcutItems = (data.shortcuts && data.shortcuts.items) ? data.shortcuts.items : [];
+    if (shortcutItems.length > 0) {
+        const shortcutsWrapper = document.createElement('div');
+        shortcutsWrapper.className = 'shortcuts-horizontal-wrapper';
+        shortcutsWrapper.innerHTML = `<div class="shortcut-main-title">${__('Your Shortcuts')}</div>`;
+        const shortcutsFlex = document.createElement('div');
+        shortcutsFlex.className = 'shortcuts-flex-row';
+        shortcutItems.forEach(s => {
+            const target = s.link_to || s.url || s.doc_name;
+            if (target) {
+                shortcutsFlex.appendChild(createLinkElement({
+                    label: s.label || s.name,
+                    link_to: target,
+                    type: s.type
+                }));
+                hasVisibleContent = true;
+            }
+        });
+        shortcutsWrapper.appendChild(shortcutsFlex);
+        container.appendChild(shortcutsWrapper);
+    }
+
+    const cards = (data.cards && data.cards.items) ? data.cards.items : [];
+    if (cards.length > 0) {
+        const cardGroupsContainer = document.createElement('div');
+        cardGroupsContainer.className = 'card-groups-container';
+        cards.forEach(card => {
+            if (card.links && card.links.length > 0) {
+                const group = createGroupContainer(card.label);
+                card.links.forEach(link => {
+                    group.appendChild(createLinkElement({
+                        label: link.label || link.link_to,
+                        link_to: link.link_to,
+                        type: link.link_type || link.type
+                    }));
+                    hasVisibleContent = true;
+                });
+                cardGroupsContainer.appendChild(group);
+            }
+        });
+        container.appendChild(cardGroupsContainer);
+    }
+
+    if (!hasVisibleContent) {
+        container.innerHTML = '<div class="no-data">the workspace is empty</div>';
+    }
+}
+
+
+
+
+function renderWorkspaceHTML2222(data, container) {
+    container.innerHTML = ''; 
+    let hasVisibleContent = false;
+
+    if (data.charts && data.charts.items && data.charts.items.length > 0) {
+        const chartsWrapper = document.createElement('div');
+        chartsWrapper.className = 'charts-horizontal-wrapper';
+        chartsWrapper.style.display = 'grid';
+        chartsWrapper.style.gridTemplateColumns = 'repeat(auto-fill, minmax(400px, 1fr))';
+        chartsWrapper.style.gap = '15px';
+        chartsWrapper.style.marginBottom = '20px';
+
+        data.charts.items.forEach(chartItem => {
+            const chartCol = document.createElement('div');
+            chartCol.className = 'chart-column';
+            chartsWrapper.appendChild(chartCol);
+
+            frappe.widget.make_widget({
+                widget_type: 'chart',
+                widget_name: chartItem.chart_name,
+                container: chartCol,
+                label: chartItem.label || chartItem.chart_name,
+                options: chartItem
+            });
+            hasVisibleContent = true;
+        });
+        container.appendChild(chartsWrapper);
+    }
+
+    const shortcutItems = (data.shortcuts && data.shortcuts.items) ? data.shortcuts.items : [];
+    if (shortcutItems.length > 0) {
+        const shortcutsWrapper = document.createElement('div');
+        shortcutsWrapper.className = 'shortcuts-horizontal-wrapper';
+        shortcutsWrapper.innerHTML = `<div class="shortcut-main-title">${__('Your Shortcuts')}</div>`;
+        
+        const shortcutsFlex = document.createElement('div');
+        shortcutsFlex.className = 'shortcuts-flex-row';
+
+        shortcutItems.forEach(s => {
+            const target = s.link_to || s.url || s.doc_name;
+            if (target) {
+                const itemObj = {
+                    label: s.label || s.name,
+                    link_to: target,
+                    type: s.type,
+                    doc_view: s.doc_view
+                };
+                shortcutsFlex.appendChild(createLinkElement(itemObj));
+                hasVisibleContent = true;
+            }
+        });
+        
+        shortcutsWrapper.appendChild(shortcutsFlex);
+        container.appendChild(shortcutsWrapper);
+
+        const spacer = document.createElement('div');
+        spacer.className = 'workspace-spacer';
+        container.appendChild(spacer);
+    }
+
+    const cards = (data.cards && data.cards.items) ? data.cards.items : [];
+    const cardGroupsContainer = document.createElement('div');
+    cardGroupsContainer.className = 'card-groups-container';
+    let hasCards = false;
+    
+    if (cards.length > 0) {
+        cards.forEach(card => {
+            if (card.links && card.links.length > 0) {
+                const group = createGroupContainer(card.label);
+                card.links.forEach(link => {
+                    group.appendChild(createLinkElement({
+                        label: link.label || link.link_to,
+                        link_to: link.link_to,
+                        type: link.link_type || link.type
+                    }));
+                    hasVisibleContent = true;
+                    hasCards = true;
+                });
+                cardGroupsContainer.appendChild(group);
+            }
+        });
+    }
+    
+    if (hasCards) {
+        container.appendChild(cardGroupsContainer);
+    }
+
+    if (!hasVisibleContent) {
+        container.innerHTML = '<div class="no-data">the workspace is empty</div>';
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function renderWorkspaceHTML1111(data, container) {
     container.innerHTML = ''; 
     let hasVisibleContent = false;
 
@@ -486,6 +1188,56 @@ function createLinkElement(item) {
         a.setAttribute('title', item.label);
     }
     
+    
+    
+    const get_route = (r) => {
+        let e = "";
+        let is_link = r.type === "Link";
+        let target_type = (is_link ? r.link_type : r.type || "").toLowerCase();
+        let target_name = r.link_to || r.name;
+
+        if (r.url) {
+            e = r.url;
+            if (r.type === "URL" && r.doc_view !== "List" ) return e;
+        } else if (r.link) {
+            e = r.link.replace(/^#/, "");
+        } else if (target_type === "doctype") {
+            let slug = frappe.router.slug(target_name);
+            if (frappe.model.is_single(target_name)) {
+                e = slug;
+            } else {
+                // If it's a "Link" type, it usually goes to List by default
+                // If it's a "Shortcut", it follows the doc_view logic
+                if (is_link || !r.doc_view) {
+                    e = `${slug}/view/list`;
+                } else {
+                    switch (r.doc_view) {
+                        case "List": e = `${slug}/view/list`; break;
+                        case "Tree": e = `${slug}/view/tree`; break;
+                        case "Report Builder": e = `${slug}/view/report`; break;
+                        case "Dashboard": e = `${slug}/view/dashboard`; break;
+                        case "New": e = `${slug}/new`; break;
+                        case "Calendar": e = `${slug}/view/calendar/default`; break;
+                        case "Kanban": 
+                            e = `${slug}/view/kanban`;
+                            if (r.kanban_board) e += `/${r.kanban_board}`;
+                            break;
+                        default: e = slug;
+                    }
+                }
+            }
+        } else if (target_type === "report") {
+            e = r.is_query_report ? `query-report/${target_name}` : (r.doctype ? `${frappe.router.slug(r.doctype)}/view/report/${target_name}` : `report/${target_name}`);
+        } else if (target_type === "page") {
+            e = target_name;
+        } else if (target_type === "dashboard") {
+            e = `dashboard-view/${target_name}`;
+        }
+
+        return `/app/${e}`;
+    };
+
+    
     const linkContent = document.createElement('span');
     linkContent.className = 'link-content ellipsis';
     
@@ -505,12 +1257,17 @@ function createLinkElement(item) {
     linkContent.appendChild(linkText);
     linkContent.appendChild(svg);
     a.appendChild(linkContent);
-    const url = buildLinkUrl(item);
+    const url = get_route(item);
 
     a.onclick = (e) => {
        
         if ( url) {
-            navigateTo(url);
+            if (item.type !== "URL" || item.doc_view === "List" ) {
+                frappe.set_route(url);
+            } else {
+                window.open(url, '_blank');
+            }
+            //navigateTo(url);
             document.getElementById('dropdown-panel').classList.remove('show');
         }
     };
