@@ -29,7 +29,9 @@ app_include_js = [
 
 # include js in page
 # page_js = {"page" : "public/js/file.js"}
-
+page_js = {
+    "point-of-sale": "public/js/custom_pos.js"
+}
 # include js in doctype views
 # doctype_js = {"doctype" : "public/js/doctype.js"}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
