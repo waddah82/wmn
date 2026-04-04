@@ -1,59 +1,5 @@
 frappe.provide("erpnext.PointOfSale");
 
-// ===== Helper functions defined before the Controller =====
-async function fetchOpening1() {
-    return frappe.call("erpnext.selling.page.point_of_sale.point_of_sale.check_opening_entry", {
-        user: frappe.session.user
-    });
-}
-
-async function loadPrintSettings(pos_profile_name) {
-    
-    if (pos_profile_name) {
-        try {
-            const settings_r = await frappe.xcall('frappe.client.get', {
-                doctype: 'POS Print Settings',
-                name: pos_profile_name
-            });
-            if (settings_r) {
-                window.pos_print_settings = settings_r;
-                console.log("POS Print Settings loaded from POS Profile", window.pos_print_settings);
-
-                
-                return window.pos_print_settings;
-            }
-        } catch (err) {
-            console.warn("POS Print Settings not found for profile:", pos_profile_name, err);
-        }
-    }
-    if (!window.pos_print_settings) {
-        frappe.call({
-            method: "frappe.client.get",
-            args: { doctype: "POS Print Settings", name: "POS Print Settings" },
-            callback: function(r) {
-                if (r.message) {
-                    window.pos_print_settings = r.message;
-                    if (window.pos_print_settings.convert_cards_to_text) {
-                        convertCardsToTextElements();
-                    }
-                }
-            }
-        });
-    }
-    console.log("No POS Print Settings linked to this POS Profile defalut loaded");
-    return null;
-}
-
-async function initProfile1(controller_instance) {
-    const r = await fetchOpening1();
-    if (r.message && r.message.length) {
-        await loadPrintSettings(r.message[0].pos_profile);
-    } else {
-        console.log("fetchOpening  null", r);
-    }
-}
-
-// ===== Define the Controller =====
 frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
     frappe.ui.make_app_page({
         parent: wrapper,
@@ -62,120 +8,117 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
     });
 
     frappe.require("point-of-sale.bundle.js", async function() {
-
+        
         class MyPOSController extends erpnext.PointOfSale.Controller {
             constructor(wrapper) {
                 super(wrapper);
-                // Initialize POS Profile and Print Settings on creation
-                initProfile1(this);
             }
+            
+            async prepare_app_defaults(data) {
+                await super.prepare_app_defaults(data);
+                
+                let save_as_sales_invoice = 0;
+                const pos_settings = await frappe.db.get_single_value('POS Settings', 'custom_u_save_as_sales_invoice');
+                if (pos_settings === 1) {
+                    save_as_sales_invoice = 1;
+                }
+                this.save_as_sales_invoice = save_as_sales_invoice;
+               
+            }
+
+            
 
             check_stock_availability(item, qty, warehouse) {
-                console.log("Adding item:", item.item_code);
+                const target_warehouse = warehouse || (this.settings ? this.settings.warehouse : null);
+                if (!target_warehouse) return Promise.resolve(true);
 
-                // If stock check is disabled in POS Print Settings, allow adding item
-                if (window.pos_print_settings && window.pos_print_settings.disable_stock_check) {
-                    console.log("Stock check disabled via POS Print Settings");
-                    return true;
-                }
+                return frappe.call({
+                    method: "erpnext.accounts.doctype.pos_invoice.pos_invoice.get_stock_availability",
+                    args: {
+                        item_code: item.item_code,
+                        warehouse: target_warehouse
+                    }
+                }).then(r => (r.message || 0) >= qty);
+            }
 
-                // Otherwise, perform the normal stock check
-                return super.check_stock_availability(item, qty, warehouse);
+            make_sales_invoice_frm() {
+                const doctype = this.save_as_sales_invoice ? "Sales Invoice" : "POS Invoice";
+                return new Promise((resolve) => {
+                    frappe.model.with_doctype(doctype, () => {
+                        this.frm = this.get_new_frm(null, doctype);
+                        this.frm.doc.items = [];
+                        this.frm.doc.is_pos = 1;
+                        this.frm.doc.update_stock = 1;
+                        this.frm.doc.pos_profile = this.settings.pos_profile;
+                        resolve();
+                    });
+                });
+            }
+
+            get_new_frm(_frm, doctype) {
+                const page = $("<div>");
+                const frm = new frappe.ui.form.Form(doctype, page, false);
+                const name = frappe.model.make_new_doc_and_get_name(doctype, true);
+                frm.refresh(name);
+                return frm;
+            }
+
+            init_payments() {
+                super.init_payments();
+                this.payment.events.submit_invoice = () => {
+                    this.frm.savesubmit().then((r) => {
+                        this.toggle_components(false);
+                        this.order_summary.toggle_component(true);
+                        this.order_summary.load_summary_of(r.doc, true);
+                        this.recent_order_list.refresh_list();
+                    });
+                };
+            }
+
+            init_recent_order_list() {
+                super.init_recent_order_list();
+                this.recent_order_list.events.open_invoice_data = (name) => {
+                    const doctype = this.save_as_sales_invoice ? "Sales Invoice" : "POS Invoice";
+                    frappe.db.get_doc(doctype, name).then((doc) => {
+                        this.order_summary.load_summary_of(doc);
+                    });
+                };
             }
         }
 
-        // Create the Controller instance
+        const OriginalPastOrderSummary = erpnext.PointOfSale.PastOrderSummary;
+        
+        class MyPastOrderSummary extends OriginalPastOrderSummary {
+            constructor(wrapper, args) {
+                super(wrapper, args);
+                this.after_submission = false;
+            }
+
+            toggle_summary_placeholder(show) {
+                if (this.after_submission === true && show === true) {
+                   
+                    return;
+                }
+                super.toggle_summary_placeholder(show);
+            }
+
+            load_summary_of(doc, after_submission = false) {
+                this.after_submission = after_submission;
+                super.load_summary_of(doc, after_submission);
+            }
+
+            get_condition_btn_map() {
+                if (this.after_submission === true) {
+                    return [{ condition: true, visible_btns: ["Print Receipt", "Email Receipt", "New Order"] }];
+                }
+                return super.get_condition_btn_map();
+            }
+        }
+
+        erpnext.PointOfSale.PastOrderSummary = MyPastOrderSummary;
+
         wrapper.pos = new MyPOSController(wrapper);
         window.cur_pos = wrapper.pos;
-
-
-
-
-        // Replace PastOrderSummary if needed
-        if (window.pos_print_settings && window.pos_print_settings.print_method !== "Default") {
-            class MyPastOrderSummary extends erpnext.PointOfSale.PastOrderSummary {
-                constructor(wrapper, args) {
-                    super(wrapper, args);
-                }
-
-                print_receipt() {
-                    const doc = this.doc;
-                    if (!doc) return;
-                    const settings = window.pos_print_settings;
-                    if (!settings) return;
-
-                    if (settings.print_method !== "Button Only") {
-                        frappe.msgprint("This invoice is printed automatically on submit.");
-                        return;
-                    }
-
-                    const send2bridge = function(doc, rule) {
-                        frappe.call({
-                            method: 'restaurant.utils.print_format.create_pdf',
-                            args: {
-                                doctype: doc.doctype,
-                                name: doc.name,
-                                restaurant_print_format: rule.restaurant_print_format,
-                                no_letterhead: 1,
-                                _lang: "en"
-                            },
-                            callback: (r) => {
-                                if (r.message && r.message.pdf_base64) {
-                                    var printService = new restaurant.utils.WebSocketPrinter({
-                                        onConnect: () => {
-                                            printService.submit({
-                                                'type': rule.print_type,
-                                                'url': 'file.pdf',
-                                                'file_content': r.message.pdf_base64
-                                            });
-                                        }
-                                    });
-                                } else {
-                                    frappe.msgprint("Failed to create the PDF file.");
-                                }
-                            }
-                        });
-                    };
-                    const send2bridge2 = function(doc, rule) {
-                        if (rule.item_group) doc.item_group = rule.item_group
-                        frappe.call({
-                            method: 'restaurant.utils.print_format.create_pdf1',
-                            args: {
-                                doctype: doc.doctype,
-                                name: doc.name,
-                                restaurant_print_format: rule.restaurant_print_format,
-                                no_letterhead: 1,
-                                _lang: "en"
-                            },
-                            callback: (r) => {
-                                if (r.message && r.message.pdf_base64) {
-                                    var printService = new restaurant.utils.WebSocketPrinter({
-                                        onConnect: () => {
-                                            printService.submit({
-                                                'type': rule.print_type,
-                                                'url': 'file.pdf',
-                                                'file_content': r.message.pdf_base64
-                                            });
-                                        }
-                                    });
-                                } else {
-                                    frappe.msgprint("Failed to create the PDF file.");
-                                }
-                            }
-                        });
-                    };
-                    const rules = settings.rules || [];
-                    rules.forEach(rule => {
-                        if (rule.do_print) {
-                            send2bridge2(doc, rule);
-                        }
-                    });
-
-                    settings.last_printed_invoice = doc.name;
-                }
-            }
-
-            erpnext.PointOfSale.PastOrderSummary = MyPastOrderSummary;
-        }
+        
     });
 };
