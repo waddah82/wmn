@@ -1,0 +1,58 @@
+{
+ "actions": [],
+ "creation": "2026-04-06 12:10:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "structure_name",
+  "prefix",
+  "total_length",
+  "structure_table"
+ ],
+ "fields": [
+  {
+   "fieldname": "structure_name",
+   "fieldtype": "Data",
+   "label": "Structure Name",
+   "unique": 1
+  },
+  {
+   "fieldname": "prefix",
+   "fieldtype": "Data",
+   "label": "Barcode Prefix",
+   "reqd": 1
+  },
+  {
+   "fieldname": "total_length",
+   "fieldtype": "Int",
+   "label": "Expected Total Length"
+  },
+  {
+   "fieldname": "structure_table",
+   "fieldtype": "Table",
+   "label": "Structure Details",
+   "options": "Barcode Structure Detail",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "module": "Wmn",
+ "name": "Barcode Structure",
+ "naming_rule": "By fieldname",
+ "autoname": "field:structure_name",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ]
+}

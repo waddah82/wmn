@@ -1,0 +1,47 @@
+{
+ "actions": [],
+ "creation": "2026-04-06 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "field_type",
+  "field_data_type",
+  "length",
+  "divisor"
+ ],
+ "fields": [
+  {
+   "fieldname": "field_type",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Field Name (as in ERPNext)",
+   "reqd": 1
+  },
+  {
+   "fieldname": "field_data_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Data Type",
+   "options": "String\nFloat\nDate",
+   "reqd": 1
+  },
+  {
+   "fieldname": "length",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Length",
+   "reqd": 1
+  },
+  {
+   "fieldname": "divisor",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Divisor (for Float)",
+   "default": "1.0"
+  }
+ ],
+ "istable": 1,
+ "module": "Wmn",
+ "name": "Barcode Structure Detail"
+}
