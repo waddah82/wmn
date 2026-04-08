@@ -11,11 +11,22 @@ app_license = "mit"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/wmn/css/wmn.css"
-#app_include_js = "/assets/wmn/js/ui_setting.js"
+# app_include_js = "/assets/wmn/js/ui_setting.js"
 app_include_js = [
     "/assets/wmn/js/ui_setting.js",
+    "/assets/wmn/js/pos_barcode_override.js",
     "assets/wmn/js/workspace_header.js",
+    #"/assets/wmn/js/shams_app_router.js",
 ]
+#app_include_css = "assets/your_app/css/workspace_header.css"
+#website_route_rules = [
+#    {"from_route": "/apps/<path:app_path>", "to_route": "/app/apps"},
+#    {"from_route": "/apps", "to_route": "apps"},
+#]
+
+#website_redirects = [
+#    {"source": "/app", "target": "/apps?route=%2Fapp"},
+#]
 # include js, css files in header of web template
 # web_include_css = "/assets/wmn/css/wmn.css"
 # web_include_js = "/assets/wmn/js/wmn.js"
@@ -31,6 +42,13 @@ app_include_js = [
 # page_js = {"page" : "public/js/file.js"}
 page_js = {
     "point-of-sale": "public/js/custom_pos.js"
+}
+
+
+
+override_whitelisted_methods = {
+    "erpnext.stock.utils.scan_barcode": "wmn.barcode_handler.custom_scan_barcode",
+    "erpnext.stock.get_item_details.get_item_details": "wmn.barcode_handler.custom_get_item_details"
 }
 # include js in doctype views
 # doctype_js = {"doctype" : "public/js/doctype.js"}
