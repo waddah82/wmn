@@ -11,6 +11,8 @@ erpnext.utils.BarcodeScanner.prototype.scan_api_call = function(input, callback)
             window.last_scanned_weight = r.message.qty;
             
         }
+        else
+            window.last_scanned_weight = 1;
         callback(r);
     });
 };
