@@ -14,17 +14,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                 super(wrapper);
             }
             
-            async prepare_app_defaults(data) {
-                await super.prepare_app_defaults(data);
-                
-                let save_as_sales_invoice = 0;
-                const pos_settings = await frappe.db.get_single_value('POS Settings', 'custom_u_save_as_sales_invoice');
-                if (pos_settings === 1) {
-                    save_as_sales_invoice = 1;
-                }
-                this.save_as_sales_invoice = save_as_sales_invoice;
-               
-            }
+            
 
             
 
@@ -42,7 +32,9 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
             }
 
             make_sales_invoice_frm() {
-                const doctype = this.save_as_sales_invoice ? "Sales Invoice" : "POS Invoice";
+                //const doctype = this.save_as_sales_invoice ? "Sales Invoice" : "POS Invoice";
+                const doctype = this.settings.as_sales_invoice === 1 ? "Sales Invoice" : "POS Invoice";
+                console.log("as_sales_invoice value:", this.settings.as_sales_invoice);
                 return new Promise((resolve) => {
                     frappe.model.with_doctype(doctype, () => {
                         this.frm = this.get_new_frm(null, doctype);
@@ -78,7 +70,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
             init_recent_order_list() {
                 super.init_recent_order_list();
                 this.recent_order_list.events.open_invoice_data = (name) => {
-                    const doctype = this.save_as_sales_invoice ? "Sales Invoice" : "POS Invoice";
+                    const doctype = this.settings.as_sales_invoice === 1  ? "Sales Invoice" : "POS Invoice";
                     frappe.db.get_doc(doctype, name).then((doc) => {
                         this.order_summary.load_summary_of(doc);
                     });
@@ -116,7 +108,78 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
         }
 
         erpnext.PointOfSale.PastOrderSummary = MyPastOrderSummary;
+        const OriginalItemSelector = erpnext.PointOfSale.ItemSelector;
+        class MyItemSelector extends OriginalItemSelector {
+            constructor(wrapper, args) {
+                super(wrapper, args);
+            }
+            filter_items({ search_term = "" } = {}) {
+                if (search_term && search_term.length >= 12) {
+                    return frappe.call({
+                        method: "wmn.barcode_handler.custom_scan_barcode",
+                        args: { search_value: search_term }
+                    }).then(async (r) => {
+                        if (r.message && r.message.item_code) {
+                            const data = r.message;
+                            const pos_ctrl = window.cur_pos;
+                            let qty_value = data.qty || 1;
 
+                            let existing_item = null;
+                            if (pos_ctrl.frm && pos_ctrl.frm.doc.items) {
+                                existing_item = pos_ctrl.frm.doc.items.find(i => 
+                                    i.item_code === data.item_code && 
+                                    (i.batch_no === data.batch_no || (!i.batch_no && !data.batch_no))
+                                );
+                            }
+
+                            if (existing_item) {
+                                frappe.dom.freeze();
+                                const new_qty = flt(existing_item.qty) + flt(qty_value);
+                                
+                                // Directly set value in model to bypass selector logic constraints
+                                await frappe.model.set_value(existing_item.doctype, existing_item.name, "qty", new_qty);
+                                if (data.batch_no && existing_item.batch_no !== data.batch_no) {
+                                    await frappe.model.set_value(existing_item.doctype, existing_item.name, "batch_no", data.batch_no);
+                                }
+                                if (data.serial_no) {
+                                    let new_serial_no = existing_item.serial_no ? existing_item.serial_no + "\n" + data.serial_no : data.serial_no;
+                                    await frappe.model.set_value(existing_item.doctype, existing_item.name, "serial_no", new_serial_no);
+                                }
+                                // Refresh the UI components
+                                pos_ctrl.update_cart_html(existing_item);
+                                
+                                frappe.dom.unfreeze();
+                            } else {
+                                this.events.item_selected({
+                                    field: "qty",
+                                    value: qty_value,
+                                    item: {
+                                        item_code: data.item_code,
+                                        batch_no: data.batch_no,
+                                        serial_no: data.serial_no,
+                                        uom: data.uom,
+                                        rate: data.price_list_rate
+                                    },
+                                });
+                            }
+
+                            this.set_search_value("");
+                            frappe.utils.play_sound("submit");
+                            return;
+                        }
+                        return super.filter_items({ search_term });
+                    }).catch(err => {
+                        console.error(err);
+                        frappe.dom.unfreeze();
+                        return super.filter_items({ search_term });
+                    });
+                }
+                return super.filter_items({ search_term });
+            }
+            
+        }
+        // Assigning the new class back to the namespace
+        erpnext.PointOfSale.ItemSelector = MyItemSelector;
         wrapper.pos = new MyPOSController(wrapper);
         window.cur_pos = wrapper.pos;
         
