@@ -7,6 +7,114 @@ from erpnext.stock.utils import scan_barcode as original_scan_barcode
 from erpnext.stock.utils import _update_item_info
 from erpnext.stock.get_item_details import get_item_details as original_get_item_details
 
+from frappe import _
+from frappe.utils import flt
+from frappe.query_builder import DocType
+
+# Import standard get_item_detail from the original app context
+#from pos_next.api.items import get_item_detail
+
+@frappe.whitelist()
+def custom_search_by_barcode(barcode, pos_profile):
+    """Your working code here"""
+    try:
+        # Standardize pos_profile
+        if isinstance(pos_profile, str):
+            try:
+                pos_profile = json.loads(pos_profile)
+            except:
+                pass 
+        if isinstance(pos_profile, dict):
+            pos_profile = pos_profile.get("name") or pos_profile.get("pos_profile")
+
+        resolved_data = custom_scan_barcode(barcode)
+        
+        if not resolved_data or not resolved_data.get("item_code"):
+            frappe.throw(_("Barcode {0} not found").format(barcode))
+
+        item_code = resolved_data.get("item_code")
+        pos_profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
+        item_doc = frappe.get_cached_doc("Item", item_code)
+        
+        try:
+            get_item_detail = frappe.get_attr("pos_next.api.items.get_item_detail")
+        except ImportError:
+            frappe.throw(_("Application 'pos_next' is not installed"))
+
+        item_payload = {
+            "item_code": item_code,
+            "has_batch_no": item_doc.has_batch_no or 0,
+            "has_serial_no": item_doc.has_serial_no or 0,
+            "is_stock_item": item_doc.is_stock_item or 0,
+            "pos_profile": pos_profile,
+        }
+
+        item_details = get_item_detail(
+            item=json.dumps(item_payload),
+            warehouse=pos_profile_doc.warehouse,
+            price_list=pos_profile_doc.selling_price_list,
+            company=pos_profile_doc.company,
+        )
+        uom_prices = {}
+        ItemPrice = DocType("Item Price")
+        prices = (
+            frappe.qb.from_(ItemPrice)
+            .select(ItemPrice.uom, ItemPrice.price_list_rate)
+            .where(ItemPrice.item_code == item_code)
+            .where(ItemPrice.price_list == pos_profile_doc.selling_price_list)
+            .run(as_dict=True)
+        )
+        for p in prices:
+            if p["uom"]:
+                uom_prices[p["uom"]] = p["price_list_rate"]
+        
+        item_details["uom_prices"] = uom_prices
+        
+
+        qty = flt(resolved_data.get("qty"))
+        uom = resolved_data.get("uom") or item_details.get("uom") or item_doc.stock_uom
+        price = flt(uom_prices.get(uom) or item_details.get("rate") or 0)
+        barcode_type = "Weighted" if qty > 0 else "Priced"
+
+        resolved_item_data = {
+            "resolved_qty": qty,
+            "resolved_uom": uom,
+            "resolved_price": price,
+            "resolved_barcode_type": barcode_type,
+        }
+        
+        
+
+        item_details.update(resolved_item_data)
+        
+        if qty > 0:
+            item_details.update({
+                "qty": qty,
+                "rate": price,
+                "price_list_rate": price,
+                "stock_qty": qty,
+                "uom_qty": qty,
+                "amount": flt(qty * price),
+                "total": flt(qty * price),
+                "is_weighted": True,
+                "weighted": True,
+                "use_barcode_qty": True,
+                "allow_decimal": 1,
+                "barcode_type": barcode_type
+            })
+
+        item_details["warehouse"] = pos_profile_doc.warehouse
+        return item_details
+        
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Custom Barcode Override Error")
+        frappe.throw(_("Error: {0}").format(str(e)))
+
+
+
+
+
+
 
 @frappe.whitelist()
 def custom_scan_barcode(search_value: str):
