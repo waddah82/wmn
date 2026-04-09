@@ -48,7 +48,8 @@ page_js = {
 
 override_whitelisted_methods = {
     "erpnext.stock.utils.scan_barcode": "wmn.barcode_handler.custom_scan_barcode",
-    "erpnext.stock.get_item_details.get_item_details": "wmn.barcode_handler.custom_get_item_details"
+    "erpnext.stock.get_item_details.get_item_details": "wmn.barcode_handler.custom_get_item_details",
+    "pos_next.api.items.search_by_barcode": "wmn.barcode_handler.custom_search_by_barcode"
 }
 # include js in doctype views
 # doctype_js = {"doctype" : "public/js/doctype.js"}
