@@ -137,6 +137,13 @@ frappe.query_reports["Acccount Statement Rep"] = {
             options: ["SAR", "USD"],
             default: "SAR",
             hidden: 0
+        },
+        
+        {
+            fieldname: "ignore_cr_dr_notes",
+            label: __("Ignore System Generated Credit / Debit Notes"),
+            fieldtype: "Check",
+            default: 0
         }
 
 
