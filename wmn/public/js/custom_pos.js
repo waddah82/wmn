@@ -147,33 +147,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
             }
             
             
-            refresh_list111() {
-                frappe.dom.freeze();
-                this.events.reset_summary();
-                const search_term = this.search_field.get_value();
-                const status = this.status_field.get_value();
-
-                this.$invoices_container.html("");
-
-                const server_method = (this.settings.as_sales_invoice === 1) 
-                    ? "wmn.api.get_past_order_list" 
-                    : "erpnext.selling.page.point_of_sale.point_of_sale.get_past_order_list";
-
-                return frappe.call({
-                    method: server_method,
-                    freeze: true,
-                    args: { search_term, status },
-                    callback: (response) => {
-                        frappe.dom.unfreeze();
-                        if (response.message) {
-                            response.message.forEach((invoice) => {
-                                const invoice_html = this.get_invoice_html(invoice);
-                                this.$invoices_container.append(invoice_html);
-                            });
-                        }
-                    },
-                });
-            }
+            
 
             toggle_summary_placeholder(show) {
                 if (this.after_submission === true && show === true) {
@@ -197,6 +171,56 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
         }
 
         erpnext.PointOfSale.PastOrderSummary = MyPastOrderSummary;
+
+        const OriginalPastOrderList = erpnext.PointOfSale.PastOrderList;
+        
+        
+        
+        class MyPastOrderList extends OriginalPastOrderList {
+            constructor(wrapper, args) {
+                super(wrapper, args);
+                this.after_submission = false;
+            }
+            
+            
+            refresh_list() {
+                frappe.dom.freeze();
+                this.events.reset_summary();
+                const search_term = this.search_field.get_value();
+                const status = this.status_field.get_value();
+
+                this.$invoices_container.html("");
+
+                const server_method = (cur_pos.settings.as_sales_invoice === 1) 
+                    ? "wmn.api.get_past_order_list" 
+                    : "erpnext.selling.page.point_of_sale.point_of_sale.get_past_order_list";
+
+                return frappe.call({
+                    method: server_method,
+                    freeze: true,
+                    args: { search_term, status },
+                    callback: (response) => {
+                        frappe.dom.unfreeze();
+                        if (response.message) {
+                            response.message.forEach((invoice) => {
+                                const invoice_html = this.get_invoice_html(invoice);
+                                this.$invoices_container.append(invoice_html);
+                            });
+                        }
+                    },
+                });
+            }
+
+            
+
+            
+            
+        }
+
+        erpnext.PointOfSale.PastOrderList = MyPastOrderList;
+
+
+
         const OriginalItemSelector = erpnext.PointOfSale.ItemSelector;
         class MyItemSelector extends OriginalItemSelector {
             constructor(wrapper, args) {
