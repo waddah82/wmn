@@ -66,8 +66,66 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                     });
                 };
             }
-
+            
             init_recent_order_list() {
+                const doctype = this.settings.as_sales_invoice === 1  ? "Sales Invoice" : "POS Invoice";
+                this.recent_order_list = new erpnext.PointOfSale.PastOrderList({
+                    wrapper: this.$components_wrapper,
+                    events: {
+                        open_invoice_data: (name) => {
+                            frappe.db.get_doc(doctype, name).then((doc) => {
+                                this.order_summary.load_summary_of(doc);
+                            });
+                        },
+                        reset_summary: () => this.order_summary.toggle_summary_placeholder(true),
+                    },
+                });
+            }
+            init_order_summary() {
+                const doctype = this.settings.as_sales_invoice === 1  ? "Sales Invoice" : "POS Invoice";
+                this.order_summary = new erpnext.PointOfSale.PastOrderSummary({
+                    wrapper: this.$components_wrapper,
+                    events: {
+                        get_frm: () => this.frm,
+        
+                        process_return: (name) => {
+                            this.recent_order_list.toggle_component(false);
+                            frappe.db.get_doc(doctype, name).then((doc) => {
+                                frappe.run_serially([
+                                    () => this.make_return_invoice(doc),
+                                    () => this.cart.load_invoice(),
+                                    () => this.item_selector.toggle_component(true),
+                                ]);
+                            });
+                        },
+                        edit_order: (name) => {
+                            this.recent_order_list.toggle_component(false);
+                            frappe.run_serially([
+                                () => this.frm.refresh(name),
+                                () => this.frm.call("reset_mode_of_payments"),
+                                () => this.cart.load_invoice(),
+                                () => this.item_selector.toggle_component(true),
+                            ]);
+                        },
+                        delete_order: (name) => {
+                            frappe.model.delete_doc(this.frm.doc.doctype, name, () => {
+                                this.recent_order_list.refresh_list();
+                            });
+                        },
+                        new_order: () => {
+                            frappe.run_serially([
+                                () => frappe.dom.freeze(),
+                                () => this.make_new_invoice(),
+                                () => this.item_selector.toggle_component(true),
+                                () => frappe.dom.unfreeze(),
+                            ]);
+                        },
+                    },
+                });
+            }
+        
+
+            init_recent_order_list1111() {
                 super.init_recent_order_list();
                 this.recent_order_list.events.open_invoice_data = (name) => {
                     const doctype = this.settings.as_sales_invoice === 1  ? "Sales Invoice" : "POS Invoice";
@@ -80,10 +138,41 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
 
         const OriginalPastOrderSummary = erpnext.PointOfSale.PastOrderSummary;
         
+        
+        
         class MyPastOrderSummary extends OriginalPastOrderSummary {
             constructor(wrapper, args) {
                 super(wrapper, args);
                 this.after_submission = false;
+            }
+            
+            
+            refresh_list111() {
+                frappe.dom.freeze();
+                this.events.reset_summary();
+                const search_term = this.search_field.get_value();
+                const status = this.status_field.get_value();
+
+                this.$invoices_container.html("");
+
+                const server_method = (this.settings.as_sales_invoice === 1) 
+                    ? "wmn.api.get_past_order_list" 
+                    : "erpnext.selling.page.point_of_sale.point_of_sale.get_past_order_list";
+
+                return frappe.call({
+                    method: server_method,
+                    freeze: true,
+                    args: { search_term, status },
+                    callback: (response) => {
+                        frappe.dom.unfreeze();
+                        if (response.message) {
+                            response.message.forEach((invoice) => {
+                                const invoice_html = this.get_invoice_html(invoice);
+                                this.$invoices_container.append(invoice_html);
+                            });
+                        }
+                    },
+                });
             }
 
             toggle_summary_placeholder(show) {
