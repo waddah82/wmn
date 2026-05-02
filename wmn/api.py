@@ -17,13 +17,13 @@ def get_past_order_list(search_term, status, limit=20):
 	if search_term and status:
 		invoices_by_customer = frappe.db.get_all(
 			"Sales Invoice",
-			filters={"customer": ["like", f"%{search_term}%"], "status": status},
+			filters={"customer": ["like", f"%{search_term}%"], "status": status, "is_pos": 1},
 			fields=fields,
 			page_length=limit,
 		)
 		invoices_by_name = frappe.db.get_all(
 			"Sales Invoice",
-			filters={"name": ["like", f"%{search_term}%"], "status": status},
+			filters={"name": ["like", f"%{search_term}%"], "status": status, "is_pos": 1},
 			fields=fields,
 			page_length=limit,
 		)
@@ -31,7 +31,7 @@ def get_past_order_list(search_term, status, limit=20):
 		invoice_list = invoices_by_customer + invoices_by_name
 	elif status:
 		invoice_list = frappe.db.get_all(
-			"Sales Invoice", filters={"status": status}, fields=fields, page_length=limit
+			"Sales Invoice", filters={"status": status, "is_pos": 1}, fields=fields, page_length=limit
 		)
 
 	return invoice_list
