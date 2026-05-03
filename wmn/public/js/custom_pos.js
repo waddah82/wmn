@@ -46,6 +46,52 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                     });
                 });
             }
+            
+            async make_return_invoice(doc) {
+                frappe.dom.freeze();
+                this.frm = this.get_new_frm(this.frm, doc.doctype);
+                this.frm.doc.items = [];
+    
+                let method = "";
+                let args = {};
+    
+                // Check if the original document is Sales Invoice or POS Invoice
+                if (doc.doctype === "Sales Invoice") {
+                    method = "erpnext.accounts.doctype.sales_invoice.sales_invoice.make_sales_return";
+                    args = {
+                        source_name: doc.name,
+                        target_doc: this.frm.doc,
+                    };
+                } else {
+                    method = "erpnext.accounts.doctype.pos_invoice.pos_invoice.make_sales_return";
+                    args = {
+                        source_name: doc.name,
+                        target_doc: this.frm.doc,
+                    };
+                }
+    
+                return frappe.call({
+                    method: method,
+                    args: args,
+                    callback: (r) => {
+                        if (r.message) {
+                            frappe.model.sync(r.message);
+                            frappe.get_doc(r.message.doctype, r.message.name).__run_link_triggers = false;
+                            this.set_pos_profile_data().then(() => {
+                                            frappe.dom.unfreeze();
+                            });
+                        } else {
+                            frappe.dom.unfreeze();
+                            frappe.msgprint(__("Could not create return invoice"));
+                        }
+                    },
+                    error: (err) => {
+                        frappe.dom.unfreeze();
+                        console.error("Error making return invoice:", err);
+                        frappe.msgprint(__("Error creating return: {0}", [err.message]));
+                    }
+                });
+            }
 
             get_new_frm(_frm, doctype) {
                 const page = $("<div>");
@@ -290,7 +336,201 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                 return super.filter_items({ search_term });
             }
             
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            render_item_list(items) {
+                super.render_item_list(items);
+
+                if (this.button_mode) {
+                    this.$items_container.addClass('wmn-button-mode');
+                } else {
+                    this.$items_container.removeClass('wmn-button-mode');
+                }
+            }
+            
+            prepare_dom() {
+                super.prepare_dom();
+                
+                
+               const $toggleContainer = $(`
+                    <div class="wmn-view-toggle-container" style="padding: 2px 3px; border-bottom: 1px solid var(--border-color); background: var(--bg-color); display: flex; justify-content: flex-end;">
+                        <div class="wmn-toggle-group">
+                            <button class="wmn-grid-view-btn wmn-grid-btn" title="Grid View" aria-label="Switch to grid view">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+                                    <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+                                    <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+                                    <rect x="14" y="14" width="7" height="7" rx="1"></rect>
+                                </svg>
+                                <span>G</span>
+                            </button>
+                            <button class="wmn-list-view-btn wmn-list-btn" title="Button View" aria-label="Switch to list view">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="3" y="5" width="18" height="6" rx="1"></rect>
+                                    <rect x="3" y="13" width="18" height="6" rx="1"></rect>
+                                </svg>
+                                <span>B</span>
+                            </button>
+                        </div>
+                    </div>
+                `); 
+                
+                
+                const $toggleContainer1 = $(`
+                    <div class="wmn-view-toggle-container" style="padding: 8px 12px; border-bottom: 1px solid var(--border-color); background: var(--bg-color); display: flex; justify-content: flex-end;">
+                        <div class="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5 flex-shrink-0">
+                            <button class="wmn-grid-view-btn p-1.5 sm:p-2 rounded transition-all duration-75 touch-manipulation" title="Grid View" aria-label="Switch to grid view">
+                                <svg class="w-4 h-4 sm:w-4.5 sm:h-4.5" fill="none" stroke="currentColor" viewBox="0 0 50 50">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
+                                </svg>
+                            </button>
+                            <button class="wmn-list-view-btn p-1.5 sm:p-2 rounded transition-all duration-75 touch-manipulation" title="Button View" aria-label="Switch to list view">
+                                <svg class="w-4 h-4 sm:w-4.5 sm:h-4.5" fill="none" stroke="currentColor" viewBox="0 0 50 50">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                `);
+                
+                this.$component.prepend($toggleContainer);
+                
+                this.$gridBtn = $toggleContainer.find('.wmn-grid-view-btn');
+                this.$listBtn = $toggleContainer.find('.wmn-list-view-btn');
+                
+                this.updateActiveButton();
+                
+                this.$gridBtn.on('click', () => this.setCardMode());
+                this.$listBtn.on('click', () => this.setButtonMode());
+                
+                if (this.button_mode) {
+                    this.setButtonMode();
+                } else {
+                    this.setCardMode();
+                }
+            }
+            
+            updateActiveButton() {
+                if (this.button_mode) {
+                    this.$listBtn.addClass('bg-white shadow-sm');
+                    this.$listBtn.removeClass('hover:bg-gray-200');
+                    this.$gridBtn.removeClass('bg-white shadow-sm');
+                    this.$gridBtn.addClass('hover:bg-gray-200');
+                } else {
+                    this.$gridBtn.addClass('bg-white shadow-sm');
+                    this.$gridBtn.removeClass('hover:bg-gray-200');
+                    this.$listBtn.removeClass('bg-white shadow-sm');
+                    this.$listBtn.addClass('hover:bg-gray-200');
+                }
+            }
+            
+            setCardMode() {
+                if (!this.button_mode) return;
+                this.button_mode = false;
+                localStorage.setItem('wmn_pos_button_mode', 'false');
+                this.updateActiveButton();
+                this.applyDisplayMode();
+            }
+            
+            setButtonMode() {
+                if (this.button_mode) return;
+                this.button_mode = true;
+                localStorage.setItem('wmn_pos_button_mode', 'true');
+                this.updateActiveButton();
+                this.applyDisplayMode();
+            }
+            
+            applyDisplayMode() {
+                if (this.button_mode) {
+                    this.$items_container.addClass('wmn-button-mode');
+                } else {
+                    this.$items_container.removeClass('wmn-button-mode');
+                }
+            }
+            
         }
+        
+
+        const styleId = 'wmn-button-mode-styles';
+        if (!document.getElementById(styleId)) {
+            const style = document.createElement('style');
+            style.id = styleId;
+            style.textContent = `
+            
+
+                .items-container.wmn-button-mode .item-wrapper {
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    text-align: center;
+                }
+
+                .items-container.wmn-button-mode .item-wrapper:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                    border-color: var(--primary-color);
+                }
+                
+
+                .items-container.wmn-button-mode .item-wrapper .item-display,
+                .items-container.wmn-button-mode .item-wrapper .indicator-pill {
+                    display: none !important;
+                }
+                
+
+                .items-container.wmn-button-mode .item-wrapper .item-detail .item-rate {
+                    display: none;
+                }
+.items-container.wmn-button-mode .item-wrapper {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important; 
+    justify-content: center !important;
+    text-align: center !important;
+}
+.items-container.wmn-button-mode {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    gap: 1px;
+    padding: 2px;
+    padding-top: 1px;
+    overflow-y: scroll;
+    overflow-x: hidden;
+    white-space: normal !important;
+    font-weight: 600 !important;
+    overflow: auto;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    vertical-align: middle;
+}
+
+                .items-container.wmn-button-mode .item-wrapper .item-name {
+                    white-space: normal !important;
+                    text-align: center !important;
+                    font-weight: 600 !important;
+                }
+                
+
+                .items-container.wmn-button-mode .item-wrapper .flex.items-center {
+                    display: none !important;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
+   
+        erpnext.PointOfSale.ItemSelector = MyItemSelector;
+        
+        
+        
+        
         // Assigning the new class back to the namespace
         erpnext.PointOfSale.ItemSelector = MyItemSelector;
         wrapper.pos = new MyPOSController(wrapper);
