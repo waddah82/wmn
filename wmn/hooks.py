@@ -41,7 +41,7 @@ app_include_js = [
 # include js in page
 # page_js = {"page" : "public/js/file.js"}
 page_js = {
-    "point-of-sale": "public/js/custom_pos.js"
+    "point-of-sale": "public/js/custom_pos_offline.js"
 }
 
 
