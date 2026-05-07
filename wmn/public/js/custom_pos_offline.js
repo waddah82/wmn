@@ -710,7 +710,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                         row.last_error = "";
                         await updateQueueRow(row);
                         frappe.show_alert({
-                            message: __("تمت مزامنة فاتورة أوفلاين: {0}", [row.erpnext_name || row.offline_id]),
+                            message: wmn_msg("Offline invoice synced: {0}","تمت مزامنة فاتورة أوفلاين: {0}", [row.erpnext_name || row.offline_id]),
                             indicator: "green",
                         });
                     } catch (e) {
