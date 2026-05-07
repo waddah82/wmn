@@ -10,7 +10,7 @@
  ],
  "fields": [
   {
-   "default": "0",
+   "default": "1",
    "fieldname": "enable_workspace_header",
    "fieldtype": "Check",
    "label": "enable_workspace_header"
