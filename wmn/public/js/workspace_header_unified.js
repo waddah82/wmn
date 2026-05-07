@@ -404,6 +404,26 @@
                 overflow-y: auto;
                 padding: 16px;
             }
+            .wmn-workspace-btn {
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+                padding: 4px 7px !important;
+                font-size: 12px !important;
+                font-weight: 500;
+                color: #555b6b !important;
+                cursor: pointer;
+                transition: color 0.2s ease;
+                position: relative;
+                flex: 1 1 40px;
+                min-width: 40px;
+                max-width: 100%;
+                font-size: var(--text-base) !important;
+                color: var(--text-color);
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
 
             .wmn-workspace-dropdown.show { display: block !important; }
             .wmn-tab-navbar { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; background: #f8f9fa; border-bottom: 1px solid #eee; }
