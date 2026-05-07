@@ -1,0 +1,19 @@
+{
+  "name": "ERPNext POS Offline",
+  "short_name": "POS Offline",
+  "description": "ERPNext Point of Sale with offline cache and IndexedDB invoice queue",
+  "start_url": "/app/point-of-sale",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4F46E5",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='40' fill='%234F46E5'/%3E%3Cpath fill='white' d='M152 56h-32V40c0-8.8-7.2-16-16-16H88c-8.8 0-16 7.2-16 16v16H40c-8.8 0-16 7.2-16 16v80c0 8.8 7.2 16 16 16h112c8.8 0 16-7.2 16-16V72c0-8.8-7.2-16-16-16ZM88 40h16v16H88V40Zm64 112H40V72h112v80Z'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
