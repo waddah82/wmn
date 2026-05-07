@@ -90,7 +90,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
 
             const LEGACY_DB_NAME = "wmn_erpnext_pos_offline";
             const DB_NAME = "wmn_erpnext_pos_offline__" + getSiteKey();
-            const DB_VERSION = 41;
+            const DB_VERSION = 47;
             const STORES = {
                 items: "items",
                 customers: "customers",
@@ -710,8 +710,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                         row.last_error = "";
                         await updateQueueRow(row);
                         frappe.show_alert({
-                            message: wmn_msg("Offline invoice synced: {0}","تمت مزامنة فاتورة أوفلاين: {0}", [row.erpnext_name || row.offline_id]),
-                            //message: __("Offline invoice synced: {0}", [row.erpnext_name || row.offline_id]),
+                            message: __("تمت مزامنة فاتورة أوفلاين: {0}", [row.erpnext_name || row.offline_id]),
                             indicator: "green",
                         });
                     } catch (e) {
@@ -900,19 +899,58 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
             return doc;
         }
 
-        async function wmn_make_offline_invoice_doc(ctrl) {
+
+        function wmn_get_invoice_child_doctypes(invoiceDoctype) {
+            return {
+                itemDoctype: invoiceDoctype === "POS Invoice" ? "POS Invoice Item" : "Sales Invoice Item",
+                paymentDoctype: "Sales Invoice Payment"
+            };
+        }
+
+        function wmn_normalize_current_offline_invoice_child_doctypes(doc) {
+            if (!doc) return doc;
+
+            const childDoctypes = wmn_get_invoice_child_doctypes(doc.doctype || "Sales Invoice");
+
+            (doc.items || []).forEach((row) => {
+                row.doctype = childDoctypes.itemDoctype;
+                row.parenttype = doc.doctype || "Sales Invoice";
+                row.parentfield = "items";
+                row.parent = doc.name;
+            });
+
+            (doc.payments || []).forEach((row) => {
+                row.doctype = childDoctypes.paymentDoctype;
+                row.parenttype = doc.doctype || "Sales Invoice";
+                row.parentfield = "payments";
+                row.parent = doc.name;
+            });
+
+            return doc;
+        }
+
+async function wmn_make_offline_invoice_doc(ctrl) {
             const settings = await wmn_get_offline_settings();
             const customer = await wmn_find_customer_offline(settings.customer) || {};
             const payments = window.wmnPOSOffline
                 ? await window.wmnPOSOffline.getAll(window.wmnPOSOffline.STORES.payment_methods)
                 : [];
+
             const today = frappe.datetime.get_today();
+
+            const asSalesInvoice = cint(settings.as_sales_invoice || 0) === 1;
+            const invoiceDoctype = asSalesInvoice ? "Sales Invoice" : "POS Invoice";
+            const childDoctypes = wmn_get_invoice_child_doctypes(invoiceDoctype);
+            const offlineName = (asSalesInvoice ? "OFFLINE-SINV-" : "OFFLINE-PINV-") + Date.now();
+
             const doc = {
-                doctype: "Sales Invoice",
-                name: "OFFLINE-SINV-" + Date.now(),
+                doctype: invoiceDoctype,
+                name: offlineName,
                 __islocal: 1,
                 __offline_pos: 1,
                 offline_pos: 1,
+                __wmn_target_doctype: invoiceDoctype,
+                target_doctype: invoiceDoctype,
                 docstatus: 0,
                 company: settings.company || "",
                 customer: customer.name || settings.customer || "Guest",
@@ -933,11 +971,11 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                 set_warehouse: settings.warehouse || "",
                 items: [],
                 payments: (payments || []).map((p, idx) => ({
-                    doctype: "Sales Invoice Payment",
+                    doctype: childDoctypes.paymentDoctype,
                     name: "OFFLINE-PAY-" + Date.now() + "-" + idx,
-                    parenttype: "Sales Invoice",
+                    parenttype: invoiceDoctype,
                     parentfield: "payments",
-                    parent: "",
+                    parent: offlineName,
                     mode_of_payment: p.mode_of_payment,
                     account: p.account || "",
                     type: p.type || "",
@@ -947,7 +985,10 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                 })),
                 taxes: [],
             };
-            return wmn_recalculate_offline_doc(doc);
+
+            doc.__wmn_item_doctype = childDoctypes.itemDoctype;
+
+            return wmn_recalculate_offline_doc(wmn_normalize_current_offline_invoice_child_doctypes(doc));
         }
 
         function wmn_make_offline_frm(doc) {
@@ -1073,9 +1114,9 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                 if (existing.qty <= 0) doc.items = doc.items.filter(r => r !== existing);
             } else if (qtyDelta > 0) {
                 doc.items.push({
-                    doctype: "Sales Invoice Item",
+                    doctype: (doc.__wmn_item_doctype || wmn_get_invoice_child_doctypes(doc.doctype || "Sales Invoice").itemDoctype),
                     name: "OFFLINE-SINV-ITEM-" + Date.now() + "-" + doc.items.length,
-                    parenttype: "Sales Invoice",
+                    parenttype: (doc.doctype || "Sales Invoice"),
                     parentfield: "items",
                     parent: doc.name,
                     item_code: itemCode,
@@ -1196,9 +1237,9 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                 }
             } else if (qtyDelta > 0) {
                 doc.items.push({
-                    doctype: "Sales Invoice Item",
+                    doctype: (doc.__wmn_item_doctype || wmn_get_invoice_child_doctypes(doc.doctype || "Sales Invoice").itemDoctype),
                     name: "OFFLINE-SINV-ITEM-" + Date.now() + "-" + doc.items.length,
-                    parenttype: "Sales Invoice",
+                    parenttype: (doc.doctype || "Sales Invoice"),
                     parentfield: "items",
                     parent: doc.name,
                     item_code: itemCode,
@@ -1325,7 +1366,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                 doc.payments = (methods || []).map((p, idx) => ({
                     doctype: "Sales Invoice Payment",
                     name: "OFFLINE-PAY-" + Date.now() + "-" + idx,
-                    parenttype: "Sales Invoice",
+                    parenttype: (doc.doctype || "Sales Invoice"),
                     parentfield: "payments",
                     parent: doc.name,
                     mode_of_payment: p.mode_of_payment,
@@ -3489,9 +3530,9 @@ return true;
                             const warehouse = doc.set_warehouse || settings.warehouse || (found && found.warehouse) || "";
 
                             doc.items.push({
-                                doctype: "Sales Invoice Item",
+                                doctype: (doc.__wmn_item_doctype || wmn_get_invoice_child_doctypes(doc.doctype || "Sales Invoice").itemDoctype),
                                 name: "OFFLINE-SINV-ITEM-" + Date.now(),
-                                parenttype: "Sales Invoice",
+                                parenttype: (doc.doctype || "Sales Invoice"),
                                 parentfield: "items",
                                 parent: doc.name,
                                 item_code: itemCode,
@@ -3755,9 +3796,9 @@ return true;
                     }
                 } else if (qtyDelta > 0) {
                     doc.items.push({
-                        doctype: "Sales Invoice Item",
+                        doctype: (doc.__wmn_item_doctype || wmn_get_invoice_child_doctypes(doc.doctype || "Sales Invoice").itemDoctype),
                         name: "OFFLINE-SINV-ITEM-" + Date.now() + "-" + doc.items.length,
-                        parenttype: "Sales Invoice",
+                        parenttype: (doc.doctype || "Sales Invoice"),
                         parentfield: "items",
                         parent: doc.name,
                         item_code: itemCode,
@@ -3973,9 +4014,9 @@ return true;
                     if (existing.qty <= 0) doc.items = doc.items.filter(r => r !== existing);
                 } else if (qtyDelta > 0) {
                     doc.items.push({
-                        doctype: "Sales Invoice Item",
+                        doctype: (doc.__wmn_item_doctype || wmn_get_invoice_child_doctypes(doc.doctype || "Sales Invoice").itemDoctype),
                         name: "OFFLINE-SINV-ITEM-" + Date.now() + "-" + doc.items.length,
-                        parenttype: "Sales Invoice",
+                        parenttype: (doc.doctype || "Sales Invoice"),
                         parentfield: "items",
                         parent: doc.name,
                         item_code: itemCode,
@@ -4149,3 +4190,4 @@ console.log("✅ WMN i18n messages and offline invoice success v9 installed");
 
 
 console.log("✅ WMN v13 clean no alias calls installed");
+console.log("✅ WMN v20 clean make offline doc and child doctypes fix");
