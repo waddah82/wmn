@@ -90,7 +90,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
 
             const LEGACY_DB_NAME = "wmn_erpnext_pos_offline";
             const DB_NAME = "wmn_erpnext_pos_offline__" + getSiteKey();
-            const DB_VERSION = 25;
+            const DB_VERSION = 41;
             const STORES = {
                 items: "items",
                 customers: "customers",
@@ -710,7 +710,8 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                         row.last_error = "";
                         await updateQueueRow(row);
                         frappe.show_alert({
-                            message: __("تمت مزامنة فاتورة أوفلاين: {0}", [row.erpnext_name || row.offline_id]),
+                            message: wmn_msg("Offline invoice synced: {0}","تمت مزامنة فاتورة أوفلاين: {0}", [row.erpnext_name || row.offline_id]),
+                            //message: __("Offline invoice synced: {0}", [row.erpnext_name || row.offline_id]),
                             indicator: "green",
                         });
                     } catch (e) {
@@ -723,10 +724,8 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                 }
             }
 
-            window.addEventListener("online", () => syncInvoices());
-            setInterval(() => {
-                if (online()) syncInvoices();
-            }, 60000);
+            // clean: automatic online sync removed. Use Offline Invoices dialog.
+            // v6: تم تعطيل المزامنة التلقائية الدورية. استخدم Dialog Offline Invoices.
 
             return {
                 STORES,
@@ -1265,7 +1264,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                 } catch (e) {
                     console.error("WMN v9 offline instance cart update failed", e);
                     frappe.show_alert({
-                        message: __("تعذر إضافة الصنف أوفلاين") + ": " + (e.message || e),
+                        message: wmn_t("Failed to add item offline", "تعذر إضافة الصنف أوفلاين") + ": " + (e.message || e),
                         indicator: "red",
                     });
                 }
@@ -1345,13 +1344,13 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
             const frm = ctrl && ctrl.frm;
             const doc = frm && frm.doc;
 
-            if (!doc) frappe.throw(__("لا توجد فاتورة مفتوحة"));
-            if (!doc.items || !doc.items.length) frappe.throw(__("أضف صنفاً واحداً على الأقل قبل الدفع"));
+            if (!doc) frappe.throw(wmn_t("No open invoice", "لا توجد فاتورة مفتوحة"));
+            if (!doc.items || !doc.items.length) frappe.throw(wmn_t("Add at least one item before payment", "أضف صنفاً واحداً على الأقل قبل الدفع"));
 
             wmn_recalc_offline_payment_doc(doc);
 
             const total = flt(doc.rounded_total || doc.grand_total || 0);
-            if (total <= 0) frappe.throw(__("إجمالي الفاتورة صفر"));
+            if (total <= 0) frappe.throw(wmn_t("Invoice total is zero", "إجمالي الفاتورة صفر"));
 
             const payments = await wmn_ensure_offline_payment_rows(doc);
             const defaultPayment = payments.find(p => cint(p.default || 0) === 1) || payments[0];
@@ -1387,7 +1386,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
 
             return new Promise((resolve, reject) => {
                 const d = new frappe.ui.Dialog({
-                    title: __("Payment"),
+                    title: wmn_t("Payment", "الدفع"),
                     size: "large",
                     fields: [
                         {
@@ -1397,36 +1396,36 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                                 <div class="wmn-offline-payment-dialog" style="direction:inherit;">
                                     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">
                                         <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:10px;">
-                                            <div style="font-size:12px;color:#6b7280;">${__("Grand Total")}</div>
+                                            <div style="font-size:12px;color:#6b7280;">${wmn_t("Grand Total", "الإجمالي")}</div>
                                             <div style="font-weight:700;font-size:18px;">${format_currency(total, doc.currency || "YER")}</div>
                                         </div>
                                         <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:10px;">
-                                            <div style="font-size:12px;color:#6b7280;">${__("Customer")}</div>
+                                            <div style="font-size:12px;color:#6b7280;">${wmn_t("Customer", "العميل")}</div>
                                             <div style="font-weight:700;font-size:15px;">${frappe.utils.escape_html(doc.customer_name || doc.customer || "")}</div>
                                         </div>
                                         <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:10px;">
-                                            <div style="font-size:12px;color:#6b7280;">${__("Invoice")}</div>
+                                            <div style="font-size:12px;color:#6b7280;">${wmn_t("Invoice", "الفاتورة")}</div>
                                             <div style="font-weight:700;font-size:15px;">${frappe.utils.escape_html(doc.name || "")}</div>
                                         </div>
                                     </div>
 
                                     <div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px;">
-                                        ${rowsHtml || `<div class="text-muted">${__("No payment methods found")}</div>`}
+                                        ${rowsHtml || `<div class="text-muted">${wmn_t("No payment methods found", "لا توجد طرق دفع")}</div>`}
                                     </div>
 
                                     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
                                         <div style="font-size:13px;color:#6b7280;">
-                                            ${__("Complete Order will apply payment to the offline invoice then save it offline.")}
+                                            ${wmn_t("Complete Order will apply payment to the offline invoice then save it offline.", "إكمال الطلب سيضيف الدفع للفاتورة الأوفلاين ثم يحفظها أوفلاين.")}
                                         </div>
                                         <div style="font-weight:700;">
-                                            ${__("Paid")}: <span class="wmn-offline-paid-total">0</span>
+                                            ${wmn_t("Paid", "المدفوع")}: <span class="wmn-offline-paid-total">0</span>
                                         </div>
                                     </div>
                                 </div>
                             `
                         }
                     ],
-                    primary_action_label: __("Complete Order"),
+                    primary_action_label: wmn_t("Complete Order", "إكمال الطلب"),
                     primary_action: async () => {
                         try {
                             let paid = 0;
@@ -1447,9 +1446,9 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
 
                             if (paid <= 0) {
                                 frappe.msgprint({
-                                    title: __("Payment Required"),
+                                    title: wmn_t("Payment Required", "الدفع مطلوب"),
                                     indicator: "orange",
-                                    message: __("أدخل مبلغ الدفع أولاً")
+                                    message: wmn_t("Enter payment amount first", "أدخل مبلغ الدفع أولاً")
                                 });
                                 return;
                             }
@@ -1459,9 +1458,9 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
 
                             if (flt(doc.paid_amount || 0) < flt(doc.rounded_total || doc.grand_total || 0)) {
                                 frappe.msgprint({
-                                    title: __("Payment Amount"),
+                                    title: wmn_t("Payment Amount", "مبلغ الدفع"),
                                     indicator: "orange",
-                                    message: __("مبلغ الدفع أقل من إجمالي الفاتورة")
+                                    message: wmn_t("Payment amount is less than invoice total", "مبلغ الدفع أقل من إجمالي الفاتورة")
                                 });
                                 return;
                             }
@@ -1472,7 +1471,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                             reject(e);
                         }
                     },
-                    secondary_action_label: __("Cancel"),
+                    secondary_action_label: wmn_t("Cancel", "إلغاء"),
                     secondary_action: () => {
                         d.hide();
                         reject(new Error("cancelled"));
@@ -1514,8 +1513,8 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                             pos.order_summary.toggle_component(true);
                             pos.order_summary.load_summary_of(r.doc, true);
                             pos.recent_order_list.refresh_list();
-                            if (window.wmnPOSOffline) window.wmnPOSOffline.syncInvoices();
-                        });
+                        // v6: تم تعطيل المزامنة التلقائية. استخدم Dialog Offline Invoices.
+});
                     }
                     return;
                 }
@@ -1523,7 +1522,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                 try {
                     await wmn_show_offline_payment_dialog(pos);
 
-                    frappe.dom.freeze(__("Saving offline invoice..."));
+                    frappe.dom.freeze(wmn_t("Saving offline invoice...", "جاري حفظ الفاتورة أوفلاين..."));
                     const row = await window.wmnPOSOffline.saveInvoice(pos.frm.doc, pos);
                     frappe.dom.unfreeze();
 
@@ -1546,9 +1545,9 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
 
                     console.error("Offline invoice payment/save failed", e);
                     frappe.msgprint({
-                        title: __("Offline Save Failed"),
+                        title: wmn_t("Offline Save Failed", "فشل الحفظ أوفلاين"),
                         indicator: "red",
-                        message: __("تعذر حفظ الفاتورة أوفلاين: {0}", [e.message || e])
+                        message: wmn_msg("Failed to save invoice offline: {0}", "تعذر حفظ الفاتورة أوفلاين: {0}", [e.message || e])
                     });
                 }
             }
@@ -1653,7 +1652,12 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
 
                 try {
                     window.__wmn_payment_dialog_confirmed_v3 = true;
-                    return await originalSaveInvoice(activeDoc, activeCtrl);
+                    const row = await originalSaveInvoice(activeDoc, activeCtrl);
+                    frappe.show_alert({
+                        message: wmn_msg("Invoice added offline successfully: {0}", "تمت إضافة الفاتورة أوفلاين بنجاح: {0}", [row.offline_id || row.name || activeDoc.name]),
+                        indicator: "orange"
+                    });
+                    return row;
                 } finally {
                     window.__wmn_payment_dialog_confirmed_v3 = false;
                 }
@@ -1664,7 +1668,921 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
         }
 
 
-        class MyPOSController extends erpnext.PointOfSale.Controller {
+
+
+
+        function installWMNOfflineInvoiceManagerDialogV5(pos) {
+            if (!window.wmnPOSOffline || window.wmnPOSOffline.__wmn_invoice_manager_dialog_v5) return;
+
+            async function deleteInvoiceQueueRow(row) {
+                if (!row) return;
+
+                const db = await window.wmnPOSOffline.openDB();
+                const tx = db.transaction(window.wmnPOSOffline.STORES.invoice_queue, "readwrite");
+                const store = tx.objectStore(window.wmnPOSOffline.STORES.invoice_queue);
+
+                const key = row.offline_id || row.id || row.name;
+                if (key) {
+                    store.delete(key);
+                }
+
+                await new Promise((resolve, reject) => {
+                    tx.oncomplete = resolve;
+                    tx.onerror = () => reject(tx.error);
+                    tx.onabort = () => reject(tx.error);
+                });
+            }
+
+            function getInvoiceDoc(row) {
+                return row && (row.doc || row.invoice || row.data || row);
+            }
+
+            function rowStatus(row) {
+                const status = String(row.status || "").toLowerCase();
+                if (row.erpnext_name || row.server_name || row.synced || row.synced_at || status === "synced" || status === "submitted" || status === "success") {
+                    return "synced";
+                }
+                if (status === "error" || status === "failed") return "error";
+                return status || "pending";
+            }
+
+            function statusBadge(status) {
+                const map = {
+                    synced: ["green", wmn_t("Synced", "تمت المزامنة")],
+                    pending: ["orange", wmn_t("Pending", "قيد الانتظار")],
+                    error: ["red", wmn_t("Error", "خطأ")],
+                    failed: ["red", wmn_t("Failed", "فشل")],
+                    syncing: ["blue", wmn_t("Syncing", "جاري المزامنة")]
+                };
+                const x = map[status] || ["gray", status];
+                return `<span class="indicator-pill ${x[0]}">${frappe.utils.escape_html(x[1])}</span>`;
+            }
+
+            function money(value, currency) {
+                try {
+                    return format_currency(flt(value || 0), currency || "YER");
+                } catch (e) {
+                    return String(flt(value || 0));
+                }
+            }
+
+            async function syncOne(row) {
+                if (!row) return;
+
+                if (window.wmnPOSOffline.syncInvoice && typeof window.wmnPOSOffline.syncInvoice === "function") {
+                    return await (window.wmnPOSOffline.syncInvoice ? window.wmnPOSOffline.syncInvoice(row) : window.wmnPOSOffline.syncInvoices());
+                }
+
+                // fallback: use bulk sync; it will pick all pending rows.
+                if (window.wmnPOSOffline.syncInvoices && typeof window.wmnPOSOffline.syncInvoices === "function") {
+                    return await (window.wmnPOSOffline.manualSyncInvoices
+                        ? window.wmnPOSOffline.manualSyncInvoices()
+                        : window.wmnPOSOffline.syncInvoices());
+                }
+
+                throw new Error("syncInvoices غير متاحة");
+            }
+
+            async function syncAll() {
+                if (!window.wmnPOSOffline.syncInvoices || typeof window.wmnPOSOffline.syncInvoices !== "function") {
+                    throw new Error("syncInvoices غير متاحة");
+                }
+
+                return await (window.wmnPOSOffline.manualSyncInvoices
+                    ? window.wmnPOSOffline.manualSyncInvoices()
+                    : window.wmnPOSOffline.syncInvoices());
+            }
+
+            async function renderRows(dialog) {
+                const rows = await window.wmnPOSOffline.getAll(window.wmnPOSOffline.STORES.invoice_queue);
+                rows.sort((a, b) => String(b.created_at || b.modified || b.offline_id || "").localeCompare(String(a.created_at || a.modified || a.offline_id || "")));
+
+                const html = rows.length ? rows.map((row, idx) => {
+                    const doc = getInvoiceDoc(row) || {};
+                    const id = row.offline_id || row.id || row.name || doc.name || ("ROW-" + idx);
+                    const customer = doc.customer_name || doc.customer || row.customer || "";
+                    const total = doc.rounded_total || doc.grand_total || row.grand_total || row.total || 0;
+                    const currency = doc.currency || row.currency || "YER";
+                    const created = row.created_at || row.creation || doc.posting_date || "";
+                    const status = rowStatus(row);
+                    const erpName = row.erpnext_name || row.server_name || "";
+
+                    return `
+                        <tr data-offline-id="${frappe.utils.escape_html(id)}">
+                            <td style="min-width:160px;">
+                                <div style="font-weight:700;">${frappe.utils.escape_html(id)}</div>
+                                ${erpName ? `<div style="font-size:12px;color:#16a34a;">ERP: ${frappe.utils.escape_html(erpName)}</div>` : ""}
+                            </td>
+                            <td>${frappe.utils.escape_html(customer)}</td>
+                            <td style="white-space:nowrap;">${frappe.utils.escape_html(money(total, currency))}</td>
+                            <td style="white-space:nowrap;">${statusBadge(status)}</td>
+                            <td style="white-space:nowrap;font-size:12px;color:#6b7280;">${frappe.utils.escape_html(created)}</td>
+                            <td style="white-space:nowrap;text-align:left;">
+                                <button class="btn btn-xs btn-primary wmn-sync-one" data-idx="${idx}">
+                                    ${wmn_t("Sync", "مزامنة")}
+                                </button>
+                                <button class="btn btn-xs btn-danger wmn-delete-one" data-idx="${idx}">
+                                    ${wmn_t("Delete", "مسح")}
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join("") : `
+                    <tr>
+                        <td colspan="6" style="text-align:center;color:#6b7280;padding:24px;">
+                            ${wmn_t("No offline invoices saved", "لا توجد فواتير أوفلاين محفوظة")}
+                        </td>
+                    </tr>
+                `;
+
+                dialog.__wmn_rows = rows;
+
+                dialog.$wrapper.find(".wmn-offline-invoices-count").text(rows.length);
+                dialog.$wrapper.find(".wmn-offline-invoices-body").html(html);
+            }
+
+            async function openManagerDialog() {
+                const d = new frappe.ui.Dialog({
+                    title: wmn_t("Offline Invoices", "فواتير الأوفلاين"),
+                    size: "extra-large",
+                    fields: [
+                        {
+                            fieldtype: "HTML",
+                            fieldname: "offline_invoices_html",
+                            options: `
+                                <div class="wmn-offline-invoices-dialog" style="direction:inherit;">
+                                    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+                                        <div>
+                                            <div style="font-weight:700;font-size:16px;">${wmn_t("Invoices saved in IndexedDB", "الفواتير المحفوظة في IndexedDB")}</div>
+                                            <div style="color:#6b7280;font-size:13px;">
+                                                ${wmn_t("Count", "العدد")}: <span class="wmn-offline-invoices-count">0</span>
+                                            </div>
+                                        </div>
+                                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                            <button class="btn btn-sm btn-default wmn-refresh-list">${wmn_t("Refresh", "تحديث")}</button>
+                                            <button class="btn btn-sm btn-primary wmn-sync-all">${wmn_t("Sync All", "مزامنة الكل")}</button>
+                                            <button class="btn btn-sm btn-danger wmn-delete-all">${wmn_t("Delete All", "مسح الكل")}</button>
+                                        </div>
+                                    </div>
+
+                                    <div style="max-height:65vh;overflow:auto;border:1px solid #e5e7eb;border-radius:10px;">
+                                        <table class="table table-bordered table-hover" style="margin:0;">
+                                            <thead style="position:sticky;top:0;background:#f8fafc;z-index:1;">
+                                                <tr>
+                                                    <th>${wmn_t("Offline ID", "رقم الأوفلاين")}</th>
+                                                    <th>${wmn_t("Customer", "العميل")}</th>
+                                                    <th>${wmn_t("Total", "الإجمالي")}</th>
+                                                    <th>${wmn_t("Status", "الحالة")}</th>
+                                                    <th>${wmn_t("Created", "تاريخ الإنشاء")}</th>
+                                                    <th style="text-align:left;">${wmn_t("Actions", "الإجراءات")}</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="wmn-offline-invoices-body"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            `
+                        }
+                    ]
+                });
+
+                d.show();
+                await renderRows(d);
+
+                d.$wrapper.on("click", ".wmn-refresh-list", async () => {
+                    await renderRows(d);
+                });
+
+                d.$wrapper.on("click", ".wmn-sync-all", async () => {
+                    try {
+                        frappe.dom.freeze(wmn_t("Syncing offline invoices...", "جاري مزامنة فواتير الأوفلاين..."));
+                        await syncAll();
+                        frappe.dom.unfreeze();
+                        frappe.show_alert({ message: wmn_t("Available invoices synced", "تمت مزامنة الفواتير المتاحة"), indicator: "green" });
+                        await renderRows(d);
+                        if (window.cur_pos && window.cur_pos.recent_order_list && window.cur_pos.recent_order_list.refresh_list) {
+                            window.cur_pos.recent_order_list.refresh_list();
+                        }
+                    } catch (e) {
+                        frappe.dom.unfreeze();
+                        console.error("WMN sync all offline invoices failed", e);
+                        frappe.msgprint({
+                            title: wmn_t("Sync Failed", "فشلت المزامنة"),
+                            indicator: "red",
+                            message: __("تعذرت مزامنة الكل: {0}", [e.message || e])
+                        });
+                    }
+                });
+
+                d.$wrapper.on("click", ".wmn-delete-all", async () => {
+                    const rows = d.__wmn_rows || [];
+                    if (!rows.length) return;
+
+                    frappe.confirm(
+                        wmn_t("Delete all offline invoices from IndexedDB?", "هل تريد مسح كل الفواتير الأوفلاين من IndexedDB؟"),
+                        async () => {
+                            try {
+                                frappe.dom.freeze(wmn_t("Deleting...", "جاري المسح..."));
+                                for (const row of rows) {
+                                    await deleteInvoiceQueueRow(row);
+                                }
+                                frappe.dom.unfreeze();
+                                frappe.show_alert({ message: wmn_t("All offline invoices deleted", "تم مسح كل الفواتير الأوفلاين"), indicator: "orange" });
+                                await renderRows(d);
+                                if (window.cur_pos && window.cur_pos.recent_order_list && window.cur_pos.recent_order_list.refresh_list) {
+                                    window.cur_pos.recent_order_list.refresh_list();
+                                }
+                            } catch (e) {
+                                frappe.dom.unfreeze();
+                                frappe.msgprint({
+                                    title: wmn_t("Delete Failed", "فشل المسح"),
+                                    indicator: "red",
+                                    message: wmn_msg("Delete failed: {0}", "تعذر المسح: {0}", [e.message || e])
+                                });
+                            }
+                        }
+                    );
+                });
+
+                d.$wrapper.on("click", ".wmn-sync-one", async function () {
+                    const idx = cint($(this).attr("data-idx"));
+                    const row = (d.__wmn_rows || [])[idx];
+                    if (!row) return;
+
+                    try {
+                        frappe.dom.freeze(__("Syncing invoice..."));
+                        await syncOne(row);
+                        frappe.dom.unfreeze();
+                        frappe.show_alert({ message: wmn_t("Invoice sync attempted", "تمت محاولة مزامنة الفاتورة"), indicator: "green" });
+                        await renderRows(d);
+                        if (window.cur_pos && window.cur_pos.recent_order_list && window.cur_pos.recent_order_list.refresh_list) {
+                            window.cur_pos.recent_order_list.refresh_list();
+                        }
+                    } catch (e) {
+                        frappe.dom.unfreeze();
+                        frappe.msgprint({
+                            title: wmn_t("Sync Failed", "فشلت المزامنة"),
+                            indicator: "red",
+                            message: wmn_msg("Failed to sync invoice: {0}", "تعذرت مزامنة الفاتورة: {0}", [e.message || e])
+                        });
+                    }
+                });
+
+                d.$wrapper.on("click", ".wmn-delete-one", async function () {
+                    const idx = cint($(this).attr("data-idx"));
+                    const row = (d.__wmn_rows || [])[idx];
+                    if (!row) return;
+
+                    frappe.confirm(
+                        wmn_t("Delete this invoice from IndexedDB?", "هل تريد مسح هذه الفاتورة من IndexedDB؟"),
+                        async () => {
+                            try {
+                                await deleteInvoiceQueueRow(row);
+                                frappe.show_alert({ message: wmn_t("Invoice deleted", "تم مسح الفاتورة"), indicator: "orange" });
+                                await renderRows(d);
+                                if (window.cur_pos && window.cur_pos.recent_order_list && window.cur_pos.recent_order_list.refresh_list) {
+                                    window.cur_pos.recent_order_list.refresh_list();
+                                }
+                            } catch (e) {
+                                frappe.msgprint({
+                                    title: wmn_t("Delete Failed", "فشل المسح"),
+                                    indicator: "red",
+                                    message: wmn_msg("Failed to delete invoice: {0}", "تعذر مسح الفاتورة: {0}", [e.message || e])
+                                });
+                            }
+                        }
+                    );
+                });
+            }
+
+            function addManagerButton(pos) {
+                if (!pos || pos.__wmn_invoice_manager_button_v5) return;
+
+                const add = () => {
+                    let $target = null;
+
+                    if (pos.page && pos.page.add_inner_button) {
+                        try {
+                            pos.page.add_inner_button(wmn_t("Offline Invoices", "فواتير الأوفلاين"), () => openManagerDialog(), __("Offline"));
+                            pos.__wmn_invoice_manager_button_v5 = true;
+                            return true;
+                        } catch (e) {}
+                    }
+
+                    if (pos.$components_wrapper && pos.$components_wrapper.length) {
+                        $target = pos.$components_wrapper.closest(".page-container").find(".page-actions .standard-actions").first();
+                    }
+
+                    if (!$target || !$target.length) {
+                        $target = $(".page-actions .standard-actions, .page-actions, .custom-actions, .layout-main-section").first();
+                    }
+
+                    if (!$target || !$target.length) return false;
+                    if ($target.find(".wmn-offline-invoices-btn").length) return true;
+
+                    const $btn = $(`
+                        <button class="btn btn-sm btn-default wmn-offline-invoices-btn" style="margin-inline-start:6px;">
+                            ${wmn_t("Offline Invoices", "فواتير الأوفلاين")}
+                        </button>
+                    `);
+
+                    $btn.on("click", () => openManagerDialog());
+                    $target.append($btn);
+                    pos.__wmn_invoice_manager_button_v5 = true;
+                    return true;
+                };
+
+                if (!add()) {
+                    const t = setInterval(() => {
+                        if (add()) clearInterval(t);
+                    }, 500);
+                    setTimeout(() => clearInterval(t), 10000);
+                }
+            }
+
+            window.wmnPOSOffline.openInvoiceManagerDialog = openManagerDialog;
+            window.wmnPOSOffline.deleteInvoiceQueueRow = deleteInvoiceQueueRow;
+
+            addManagerButton(pos || window.cur_pos);
+
+            const t = setInterval(() => {
+                addManagerButton(window.cur_pos);
+            }, 1000);
+            setTimeout(() => clearInterval(t), 15000);
+
+            window.wmnPOSOffline.__wmn_invoice_manager_dialog_v5 = true;
+            console.log("✅ WMN offline invoice manager dialog v5 installed");
+        }
+
+
+
+
+
+function wmn_user_lang() {
+            return String(
+                (frappe.boot && frappe.boot.lang) ||
+                (frappe.boot && frappe.boot.user && frappe.boot.user.language) ||
+                (frappe.session && frappe.session.user_language) ||
+                document.documentElement.lang ||
+                document.body.getAttribute("lang") ||
+                "en"
+            ).toLowerCase();
+        }
+
+        function wmn_is_arabic() {
+            const lang = wmn_user_lang();
+            return lang.startsWith("ar") || document.documentElement.dir === "rtl" || document.body.dir === "rtl";
+        }
+
+        function wmn_t(en, ar) {
+            const text = wmn_is_arabic() ? (ar || en) : en;
+            return __(text);
+        }
+
+        function wmn_msg(en, ar, values) {
+            const text = wmn_t(en, ar);
+            if (values && Array.isArray(values)) {
+                return __(text, values);
+            }
+            return text;
+        }
+
+
+
+        function installWMNI18nRuntimeFixV10() {
+            if (window.__wmn_i18n_runtime_fix_v10) return;
+
+            function lang() {
+                return String(
+                    (frappe.boot && frappe.boot.lang) ||
+                    (frappe.boot && frappe.boot.user && frappe.boot.user.language) ||
+                    (frappe.session && frappe.session.user_language) ||
+                    document.documentElement.lang ||
+                    document.body.getAttribute("lang") ||
+                    "en"
+                ).toLowerCase();
+            }
+
+            function isArabic() {
+                const l = lang();
+                return l.startsWith("ar") || document.documentElement.dir === "rtl" || document.body.dir === "rtl";
+            }
+
+            const arToEn = {
+                "لا توجد فاتورة مفتوحة": "No open invoice",
+                "أضف صنفاً واحداً على الأقل قبل الدفع": "Add at least one item before payment",
+                "إجمالي الفاتورة صفر": "Invoice total is zero",
+                "أدخل مبلغ الدفع أولاً": "Enter payment amount first",
+                "مبلغ الدفع أقل من إجمالي الفاتورة": "Payment amount is less than invoice total",
+                "تعذر حفظ الفاتورة أوفلاين": "Failed to save invoice offline",
+                "فشل الحفظ أوفلاين": "Offline save failed",
+                "الدفع مطلوب": "Payment required",
+                "مبلغ الدفع": "Payment amount",
+                "تمت إضافة الفاتورة أوفلاين بنجاح": "Invoice added offline successfully",
+                "جاري حفظ الفاتورة أوفلاين": "Saving offline invoice",
+                "تعذر إضافة الصنف أوفلاين": "Failed to add item offline",
+                "تعذر تثبيت الدفع أوفلاين": "Failed to apply payment offline",
+                "تعذر مزامنة الكل": "Failed to sync all",
+                "تعذرت مزامنة الكل": "Failed to sync all",
+                "تعذرت مزامنة الفاتورة": "Failed to sync invoice",
+                "تعذر المسح": "Delete failed",
+                "تعذر مسح الفاتورة": "Failed to delete invoice",
+                "لا توجد فواتير أوفلاين محفوظة": "No offline invoices saved",
+                "الفواتير المحفوظة في IndexedDB": "Invoices saved in IndexedDB",
+                "هل تريد مسح كل الفواتير الأوفلاين من IndexedDB؟": "Delete all offline invoices from IndexedDB?",
+                "هل تريد مسح هذه الفاتورة من IndexedDB؟": "Delete this invoice from IndexedDB?",
+                "تمت مزامنة الفواتير المتاحة": "Available invoices synced",
+                "تم مسح كل الفواتير الأوفلاين": "All offline invoices deleted",
+                "تم مسح الفاتورة": "Invoice deleted",
+                "تمت محاولة مزامنة الفاتورة": "Invoice sync attempted",
+                "الدفع": "Payment",
+                "الإجمالي": "Grand Total",
+                "العميل": "Customer",
+                "الفاتورة": "Invoice",
+                "لا توجد طرق دفع": "No payment methods found",
+                "المدفوع": "Paid",
+                "إكمال الطلب سيضيف الدفع للفاتورة الأوفلاين ثم يحفظها أوفلاين.": "Complete Order will apply payment to the offline invoice then save it offline.",
+                "فواتير الأوفلاين": "Offline Invoices",
+                "تحديث": "Refresh",
+                "مزامنة الكل": "Sync All",
+                "مسح الكل": "Delete All",
+                "مزامنة": "Sync",
+                "مسح": "Delete",
+                "رقم الأوفلاين": "Offline ID",
+                "الحالة": "Status",
+                "تاريخ الإنشاء": "Created",
+                "الإجراءات": "Actions",
+                "العدد": "Count",
+                "قيد الانتظار": "Pending",
+                "تمت المزامنة": "Synced",
+                "خطأ": "Error",
+                "فشل": "Failed",
+                "جاري المزامنة": "Syncing",
+                "جاري مزامنة فواتير الأوفلاين": "Syncing offline invoices",
+                "جاري المسح": "Deleting",
+                "فشلت المزامنة": "Sync failed",
+                "فشل المسح": "Delete failed",
+                "تم إضافة الدفع للفاتورة أوفلاين، ولم يتم حفظ الفاتورة بعد": "Payment added to the offline invoice. The invoice has not been saved yet.",
+                "تم تثبيت الدفع داخل الفاتورة أوفلاين": "Payment applied to the offline invoice",
+                "افتح/أدخل الدفع ثم اضغط Complete Order": "Open/enter payment, then click Complete Order",
+                "استخدم Dialog Offline Invoices": "Use the Offline Invoices dialog"
+            };
+
+            const arKeys = Object.keys(arToEn).sort((a, b) => b.length - a.length);
+
+            function translateText(text) {
+                if (text === undefined || text === null) return text;
+                let s = String(text);
+                if (isArabic()) return s;
+
+                arKeys.forEach((ar) => {
+                    if (s.includes(ar)) s = s.split(ar).join(arToEn[ar]);
+                });
+                return s;
+            }
+
+            window.wmn_i18n_translate_text_v10 = translateText;
+
+            if (frappe && frappe.show_alert && !frappe.__wmn_i18n_show_alert_v10) {
+                const originalShowAlert = frappe.show_alert;
+                frappe.show_alert = function(message, seconds) {
+                    if (typeof message === "string") {
+                        message = translateText(message);
+                    } else if (message && typeof message === "object") {
+                        message = Object.assign({}, message);
+                        if (message.message) message.message = translateText(message.message);
+                        if (message.title) message.title = translateText(message.title);
+                    }
+                    return originalShowAlert.call(this, message, seconds);
+                };
+                frappe.__wmn_i18n_show_alert_v10 = true;
+            }
+
+            if (frappe && frappe.msgprint && !frappe.__wmn_i18n_msgprint_v10) {
+                const originalMsgprint = frappe.msgprint;
+                frappe.msgprint = function(msg) {
+                    if (typeof msg === "string") {
+                        msg = translateText(msg);
+                    } else if (msg && typeof msg === "object") {
+                        msg = Object.assign({}, msg);
+                        if (msg.message) msg.message = translateText(msg.message);
+                        if (msg.title) msg.title = translateText(msg.title);
+                    }
+                    return originalMsgprint.call(this, msg);
+                };
+                frappe.__wmn_i18n_msgprint_v10 = true;
+            }
+
+            if (frappe && frappe.throw && !frappe.__wmn_i18n_throw_v10) {
+                const originalThrow = frappe.throw;
+                frappe.throw = function(msg) {
+                    if (typeof msg === "string") {
+                        msg = translateText(msg);
+                    } else if (msg && typeof msg === "object") {
+                        msg = Object.assign({}, msg);
+                        if (msg.message) msg.message = translateText(msg.message);
+                        if (msg.title) msg.title = translateText(msg.title);
+                    }
+                    return originalThrow.call(this, msg);
+                };
+                frappe.__wmn_i18n_throw_v10 = true;
+            }
+
+            window.__wmn_i18n_runtime_fix_v10 = true;
+            console.log("✅ WMN i18n runtime fix v10 installed");
+        }
+
+
+
+
+function installWMNV11I18nAutoSyncAndButtonsFinal() {
+            if (window.__wmn_v11_i18n_autosync_buttons_final) return;
+
+            function lang() {
+                return String(
+                    (frappe.boot && frappe.boot.lang) ||
+                    (frappe.boot && frappe.boot.user && frappe.boot.user.language) ||
+                    (frappe.session && frappe.session.user_language) ||
+                    document.documentElement.lang ||
+                    document.body.getAttribute("lang") ||
+                    "en"
+                ).toLowerCase();
+            }
+
+            function isArabicLang() {
+                const l = lang();
+                return l.startsWith("ar") || document.documentElement.dir === "rtl" || document.body.dir === "rtl";
+            }
+
+            const dictionary = {
+                "جاري تحميل بيانات الأوفلاين": "Loading offline data",
+                "جاري تحميل بيانات الاوفلاين": "Loading offline data",
+                "جاري تحميل الأصناف": "Loading items",
+                "جاري تحميل الاصناف": "Loading items",
+                "تم تحميل الأصناف": "Items loaded",
+                "تم تحميل الاصناف": "Items loaded",
+                "تم تحميل العملاء": "Customers loaded",
+                "تم تحميل الزبائن": "Customers loaded",
+                "تم تحميل الأسعار": "Prices loaded",
+                "تم تحميل الاسعار": "Prices loaded",
+                "تم تحميل المخزون": "Stock loaded",
+                "تم تحميل طرق الدفع": "Payment methods loaded",
+                "تم تحميل البيانات إلى قاعدة البيانات المحلية": "Data loaded to local database",
+                "تم تحميل البيانات الى قاعدة البيانات المحلية": "Data loaded to local database",
+                "تم حفظ البيانات في IndexedDB": "Data saved in IndexedDB",
+                "تم تحديث قاعدة البيانات المحلية": "Local database updated",
+                "تم تجهيز البيانات أوفلاين": "Offline data prepared",
+                "تم تجهيز البيانات اوفلاين": "Offline data prepared",
+                "فشل تحميل بيانات الأوفلاين": "Failed to load offline data",
+                "فشل تحميل بيانات الاوفلاين": "Failed to load offline data",
+                "تعذر تحميل الأصناف": "Failed to load items",
+                "تعذر تحميل الاصناف": "Failed to load items",
+                "تعذر تحميل العملاء": "Failed to load customers",
+                "تعذر تحميل الزبائن": "Failed to load customers",
+                "تعذر تجهيز بيانات الأوفلاين": "Failed to prepare offline data",
+                "تعذر تجهيز بيانات الاوفلاين": "Failed to prepare offline data",
+
+                "لا توجد فاتورة مفتوحة": "No open invoice",
+                "أضف صنفاً واحداً على الأقل قبل الدفع": "Add at least one item before payment",
+                "إجمالي الفاتورة صفر": "Invoice total is zero",
+                "أدخل مبلغ الدفع أولاً": "Enter payment amount first",
+                "مبلغ الدفع أقل من إجمالي الفاتورة": "Payment amount is less than invoice total",
+                "تعذر حفظ الفاتورة أوفلاين": "Failed to save invoice offline",
+                "فشل الحفظ أوفلاين": "Offline save failed",
+                "الدفع مطلوب": "Payment required",
+                "تمت إضافة الفاتورة أوفلاين بنجاح": "Invoice added offline successfully",
+                "جاري حفظ الفاتورة أوفلاين": "Saving offline invoice",
+                "تعذر إضافة الصنف أوفلاين": "Failed to add item offline",
+                "تعذر تثبيت الدفع أوفلاين": "Failed to apply payment offline",
+                "لا توجد فواتير أوفلاين محفوظة": "No offline invoices saved",
+                "الفواتير المحفوظة في IndexedDB": "Invoices saved in IndexedDB",
+                "هل تريد مسح كل الفواتير الأوفلاين من IndexedDB؟": "Delete all offline invoices from IndexedDB?",
+                "هل تريد مسح هذه الفاتورة من IndexedDB؟": "Delete this invoice from IndexedDB?",
+                "تمت مزامنة الفواتير المتاحة": "Available invoices synced",
+                "تم مسح كل الفواتير الأوفلاين": "All offline invoices deleted",
+                "تم مسح الفاتورة": "Invoice deleted",
+                "تمت محاولة مزامنة الفاتورة": "Invoice sync attempted",
+                "تعذرت مزامنة الكل": "Failed to sync all",
+                "تعذر مزامنة الكل": "Failed to sync all",
+                "تعذرت مزامنة الفاتورة": "Failed to sync invoice",
+                "تعذر مسح الفاتورة": "Failed to delete invoice",
+                "تعذر المسح": "Delete failed",
+                "فواتير الأوفلاين": "Offline Invoices",
+                "مزامنة الكل": "Sync All",
+                "مسح الكل": "Delete All",
+                "مزامنة": "Sync",
+                "مسح": "Delete",
+                "تحديث": "Refresh",
+                "رقم الأوفلاين": "Offline ID",
+                "الإجراءات": "Actions",
+                "العدد": "Count",
+                "قيد الانتظار": "Pending",
+                "تمت المزامنة": "Synced",
+                "جاري المزامنة": "Syncing",
+                "جاري المسح": "Deleting",
+                "فشلت المزامنة": "Sync failed",
+                "فشل المسح": "Delete failed"
+            };
+
+            const keys = Object.keys(dictionary).sort((a, b) => b.length - a.length);
+
+            function translate(value) {
+                if (value === undefined || value === null) return value;
+                let s = String(value);
+                if (isArabicLang()) return s;
+
+                keys.forEach((ar) => {
+                    if (s.includes(ar)) {
+                        s = s.split(ar).join(dictionary[ar]);
+                    }
+                });
+                return s;
+            }
+
+            window.wmn_translate_user_message_v11 = translate;
+
+            if (frappe && frappe.show_alert && !frappe.__wmn_v11_show_alert) {
+                const original = frappe.show_alert;
+                frappe.show_alert = function(message, seconds) {
+                    if (typeof message === "string") {
+                        message = translate(message);
+                    } else if (message && typeof message === "object") {
+                        message = Object.assign({}, message);
+                        if (message.message) message.message = translate(message.message);
+                        if (message.title) message.title = translate(message.title);
+                    }
+                    return original.call(this, message, seconds);
+                };
+                frappe.__wmn_v11_show_alert = true;
+            }
+
+            if (frappe && frappe.msgprint && !frappe.__wmn_v11_msgprint) {
+                const original = frappe.msgprint;
+                frappe.msgprint = function(message) {
+                    if (typeof message === "string") {
+                        message = translate(message);
+                    } else if (message && typeof message === "object") {
+                        message = Object.assign({}, message);
+                        if (message.message) message.message = translate(message.message);
+                        if (message.title) message.title = translate(message.title);
+                    }
+                    return original.call(this, message);
+                };
+                frappe.__wmn_v11_msgprint = true;
+            }
+
+            if (frappe && frappe.throw && !frappe.__wmn_v11_throw) {
+                const original = frappe.throw;
+                frappe.throw = function(message) {
+                    if (typeof message === "string") {
+                        message = translate(message);
+                    } else if (message && typeof message === "object") {
+                        message = Object.assign({}, message);
+                        if (message.message) message.message = translate(message.message);
+                        if (message.title) message.title = translate(message.title);
+                    }
+                    return original.call(this, message);
+                };
+                frappe.__wmn_v11_throw = true;
+            }
+
+            // Freeze/unfreeze message text also.
+            if (frappe.dom && frappe.dom.freeze && !frappe.dom.__wmn_v11_freeze) {
+                const originalFreeze = frappe.dom.freeze;
+                frappe.dom.freeze = function(message) {
+                    return originalFreeze.call(this, translate(message));
+                };
+                frappe.dom.__wmn_v11_freeze = true;
+            }
+
+            function patchSync() {
+                if (!window.wmnPOSOffline || !window.wmnPOSOffline.syncInvoices) return false;
+
+                if (!window.wmnPOSOffline.__wmn_real_syncInvoices_v11 ||
+                    window.wmnPOSOffline.syncInvoices.__wmn_blocker_v11 !== true) {
+                    if (window.wmnPOSOffline.syncInvoices.__wmn_blocker_v11 !== true) {
+                        window.wmnPOSOffline.__wmn_real_syncInvoices_v11 = window.wmnPOSOffline.syncInvoices.bind(window.wmnPOSOffline);
+                    }
+
+                    const blocker = async function() {
+                        if (window.__wmn_manual_offline_invoice_sync_v11 === true) {
+                            return await window.wmnPOSOffline.__wmn_real_syncInvoices_v11.apply(window.wmnPOSOffline, arguments);
+                        }
+
+                        console.log("WMN POS Offline v11: auto sync blocked. Use Offline Invoices dialog.");
+                        return { skipped: true, reason: "auto_sync_disabled", manual_only: true };
+                    };
+                    blocker.__wmn_blocker_v11 = true;
+                    window.wmnPOSOffline.syncInvoices = blocker;
+                }
+
+                window.wmnPOSOffline.manualSyncInvoices = async function() {
+                    try {
+                        window.__wmn_manual_offline_invoice_sync_v11 = true;
+                        return await window.wmnPOSOffline.__wmn_real_syncInvoices_v11.apply(window.wmnPOSOffline, arguments);
+                    } finally {
+                        window.__wmn_manual_offline_invoice_sync_v11 = false;
+                    }
+                };
+
+                if (typeof window.wmnPOSOffline.syncInvoice === "function" &&
+                    window.wmnPOSOffline.syncInvoice.__wmn_blocker_v11 !== true) {
+                    window.wmnPOSOffline.__wmn_real_syncInvoice_v11 = window.wmnPOSOffline.syncInvoice.bind(window.wmnPOSOffline);
+
+                    const singleBlocker = async function() {
+                        if (window.__wmn_manual_offline_invoice_sync_v11 === true) {
+                            return await window.wmnPOSOffline.__wmn_real_syncInvoice_v11.apply(window.wmnPOSOffline, arguments);
+                        }
+
+                        console.log("WMN POS Offline v11: auto single sync blocked. Use Offline Invoices dialog.");
+                        return { skipped: true, reason: "auto_single_sync_disabled", manual_only: true };
+                    };
+                    singleBlocker.__wmn_blocker_v11 = true;
+                    window.wmnPOSOffline.syncInvoice = singleBlocker;
+
+                    window.wmnPOSOffline.manualSyncInvoice = async function(row) {
+                        try {
+                            window.__wmn_manual_offline_invoice_sync_v11 = true;
+                            return await window.wmnPOSOffline.__wmn_real_syncInvoice_v11.call(window.wmnPOSOffline, row);
+                        } finally {
+                            window.__wmn_manual_offline_invoice_sync_v11 = false;
+                        }
+                    };
+                }
+
+                window.wmnPOSOffline.cleanupSyncedInvoices = async function() {
+                    console.log("WMN POS Offline v11: auto cleanup blocked. Delete manually from Offline Invoices dialog.");
+                    return 0;
+                };
+
+                return true;
+            }
+
+            window.__wmn_manual_offline_invoice_sync_v11 = false;
+            patchSync();
+            const syncTimer = setInterval(patchSync, 100);
+            setTimeout(() => clearInterval(syncTimer), 60000);
+            window.addEventListener("online", () => {
+                patchSync();
+                setTimeout(patchSync, 50);
+                setTimeout(patchSync, 500);
+                setTimeout(patchSync, 2000);
+            }, true);
+
+            function forceButtonView() {
+                const offline = window.wmnPOSOffline &&
+                    (navigator.onLine === false || window.__wmn_force_pos_offline === true || window.__wmn_pos_effective_offline === true);
+
+                if (!offline) return;
+
+                const pos = window.cur_pos;
+                if (!pos) return;
+
+                try {
+                    if (pos.item_selector) {
+                        pos.item_selector.view_type = "card";
+                        pos.item_selector.item_view = "card";
+                        pos.item_selector.view = "card";
+                        pos.item_selector.items_view = "card";
+                        pos.item_selector.show_as_list = false;
+                        pos.item_selector.show_grid = false;
+                        pos.item_selector.is_grid = false;
+                    }
+
+                    const $root = $(".point-of-sale-app, .pos, .layout-main-section");
+                    $root.find(".item-list-container, .items-container, .item-selector, .item-wrapper")
+                        .removeClass("grid-view list-view table-view")
+                        .addClass("card-view button-view wmn-offline-button-view");
+
+                    $root.find(".view-switch, .grid-view-btn, .list-view-btn, [data-view='grid'], [data-view='list']")
+                        .addClass("disabled")
+                        .attr("disabled", "disabled")
+                        .css({ "pointer-events": "none", "opacity": "0.45" });
+
+                    $root.find(".item-card, .item-wrapper, .pos-item, .item")
+                        .addClass("wmn-offline-item-button");
+                } catch (e) {
+                    console.warn("WMN v11 force button view failed", e);
+                }
+            }
+
+            if (!document.getElementById("wmn-offline-button-view-style-v11")) {
+                const style = document.createElement("style");
+                style.id = "wmn-offline-button-view-style-v11";
+                style.textContent = `
+                    .wmn-offline-button-view .item-card,
+                    .wmn-offline-button-view .pos-item,
+                    .wmn-offline-button-view .item-wrapper,
+                    .wmn-offline-item-button {
+                        border-radius: 12px !important;
+                        cursor: pointer !important;
+                    }
+                    .wmn-offline-button-view table,
+                    .wmn-offline-button-view .datatable,
+                    .wmn-offline-button-view .dt-scrollable {
+                        display: none !important;
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+
+            forceButtonView();
+            const viewTimer = setInterval(forceButtonView, 500);
+            setTimeout(() => clearInterval(viewTimer), 60000);
+
+            window.__wmn_v11_i18n_autosync_buttons_final = true;
+            console.log("✅ WMN v11 i18n/autosync/button-view final installed");
+        }
+
+
+
+        function installWMNPOSOfflineLoadedMessageI18nV12() {
+            if (window.__wmn_pos_offline_loaded_message_i18n_v12) return;
+
+            function lang() {
+                return String(
+                    (frappe.boot && frappe.boot.lang) ||
+                    (frappe.boot && frappe.boot.user && frappe.boot.user.language) ||
+                    (frappe.session && frappe.session.user_language) ||
+                    document.documentElement.lang ||
+                    document.body.getAttribute("lang") ||
+                    "en"
+                ).toLowerCase();
+            }
+
+            function isArabic() {
+                const l = lang();
+                return l.startsWith("ar") || document.documentElement.dir === "rtl" || document.body.dir === "rtl";
+            }
+
+            function translatePOSLoadedMessage(text) {
+                if (text === undefined || text === null) return text;
+                let s = String(text);
+
+                if (isArabic()) return s;
+
+                // Example:
+                // تم تحميل بيانات نقطة البيع للأوفلاين: 156 صنف، 12 عميل، 156 سعر، 1 مخزون
+                s = s.replace(/تم تحميل بيانات نقطة البيع للأوفلاين\s*:\s*/g, "POS offline data loaded: ");
+                s = s.replace(/تم تحميل بيانات نقطة البيع للاوفلاين\s*:\s*/g, "POS offline data loaded: ");
+                s = s.replace(/تم تحميل بيانات POS للأوفلاين\s*:\s*/g, "POS offline data loaded: ");
+
+                s = s.replace(/صنف/g, "items");
+                s = s.replace(/أصناف/g, "items");
+                s = s.replace(/اصناف/g, "items");
+                s = s.replace(/عميل/g, "customers");
+                s = s.replace(/عملاء/g, "customers");
+                s = s.replace(/زبون/g, "customers");
+                s = s.replace(/زبائن/g, "customers");
+                s = s.replace(/سعر/g, "prices");
+                s = s.replace(/أسعار/g, "prices");
+                s = s.replace(/اسعار/g, "prices");
+                s = s.replace(/مخزون/g, "stock");
+                s = s.replace(/طرق دفع/g, "payment methods");
+                s = s.replace(/طريقة دفع/g, "payment methods");
+                s = s.replace(/،/g, ",");
+
+                return s;
+            }
+
+            if (frappe && frappe.show_alert && !frappe.__wmn_pos_loaded_i18n_show_alert_v12) {
+                const previousShowAlert = frappe.show_alert;
+                frappe.show_alert = function(message, seconds) {
+                    if (typeof message === "string") {
+                        message = translatePOSLoadedMessage(message);
+                    } else if (message && typeof message === "object") {
+                        message = Object.assign({}, message);
+                        if (message.message) message.message = translatePOSLoadedMessage(message.message);
+                        if (message.title) message.title = translatePOSLoadedMessage(message.title);
+                    }
+                    return previousShowAlert.call(this, message, seconds);
+                };
+                frappe.__wmn_pos_loaded_i18n_show_alert_v12 = true;
+            }
+
+            if (frappe && frappe.msgprint && !frappe.__wmn_pos_loaded_i18n_msgprint_v12) {
+                const previousMsgprint = frappe.msgprint;
+                frappe.msgprint = function(message) {
+                    if (typeof message === "string") {
+                        message = translatePOSLoadedMessage(message);
+                    } else if (message && typeof message === "object") {
+                        message = Object.assign({}, message);
+                        if (message.message) message.message = translatePOSLoadedMessage(message.message);
+                        if (message.title) message.title = translatePOSLoadedMessage(message.title);
+                    }
+                    return previousMsgprint.call(this, message);
+                };
+                frappe.__wmn_pos_loaded_i18n_msgprint_v12 = true;
+            }
+
+            window.__wmn_pos_offline_loaded_message_i18n_v12 = true;
+            console.log("✅ WMN POS offline loaded message i18n v12 installed");
+        }
+
+
+
+
+class MyPOSController extends erpnext.PointOfSale.Controller {
             constructor(wrapper) {
                 super(wrapper);
                 this.wmn_start_offline_preload();
@@ -1674,8 +2592,8 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                 const try_preload = () => {
                     if (window.wmnPOSOffline && this.settings && this.settings.pos_profile) {
                         window.wmnPOSOffline.preload(this, false);
-                        window.wmnPOSOffline.syncInvoices();
-                        return true;
+                        // v6: تم تعطيل المزامنة التلقائية. استخدم Dialog Offline Invoices.
+return true;
                     }
                     return false;
                 };
@@ -1705,8 +2623,8 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                 const result = await super.make_new_invoice();
                 if (window.wmnPOSOffline) {
                     window.wmnPOSOffline.preload(this, false);
-                    window.wmnPOSOffline.syncInvoices();
-                }
+                        // v6: تم تعطيل المزامنة التلقائية. استخدم Dialog Offline Invoices.
+}
                 return result;
             }
             
@@ -1987,9 +2905,14 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                         try {
                             await wmn_show_offline_payment_dialog(this);
 
-                            frappe.dom.freeze(__("Saving offline invoice..."));
+                            frappe.dom.freeze(wmn_t("Saving offline invoice...", "جاري حفظ الفاتورة أوفلاين..."));
                             const row = await window.wmnPOSOffline.saveInvoice(this.frm.doc, this);
                             frappe.dom.unfreeze();
+
+                            frappe.show_alert({
+                                message: wmn_msg("Invoice added offline successfully: {0}", "تمت إضافة الفاتورة أوفلاين بنجاح: {0}", [row.offline_id || row.name || this.frm.doc.name]),
+                                indicator: "orange"
+                            });
 
                             this.toggle_components(false);
                             this.order_summary.toggle_component(true);
@@ -2009,9 +2932,9 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
 
                             console.error("Offline invoice payment/save failed", e);
                             frappe.msgprint({
-                                title: __("Offline Save Failed"),
+                                title: wmn_t("Offline Save Failed", "فشل الحفظ أوفلاين"),
                                 indicator: "red",
-                                message: __("تعذر حفظ الفاتورة أوفلاين: {0}", [e.message || e])
+                                message: wmn_msg("Failed to save invoice offline: {0}", "تعذر حفظ الفاتورة أوفلاين: {0}", [e.message || e])
                             });
                             return;
                         }
@@ -2022,8 +2945,8 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                         this.order_summary.toggle_component(true);
                         this.order_summary.load_summary_of(r.doc, true);
                         this.recent_order_list.refresh_list();
-                        if (window.wmnPOSOffline) window.wmnPOSOffline.syncInvoices();
-                    });
+                        // v6: تم تعطيل المزامنة التلقائية. استخدم Dialog Offline Invoices.
+});
                 };
             }
             
@@ -2894,7 +3817,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                     } catch (e) {
                         console.error("WMN POS offline direct cart update failed:", e);
                         frappe.show_alert({
-                            message: __("تعذر إضافة الصنف أوفلاين") + ": " + (e.message || e),
+                            message: wmn_t("Failed to add item offline", "تعذر إضافة الصنف أوفلاين") + ": " + (e.message || e),
                             indicator: "red",
                         });
                     }
@@ -2911,7 +3834,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                     return addOrIncrement(ctrl, args).catch((e) => {
                         console.error("WMN POS offline item_selected failed:", e);
                         frappe.show_alert({
-                            message: __("تعذر إضافة الصنف أوفلاين") + ": " + (e.message || e),
+                            message: wmn_t("Failed to add item offline", "تعذر إضافة الصنف أوفلاين") + ": " + (e.message || e),
                             indicator: "red",
                         });
                     });
@@ -3101,7 +4024,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                     } catch (e) {
                         console.error("WMN offline bypass update failed", e);
                         frappe.show_alert({
-                            message: __("تعذر إضافة الصنف أوفلاين") + ": " + (e.message || e),
+                            message: wmn_t("Failed to add item offline", "تعذر إضافة الصنف أوفلاين") + ": " + (e.message || e),
                             indicator: "red",
                         });
                     }
@@ -3123,7 +4046,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                     return directAddOrUpdate(ctrl, args).catch((e) => {
                         console.error("WMN offline bypass item_selected failed", e);
                         frappe.show_alert({
-                            message: __("تعذر إضافة الصنف أوفلاين") + ": " + (e.message || e),
+                            message: wmn_t("Failed to add item offline", "تعذر إضافة الصنف أوفلاين") + ": " + (e.message || e),
                             indicator: "red",
                         });
                     });
@@ -3159,7 +4082,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                         .catch((e) => {
                             console.error("WMN v8 item_selected failed", e);
                             frappe.show_alert({
-                                message: __("تعذر إضافة الصنف أوفلاين") + ": " + (e.message || e),
+                                message: wmn_t("Failed to add item offline", "تعذر إضافة الصنف أوفلاين") + ": " + (e.message || e),
                                 indicator: "red",
                             });
                         });
@@ -3171,6 +4094,10 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
 
 
         wrapper.pos = new MyPOSController(wrapper);
+installWMNPOSOfflineLoadedMessageI18nV12();
+        installWMNV11I18nAutoSyncAndButtonsFinal();
+        installWMNI18nRuntimeFixV10();
+installWMNOfflineInvoiceManagerDialogV5(wrapper.pos);
         installWMNV9PaymentDialogSaveGuardV3(wrapper.pos);
 
         function installWMNOfflineOldAlertSuppressorV3() {
@@ -3213,3 +4140,12 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
     });
 };
 console.log("✅ WMN offline direct class cart update v8 installed");
+
+console.log("✅ WMN syntax fix and manual invoice manager v7 installed");
+
+console.log("✅ WMN i18n messages and offline invoice success v9 installed");
+
+
+
+
+console.log("✅ WMN v13 clean no alias calls installed");
