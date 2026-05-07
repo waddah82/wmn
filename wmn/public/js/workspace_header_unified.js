@@ -47,7 +47,7 @@
         const fa = document.createElement("link");
         fa.id = "wmn-fa-6";
         fa.rel = "stylesheet";
-        fa.href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css";
+        fa.href = "/assets/wmn/css/all.min.css";
         document.head.appendChild(fa);
     }
 
