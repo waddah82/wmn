@@ -1,0 +1,48 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-05-02 22:51:03.775874",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enable_workspace_header",
+  "workspace_navigation_mode"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "enable_workspace_header",
+   "fieldtype": "Check",
+   "label": "enable_workspace_header"
+  },
+  {
+   "fieldname": "workspace_navigation_mode",
+   "fieldtype": "Select",
+   "label": "workspace_navigation_mode",
+   "options": "\nsidebar\nheader"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-05-03 23:47:37.749439",
+ "modified_by": "Administrator",
+ "module": "Wmn",
+ "name": "WMN Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
