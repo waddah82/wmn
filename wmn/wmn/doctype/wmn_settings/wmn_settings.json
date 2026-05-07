@@ -20,6 +20,12 @@
    "fieldtype": "Select",
    "label": "workspace_navigation_mode",
    "options": "\nsidebar\nheader"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_pos_offline",
+   "fieldtype": "Check",
+   "label": "enable_pos_offline"
   }
  ],
  "index_web_pages_for_search": 1,
