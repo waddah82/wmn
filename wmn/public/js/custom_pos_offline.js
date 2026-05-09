@@ -4100,7 +4100,26 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
             document.head.appendChild(style);
         }
         
-   
+        function installWMNOfflinePrintDelegation() {
+            if (window.__wmn_offline_print_delegation_v32) return;
+
+            $(document).on("click.wmnOfflinePrintReceiptV32", "button, .btn", function(e) {
+                const text = ($(this).text() || "").trim().toLowerCase();
+                const printReceiptLabel = String(__("Print Receipt")).toLowerCase();
+                if (text !== "print receipt" && text !== printReceiptLabel) return;
+
+                const isOffline = typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline();
+                if (!isOffline || typeof window.wmn_print_offline_receipt !== "function") return;
+
+                e.preventDefault();
+                e.stopPropagation();
+                window.wmn_print_offline_receipt(window.cur_pos && window.cur_pos.frm && window.cur_pos.frm.doc);
+                return false;
+            });
+
+            window.__wmn_offline_print_delegation_v32 = true;
+        }
+
         erpnext.PointOfSale.ItemSelector = MyItemSelector;
         
         
@@ -4110,6 +4129,7 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
         erpnext.PointOfSale.ItemSelector = MyItemSelector;
 wrapper.pos = new MyPOSController(wrapper);
 installWMNOfflineInvoiceManagerDialogV5(wrapper.pos);
+installWMNOfflinePrintDelegation();
 
 console.log("✅ WMN clean integrated POS offline v27 loaded");
 
@@ -4122,20 +4142,6 @@ window.cur_pos = wrapper.pos;
 
 
 
-        if (!window.__wmn_offline_print_delegation_v32) {
-            $(document).on("click.wmnOfflinePrintReceiptV32", "button, .btn", function(e) {
-                const text = ($(this).text() || "").trim().toLowerCase();
-                if (text !== "print receipt" && text !== String(__("Print Receipt")).toLowerCase()) return;
-
-                if (!wmn_is_pos_offline || !wmn_is_pos_offline()) return;
-
-                e.preventDefault();
-                e.stopPropagation();
-                window.wmn_print_offline_receipt(window.cur_pos && window.cur_pos.frm && window.cur_pos.frm.doc);
-                return false;
-            });
-            window.__wmn_offline_print_delegation_v32 = true;
-        }
 
 
 
