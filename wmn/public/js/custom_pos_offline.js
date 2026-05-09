@@ -650,9 +650,9 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
             }
 
             function getStockForItem(stockRows, itemCode, warehouse) {
-                return (stockRows || []).find(s => s.item_code === itemCode && (!warehouse || s.warehouse === warehouse)) ||
-                    (stockRows || []).find(s => s.item_code === itemCode) ||
-                    null;
+                const exact = (stockRows || []).find(s => s.item_code === itemCode && (!warehouse || s.warehouse === warehouse));
+                if (warehouse) return exact || null;
+                return exact || (stockRows || []).find(s => s.item_code === itemCode) || null;
             }
 
             async function getPOSItemFilterContext({ price_list = "", item_group = "" } = {}) {
@@ -1161,6 +1161,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                 preload,
                 searchItems,
                 findItem,
+                findSerialOffline,
                 getFullSettings,
                 getPOSProfile,
                 getPOSItemFilterContext,
@@ -3152,7 +3153,8 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                 const target_warehouse = warehouse || (this.settings ? this.settings.warehouse : null);
                 if (!target_warehouse) return true;
 
-                if (!navigator.onLine && window.wmnPOSOffline) {
+                const isOffline = typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline();
+                if (isOffline && window.wmnPOSOffline) {
                     const stock_row = await window.wmnPOSOffline.getStock(item.item_code, target_warehouse);
                     return flt(stock_row ? stock_row.actual_qty : 0) >= flt(qty || 0);
                 }
@@ -3280,7 +3282,9 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                     did_freeze = true;
 
                     if (cint(item.has_serial_no || 0) && !item.serial_no) {
-                        const autoSerial = await findSerialOffline("", item.item_code, target_warehouse);
+                        const autoSerial = window.wmnPOSOffline && window.wmnPOSOffline.findSerialOffline
+                            ? await window.wmnPOSOffline.findSerialOffline("", item.item_code, target_warehouse)
+                            : null;
                         if (autoSerial && autoSerial.serial_no) {
                             item.serial_no = autoSerial.serial_no;
                             item.batch_no = item.batch_no || autoSerial.batch_no || "";
@@ -3537,11 +3541,14 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                 super.init_payments();
 
                 this.payment.events.submit_invoice = async () => {
-                    if (!navigator.onLine && window.wmnPOSOffline) {
+                    const isOffline = typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline();
+                    if (isOffline && window.wmnPOSOffline) {
                         try {
                             await wmn_show_offline_payment_dialog(this);
 
                             frappe.dom.freeze(wmn_t("Saving offline invoice...", "جاري حفظ الفاتورة أوفلاين..."));
+                            await wmn_ensure_invoice_batches_before_save(this.frm.doc, this.settings && this.settings.warehouse);
+                            wmn_prepare_converted_doc_for_sync(this.frm.doc);
                             const row = await window.wmnPOSOffline.saveInvoice(this.frm.doc, this);
                             frappe.dom.unfreeze();
 
@@ -3553,6 +3560,7 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                             this.toggle_components(false);
                             this.order_summary.toggle_component(true);
                             this.order_summary.load_summary_of(this.frm.doc, true);
+                            this.wmn_bind_offline_receipt_buttons();
 
                             if (this.recent_order_list && this.recent_order_list.refresh_list) {
                                 this.recent_order_list.refresh_list();
@@ -3749,7 +3757,8 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
 
                 this.$invoices_container.html("");
 
-                if (!navigator.onLine && window.wmnPOSOffline) {
+                const isOffline = typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline();
+                if (isOffline && window.wmnPOSOffline) {
                     const pending = await window.wmnPOSOffline.getPendingInvoices();
                     frappe.dom.unfreeze();
                     pending.forEach((row) => {
@@ -3807,7 +3816,8 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
             }
 
             async get_items({ start = 0, page_length = 40, search_term = "" } = {}) {
-                if (!navigator.onLine && window.wmnPOSOffline) {
+                const isOffline = typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline();
+                if (isOffline && window.wmnPOSOffline) {
                     const pos_ctrl = window.cur_pos;
                     const doc = pos_ctrl && pos_ctrl.frm ? pos_ctrl.frm.doc : {};
                     const settings = pos_ctrl && pos_ctrl.settings ? pos_ctrl.settings : {};
@@ -3823,7 +3833,7 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                     return { message: { items } };
                 }
 
-                if (window.wmnPOSOffline && navigator.onLine) {
+                if (window.wmnPOSOffline && !isOffline && navigator.onLine) {
                     window.wmnPOSOffline.preload(window.cur_pos, false);
                 }
 
@@ -3831,7 +3841,8 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
             }
 
             filter_items({ search_term = "" } = {}) {
-                if (!navigator.onLine && window.wmnPOSOffline) {
+                const isOffline = typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline();
+                if (isOffline && window.wmnPOSOffline) {
                     return this.get_items({ search_term }).then(({ message }) => {
                         const items = (message && message.items) || [];
                         if (items.length === 1 && search_term && search_term.length >= 8) {
