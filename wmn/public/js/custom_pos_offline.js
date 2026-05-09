@@ -650,9 +650,9 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
             }
 
             function getStockForItem(stockRows, itemCode, warehouse) {
-                return (stockRows || []).find(s => s.item_code === itemCode && (!warehouse || s.warehouse === warehouse)) ||
-                    (stockRows || []).find(s => s.item_code === itemCode) ||
-                    null;
+                const exact = (stockRows || []).find(s => s.item_code === itemCode && (!warehouse || s.warehouse === warehouse));
+                if (warehouse) return exact || null;
+                return exact || (stockRows || []).find(s => s.item_code === itemCode) || null;
             }
 
             async function getPOSItemFilterContext({ price_list = "", item_group = "" } = {}) {
@@ -1161,6 +1161,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                 preload,
                 searchItems,
                 findItem,
+                findSerialOffline,
                 getFullSettings,
                 getPOSProfile,
                 getPOSItemFilterContext,
@@ -2133,20 +2134,97 @@ function installWMNOfflineInvoiceManagerDialogV5(pos) {
 
 
 
-function wmn_user_lang() {
-            return String(
-                (frappe.boot && frappe.boot.lang) ||
-                (frappe.boot && frappe.boot.user && frappe.boot.user.language) ||
-                (frappe.session && frappe.session.user_language) ||
-                document.documentElement.lang ||
-                document.body.getAttribute("lang") ||
-                "en"
-            ).toLowerCase();
+        const WMN_POS_LANGUAGE_CACHE = {
+            lang: "wmn_pos_user_lang_v1",
+            dir: "wmn_pos_user_dir_v1"
+        };
+
+        function wmn_storage_get(key) {
+            try {
+                return localStorage.getItem(key);
+            } catch (e) {
+                return "";
+            }
+        }
+
+        function wmn_storage_set(key, value) {
+            try {
+                if (value) localStorage.setItem(key, value);
+            } catch (e) {}
+        }
+
+        function wmn_normalize_lang(lang) {
+            lang = String(lang || "").trim().replace("_", "-").toLowerCase();
+            if (lang === "arabic") return "ar";
+            if (lang === "english") return "en";
+            return lang;
+        }
+
+        function wmn_boot_user_lang() {
+            const boot = (window.frappe && frappe.boot) || {};
+            const session = (window.frappe && frappe.session) || {};
+            const user = session.user || (typeof boot.user === "string" ? boot.user : "") || "";
+            const userInfo = boot.user_info && user ? boot.user_info[user] : null;
+
+            return wmn_normalize_lang(
+                boot.lang ||
+                boot.user_lang ||
+                (boot.user && boot.user.language) ||
+                (userInfo && userInfo.language) ||
+                session.user_language ||
+                session.lang
+            );
+        }
+
+        function wmn_user_lang() {
+            const lang = wmn_boot_user_lang() ||
+                wmn_normalize_lang(wmn_storage_get(WMN_POS_LANGUAGE_CACHE.lang)) ||
+                wmn_normalize_lang(document.documentElement.lang) ||
+                wmn_normalize_lang(document.body && document.body.getAttribute("lang")) ||
+                "en";
+
+            if (wmn_boot_user_lang()) {
+                wmn_storage_set(WMN_POS_LANGUAGE_CACHE.lang, lang);
+            }
+
+            return lang;
+        }
+
+        function wmn_dir_for_lang(lang) {
+            const rtlLangs = ["ar", "fa", "he", "ur", "ps", "sd", "ug", "yi"];
+            const code = wmn_normalize_lang(lang).split("-")[0];
+            return rtlLangs.includes(code) ? "rtl" : "ltr";
+        }
+
+        function wmn_apply_user_language() {
+            const lang = wmn_user_lang();
+            const cachedDir = wmn_storage_get(WMN_POS_LANGUAGE_CACHE.dir);
+            const dir = wmn_dir_for_lang(lang) || cachedDir || "ltr";
+
+            document.documentElement.lang = lang;
+            document.documentElement.dir = dir;
+
+            if (document.body) {
+                document.body.setAttribute("lang", lang);
+                document.body.dir = dir;
+            }
+
+            if (window.frappe) {
+                frappe.boot = frappe.boot || {};
+                if (!frappe.boot.lang) frappe.boot.lang = lang;
+            }
+
+            wmn_storage_set(WMN_POS_LANGUAGE_CACHE.lang, lang);
+            wmn_storage_set(WMN_POS_LANGUAGE_CACHE.dir, dir);
+            window.__wmn_pos_user_lang = lang;
+            window.__wmn_pos_user_dir = dir;
+
+            return { lang, dir };
         }
 
         function wmn_is_arabic() {
             const lang = wmn_user_lang();
-            return lang.startsWith("ar") || document.documentElement.dir === "rtl" || document.body.dir === "rtl";
+            return lang.startsWith("ar");
         }
 
         function wmn_t(en, ar) {
@@ -2161,6 +2239,8 @@ function wmn_user_lang() {
             }
             return text;
         }
+
+        wmn_apply_user_language();
 
 
 
@@ -2369,8 +2449,12 @@ function wmn_user_lang() {
                     </tr>
                 `).join("");
 
+            const langState = typeof wmn_apply_user_language === "function"
+                ? wmn_apply_user_language()
+                : { lang: document.documentElement.lang || "en", dir: document.documentElement.dir || "ltr" };
+
             return `<!doctype html>
-<html dir="${document.documentElement.dir || "auto"}">
+<html lang="${wmn_escape_html(langState.lang || "en")}" dir="${wmn_escape_html(langState.dir || "ltr")}">
 <head>
 <meta charset="utf-8">
 <title>${wmn_escape_html(invoiceNo)}</title>
@@ -2382,7 +2466,7 @@ function wmn_user_lang() {
         margin: 0;
         padding: 0;
         font-size: 13px;
-        direction: ${document.documentElement.dir === "rtl" ? "rtl" : "ltr"};
+        direction: ${langState.dir === "rtl" ? "rtl" : "ltr"};
     }
     .receipt {
         max-width: 760px;
@@ -3152,7 +3236,8 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                 const target_warehouse = warehouse || (this.settings ? this.settings.warehouse : null);
                 if (!target_warehouse) return true;
 
-                if (!navigator.onLine && window.wmnPOSOffline) {
+                const isOffline = typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline();
+                if (isOffline && window.wmnPOSOffline) {
                     const stock_row = await window.wmnPOSOffline.getStock(item.item_code, target_warehouse);
                     return flt(stock_row ? stock_row.actual_qty : 0) >= flt(qty || 0);
                 }
@@ -3280,7 +3365,9 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                     did_freeze = true;
 
                     if (cint(item.has_serial_no || 0) && !item.serial_no) {
-                        const autoSerial = await findSerialOffline("", item.item_code, target_warehouse);
+                        const autoSerial = window.wmnPOSOffline && window.wmnPOSOffline.findSerialOffline
+                            ? await window.wmnPOSOffline.findSerialOffline("", item.item_code, target_warehouse)
+                            : null;
                         if (autoSerial && autoSerial.serial_no) {
                             item.serial_no = autoSerial.serial_no;
                             item.batch_no = item.batch_no || autoSerial.batch_no || "";
@@ -3537,11 +3624,14 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                 super.init_payments();
 
                 this.payment.events.submit_invoice = async () => {
-                    if (!navigator.onLine && window.wmnPOSOffline) {
+                    const isOffline = typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline();
+                    if (isOffline && window.wmnPOSOffline) {
                         try {
                             await wmn_show_offline_payment_dialog(this);
 
                             frappe.dom.freeze(wmn_t("Saving offline invoice...", "جاري حفظ الفاتورة أوفلاين..."));
+                            await wmn_ensure_invoice_batches_before_save(this.frm.doc, this.settings && this.settings.warehouse);
+                            wmn_prepare_converted_doc_for_sync(this.frm.doc);
                             const row = await window.wmnPOSOffline.saveInvoice(this.frm.doc, this);
                             frappe.dom.unfreeze();
 
@@ -3553,6 +3643,7 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                             this.toggle_components(false);
                             this.order_summary.toggle_component(true);
                             this.order_summary.load_summary_of(this.frm.doc, true);
+                            this.wmn_bind_offline_receipt_buttons();
 
                             if (this.recent_order_list && this.recent_order_list.refresh_list) {
                                 this.recent_order_list.refresh_list();
@@ -3630,7 +3721,22 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                 this.recent_order_list = new erpnext.PointOfSale.PastOrderList({
                     wrapper: this.$components_wrapper,
                     events: {
-                        open_invoice_data: (name) => {
+                        open_invoice_data: async (name) => {
+                            const isOffline = typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline();
+                            if (isOffline && window.wmnPOSOffline) {
+                                const pending = await window.wmnPOSOffline.getPendingInvoices();
+                                const row = (pending || []).find(invoice =>
+                                    invoice.offline_id === name ||
+                                    (invoice.invoice && invoice.invoice.name === name)
+                                );
+
+                                if (row && row.invoice) {
+                                    this.order_summary.load_summary_of(row.invoice, true);
+                                    this.wmn_bind_offline_receipt_buttons();
+                                    return;
+                                }
+                            }
+
                             frappe.db.get_doc(doctype, name).then((doc) => {
                                 this.order_summary.load_summary_of(doc);
                             });
@@ -3749,7 +3855,8 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
 
                 this.$invoices_container.html("");
 
-                if (!navigator.onLine && window.wmnPOSOffline) {
+                const isOffline = typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline();
+                if (isOffline && window.wmnPOSOffline) {
                     const pending = await window.wmnPOSOffline.getPendingInvoices();
                     frappe.dom.unfreeze();
                     pending.forEach((row) => {
@@ -3807,7 +3914,8 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
             }
 
             async get_items({ start = 0, page_length = 40, search_term = "" } = {}) {
-                if (!navigator.onLine && window.wmnPOSOffline) {
+                const isOffline = typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline();
+                if (isOffline && window.wmnPOSOffline) {
                     const pos_ctrl = window.cur_pos;
                     const doc = pos_ctrl && pos_ctrl.frm ? pos_ctrl.frm.doc : {};
                     const settings = pos_ctrl && pos_ctrl.settings ? pos_ctrl.settings : {};
@@ -3823,7 +3931,7 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                     return { message: { items } };
                 }
 
-                if (window.wmnPOSOffline && navigator.onLine) {
+                if (window.wmnPOSOffline && !isOffline && navigator.onLine) {
                     window.wmnPOSOffline.preload(window.cur_pos, false);
                 }
 
@@ -3831,7 +3939,8 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
             }
 
             filter_items({ search_term = "" } = {}) {
-                if (!navigator.onLine && window.wmnPOSOffline) {
+                const isOffline = typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline();
+                if (isOffline && window.wmnPOSOffline) {
                     return this.get_items({ search_term }).then(({ message }) => {
                         const items = (message && message.items) || [];
                         if (items.length === 1 && search_term && search_term.length >= 8) {
@@ -4100,7 +4209,26 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
             document.head.appendChild(style);
         }
         
-   
+        function installWMNOfflinePrintDelegation() {
+            if (window.__wmn_offline_print_delegation_v32) return;
+
+            $(document).on("click.wmnOfflinePrintReceiptV32", "button, .btn", function(e) {
+                const text = ($(this).text() || "").trim().toLowerCase();
+                const printReceiptLabel = String(__("Print Receipt")).toLowerCase();
+                if (text !== "print receipt" && text !== printReceiptLabel) return;
+
+                const isOffline = typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline();
+                if (!isOffline || typeof window.wmn_print_offline_receipt !== "function") return;
+
+                e.preventDefault();
+                e.stopPropagation();
+                window.wmn_print_offline_receipt(window.cur_pos && window.cur_pos.frm && window.cur_pos.frm.doc);
+                return false;
+            });
+
+            window.__wmn_offline_print_delegation_v32 = true;
+        }
+
         erpnext.PointOfSale.ItemSelector = MyItemSelector;
         
         
@@ -4110,6 +4238,9 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
         erpnext.PointOfSale.ItemSelector = MyItemSelector;
 wrapper.pos = new MyPOSController(wrapper);
 installWMNOfflineInvoiceManagerDialogV5(wrapper.pos);
+installWMNOfflinePrintDelegation();
+const wmnLanguageState = wmn_apply_user_language();
+$(wrapper).attr({ lang: wmnLanguageState.lang, dir: wmnLanguageState.dir });
 
 console.log("✅ WMN clean integrated POS offline v27 loaded");
 
@@ -4122,20 +4253,6 @@ window.cur_pos = wrapper.pos;
 
 
 
-        if (!window.__wmn_offline_print_delegation_v32) {
-            $(document).on("click.wmnOfflinePrintReceiptV32", "button, .btn", function(e) {
-                const text = ($(this).text() || "").trim().toLowerCase();
-                if (text !== "print receipt" && text !== String(__("Print Receipt")).toLowerCase()) return;
-
-                if (!wmn_is_pos_offline || !wmn_is_pos_offline()) return;
-
-                e.preventDefault();
-                e.stopPropagation();
-                window.wmn_print_offline_receipt(window.cur_pos && window.cur_pos.frm && window.cur_pos.frm.doc);
-                return false;
-            });
-            window.__wmn_offline_print_delegation_v32 = true;
-        }
 
 
 
