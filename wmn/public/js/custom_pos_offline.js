@@ -2134,20 +2134,97 @@ function installWMNOfflineInvoiceManagerDialogV5(pos) {
 
 
 
-function wmn_user_lang() {
-            return String(
-                (frappe.boot && frappe.boot.lang) ||
-                (frappe.boot && frappe.boot.user && frappe.boot.user.language) ||
-                (frappe.session && frappe.session.user_language) ||
-                document.documentElement.lang ||
-                document.body.getAttribute("lang") ||
-                "en"
-            ).toLowerCase();
+        const WMN_POS_LANGUAGE_CACHE = {
+            lang: "wmn_pos_user_lang_v1",
+            dir: "wmn_pos_user_dir_v1"
+        };
+
+        function wmn_storage_get(key) {
+            try {
+                return localStorage.getItem(key);
+            } catch (e) {
+                return "";
+            }
+        }
+
+        function wmn_storage_set(key, value) {
+            try {
+                if (value) localStorage.setItem(key, value);
+            } catch (e) {}
+        }
+
+        function wmn_normalize_lang(lang) {
+            lang = String(lang || "").trim().replace("_", "-").toLowerCase();
+            if (lang === "arabic") return "ar";
+            if (lang === "english") return "en";
+            return lang;
+        }
+
+        function wmn_boot_user_lang() {
+            const boot = (window.frappe && frappe.boot) || {};
+            const session = (window.frappe && frappe.session) || {};
+            const user = session.user || (typeof boot.user === "string" ? boot.user : "") || "";
+            const userInfo = boot.user_info && user ? boot.user_info[user] : null;
+
+            return wmn_normalize_lang(
+                boot.lang ||
+                boot.user_lang ||
+                (boot.user && boot.user.language) ||
+                (userInfo && userInfo.language) ||
+                session.user_language ||
+                session.lang
+            );
+        }
+
+        function wmn_user_lang() {
+            const lang = wmn_boot_user_lang() ||
+                wmn_normalize_lang(wmn_storage_get(WMN_POS_LANGUAGE_CACHE.lang)) ||
+                wmn_normalize_lang(document.documentElement.lang) ||
+                wmn_normalize_lang(document.body && document.body.getAttribute("lang")) ||
+                "en";
+
+            if (wmn_boot_user_lang()) {
+                wmn_storage_set(WMN_POS_LANGUAGE_CACHE.lang, lang);
+            }
+
+            return lang;
+        }
+
+        function wmn_dir_for_lang(lang) {
+            const rtlLangs = ["ar", "fa", "he", "ur", "ps", "sd", "ug", "yi"];
+            const code = wmn_normalize_lang(lang).split("-")[0];
+            return rtlLangs.includes(code) ? "rtl" : "ltr";
+        }
+
+        function wmn_apply_user_language() {
+            const lang = wmn_user_lang();
+            const cachedDir = wmn_storage_get(WMN_POS_LANGUAGE_CACHE.dir);
+            const dir = wmn_dir_for_lang(lang) || cachedDir || "ltr";
+
+            document.documentElement.lang = lang;
+            document.documentElement.dir = dir;
+
+            if (document.body) {
+                document.body.setAttribute("lang", lang);
+                document.body.dir = dir;
+            }
+
+            if (window.frappe) {
+                frappe.boot = frappe.boot || {};
+                if (!frappe.boot.lang) frappe.boot.lang = lang;
+            }
+
+            wmn_storage_set(WMN_POS_LANGUAGE_CACHE.lang, lang);
+            wmn_storage_set(WMN_POS_LANGUAGE_CACHE.dir, dir);
+            window.__wmn_pos_user_lang = lang;
+            window.__wmn_pos_user_dir = dir;
+
+            return { lang, dir };
         }
 
         function wmn_is_arabic() {
             const lang = wmn_user_lang();
-            return lang.startsWith("ar") || document.documentElement.dir === "rtl" || document.body.dir === "rtl";
+            return lang.startsWith("ar");
         }
 
         function wmn_t(en, ar) {
@@ -2162,6 +2239,8 @@ function wmn_user_lang() {
             }
             return text;
         }
+
+        wmn_apply_user_language();
 
 
 
@@ -2370,8 +2449,12 @@ function wmn_user_lang() {
                     </tr>
                 `).join("");
 
+            const langState = typeof wmn_apply_user_language === "function"
+                ? wmn_apply_user_language()
+                : { lang: document.documentElement.lang || "en", dir: document.documentElement.dir || "ltr" };
+
             return `<!doctype html>
-<html dir="${document.documentElement.dir || "auto"}">
+<html lang="${wmn_escape_html(langState.lang || "en")}" dir="${wmn_escape_html(langState.dir || "ltr")}">
 <head>
 <meta charset="utf-8">
 <title>${wmn_escape_html(invoiceNo)}</title>
@@ -2383,7 +2466,7 @@ function wmn_user_lang() {
         margin: 0;
         padding: 0;
         font-size: 13px;
-        direction: ${document.documentElement.dir === "rtl" ? "rtl" : "ltr"};
+        direction: ${langState.dir === "rtl" ? "rtl" : "ltr"};
     }
     .receipt {
         max-width: 760px;
@@ -4156,6 +4239,8 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
 wrapper.pos = new MyPOSController(wrapper);
 installWMNOfflineInvoiceManagerDialogV5(wrapper.pos);
 installWMNOfflinePrintDelegation();
+const wmnLanguageState = wmn_apply_user_language();
+$(wrapper).attr({ lang: wmnLanguageState.lang, dir: wmnLanguageState.dir });
 
 console.log("✅ WMN clean integrated POS offline v27 loaded");
 
