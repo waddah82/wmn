@@ -3638,7 +3638,22 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                 this.recent_order_list = new erpnext.PointOfSale.PastOrderList({
                     wrapper: this.$components_wrapper,
                     events: {
-                        open_invoice_data: (name) => {
+                        open_invoice_data: async (name) => {
+                            const isOffline = typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline();
+                            if (isOffline && window.wmnPOSOffline) {
+                                const pending = await window.wmnPOSOffline.getPendingInvoices();
+                                const row = (pending || []).find(invoice =>
+                                    invoice.offline_id === name ||
+                                    (invoice.invoice && invoice.invoice.name === name)
+                                );
+
+                                if (row && row.invoice) {
+                                    this.order_summary.load_summary_of(row.invoice, true);
+                                    this.wmn_bind_offline_receipt_buttons();
+                                    return;
+                                }
+                            }
+
                             frappe.db.get_doc(doctype, name).then((doc) => {
                                 this.order_summary.load_summary_of(doc);
                             });
