@@ -13,7 +13,7 @@ const WMN_POS_API_CACHE = "wmn-pos-api-v15";
 const SHELL_URLS = [
   "/app",
   "/app/point-of-sale",
-  "/pos-offline-manifest.webmanifest"
+  "/assets/wmn/pos-offline-manifest.webmanifest"
 ];
 
 function sameOrigin(url) {
