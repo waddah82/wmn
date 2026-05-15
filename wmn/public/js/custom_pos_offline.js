@@ -119,7 +119,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
 
             const LEGACY_DB_NAME = "wmn_erpnext_pos_offline";
             const DB_NAME = "wmn_erpnext_pos_offline__" + getSiteKey();
-            const DB_VERSION = 77;
+            const DB_VERSION = 78;
             const STORES = {
                 items: "items",
                 customers: "customers",
@@ -2748,6 +2748,243 @@ function wmn_user_lang() {
 
             window.__wmn_keep_offline_doc_after_online_v50 = true;
         }
+        function wmn_pos_invoice_doctype(ctrl) {
+            ctrl = ctrl || window.cur_pos || {};
+            const settings = ctrl.settings || {};
+            const doc = ctrl.frm && ctrl.frm.doc ? ctrl.frm.doc : {};
+            return cint(settings.as_sales_invoice || doc.as_sales_invoice || 0) === 1 ||
+                doc.doctype === "Sales Invoice"
+                ? "Sales Invoice"
+                : "POS Invoice";
+        }
+
+        function wmn_pos_item_doctype(invoiceDoctype) {
+            return invoiceDoctype === "Sales Invoice" ? "Sales Invoice Item" : "POS Invoice Item";
+        }
+
+        function wmn_pos_return_method(invoiceDoctype) {
+            return invoiceDoctype === "Sales Invoice"
+                ? "erpnext.accounts.doctype.sales_invoice.sales_invoice.make_sales_return"
+                : "erpnext.accounts.doctype.pos_invoice.pos_invoice.make_sales_return";
+        }
+
+        function wmn_safe_settings(settings) {
+            settings = settings || {};
+            if (settings.print_receipt_on_order_complete === undefined) {
+                settings.print_receipt_on_order_complete = 0;
+            }
+            return settings;
+        }
+
+        function wmn_prepare_pos_frm_doc(ctrl) {
+            if (!ctrl || !ctrl.frm || !ctrl.frm.doc) return;
+
+            const doc = ctrl.frm.doc;
+            const settings = ctrl.settings || {};
+            const invoiceDoctype = wmn_pos_invoice_doctype(ctrl);
+
+            doc.items = doc.items || [];
+            doc.is_pos = 1;
+            doc.update_stock = doc.update_stock === undefined ? 1 : doc.update_stock;
+            doc.pos_profile = doc.pos_profile || settings.pos_profile || ctrl.pos_profile || "";
+            doc.set_warehouse = doc.set_warehouse || settings.warehouse || "";
+            doc.selling_price_list = doc.selling_price_list || settings.selling_price_list || "";
+            doc.customer = doc.customer || settings.customer || "";
+            doc.doctype = doc.doctype || invoiceDoctype;
+
+            const itemDoctype = wmn_pos_item_doctype(doc.doctype);
+            doc.items.forEach((row) => {
+                if (!row) return;
+                row.doctype = row.doctype || itemDoctype;
+                row.parenttype = doc.doctype;
+                row.parentfield = "items";
+                row.parent = doc.name;
+            });
+
+            window.cur_pos = ctrl;
+            window.cur_frm = ctrl.frm;
+        }
+
+        function wmn_install_v1595_sales_invoice_events() {
+            if (window.__wmn_v1595_sales_invoice_events_installed) return;
+
+            // ERPNext POS in v15.95 still has POS Invoice Item model events.
+            // Add matching Sales Invoice Item event so item detail/cart refresh works in Sales Invoice mode.
+            try {
+                frappe.model.on("Sales Invoice Item", "*", (fieldname, value, item_row) => {
+                    const pos = window.cur_pos;
+                    if (!pos || !pos.frm || !pos.frm.doc || pos.frm.doc.doctype !== "Sales Invoice") return;
+                    if (!item_row || item_row.doctype !== "Sales Invoice Item") return;
+                    if (!pos.item_details) return;
+
+                    const field_control = pos.item_details[`${fieldname}_control`];
+                    const is_current =
+                        pos.item_details.compare_with_current_item &&
+                        pos.item_details.compare_with_current_item(item_row);
+
+                    if (is_current && field_control && field_control.get_value() !== value) {
+                        field_control.set_value(value);
+                        pos.update_cart_html(item_row);
+                    }
+                });
+            } catch (e) {
+                console.warn("WMN v15.95 Sales Invoice Item event bind failed", e);
+            }
+
+            try {
+                frappe.ui.form.on("Sales Invoice", "paid_amount", (frm) => {
+                    const pos = window.cur_pos;
+                    if (!pos || !pos.frm || pos.frm.doc.name !== frm.doc.name) return;
+
+                    if (pos.cart && pos.cart.update_totals_section) {
+                        pos.cart.update_totals_section(frm);
+                    }
+                    if (pos.payment && pos.payment.update_totals_section) {
+                        pos.payment.update_totals_section(frm.doc);
+                    }
+                    if (pos.payment && pos.payment.render_payment_mode_dom) {
+                        pos.payment.render_payment_mode_dom();
+                    }
+                });
+
+                frappe.ui.form.on("Sales Invoice", "loyalty_amount", (frm) => {
+                    const pos = window.cur_pos;
+                    if (!pos || !pos.frm || pos.frm.doc.name !== frm.doc.name) return;
+                    if (!pos.payment || !pos.payment.$payment_modes) return;
+
+                    const formatted_currency = format_currency(frm.doc.loyalty_amount, frm.doc.currency);
+                    pos.payment.$payment_modes.find(`.loyalty-amount-amount`).html(formatted_currency);
+                });
+
+                frappe.ui.form.on("Sales Invoice", "contact_mobile", (frm) => {
+                    const pos = window.cur_pos;
+                    if (!pos || !pos.frm || pos.frm.doc.name !== frm.doc.name) return;
+                    if (!pos.payment || !pos.payment.request_for_payment_field) return;
+
+                    const contact = frm.doc.contact_mobile;
+                    const request_button = $(pos.payment.request_for_payment_field?.$input?.[0]);
+                    if (contact) {
+                        request_button.removeClass("btn-default").addClass("btn-primary");
+                    } else {
+                        request_button.removeClass("btn-primary").addClass("btn-default");
+                    }
+                });
+
+                frappe.ui.form.on("Sales Invoice", "coupon_code", (frm) => {
+                    const pos = window.cur_pos;
+                    if (!pos || !pos.frm || pos.frm.doc.name !== frm.doc.name) return;
+
+                    if (frm.doc.coupon_code && !frm.applying_pos_coupon_code) {
+                        if (!frm.doc.ignore_pricing_rule) {
+                            frm.applying_pos_coupon_code = true;
+                            frappe.run_serially([
+                                () => (frm.doc.ignore_pricing_rule = 1),
+                                () => frm.trigger("ignore_pricing_rule"),
+                                () => (frm.doc.ignore_pricing_rule = 0),
+                                () => frm.trigger("apply_pricing_rule"),
+                                () => frm.save(),
+                                () => pos.payment && pos.payment.update_totals_section && pos.payment.update_totals_section(frm.doc),
+                                () => (frm.applying_pos_coupon_code = false),
+                            ]);
+                        } else {
+                            frappe.show_alert({
+                                message: __("Ignore Pricing Rule is enabled. Cannot apply coupon code."),
+                                indicator: "orange",
+                            });
+                        }
+                    }
+                });
+            } catch (e) {
+                console.warn("WMN v15.95 Sales Invoice form event bind failed", e);
+            }
+
+            window.__wmn_v1595_sales_invoice_events_installed = true;
+        }
+
+        function wmn_install_v1595_cart_customer_transactions_patch() {
+            if (window.__wmn_v1595_cart_customer_transactions_patch) return;
+
+            const Cart = erpnext.PointOfSale && erpnext.PointOfSale.ItemCart;
+            if (!Cart || !Cart.prototype || typeof Cart.prototype.fetch_customer_transactions !== "function") return;
+
+            const original = Cart.prototype.fetch_customer_transactions;
+
+            Cart.prototype.fetch_customer_transactions = function() {
+                const pos = window.cur_pos;
+                const invoiceDoctype = wmn_pos_invoice_doctype(pos);
+
+                if (invoiceDoctype !== "Sales Invoice") {
+                    return original.apply(this, arguments);
+                }
+
+                if (!this.customer_info || !this.customer_info.customer) {
+                    return original.apply(this, arguments);
+                }
+
+                frappe.db
+                    .get_list("Sales Invoice", {
+                        filters: {
+                            customer: this.customer_info.customer,
+                            docstatus: 1,
+                            is_pos: 1,
+                        },
+                        fields: ["name", "grand_total", "status", "posting_date", "posting_time", "currency"],
+                        limit: 20,
+                    })
+                    .then((res) => {
+                        const transaction_container = this.$customer_section.find(".customer-transactions");
+
+                        if (!res.length) {
+                            transaction_container.html(`<div class="no-transactions-placeholder">No recent transactions found</div>`);
+                            return;
+                        }
+
+                        const elapsed_time = moment(res[0].posting_date + " " + res[0].posting_time).fromNow();
+                        this.$customer_section.find(".customer-desc").html(`Last transacted ${elapsed_time}`);
+                        transaction_container.html("");
+
+                        res.forEach((invoice) => {
+                            const posting_datetime = moment(invoice.posting_date + " " + invoice.posting_time).format("Do MMMM, h:mma");
+                            const indicator_color = {
+                                Paid: "green",
+                                Draft: "red",
+                                Return: "gray",
+                                Consolidated: "blue",
+                            };
+
+                            transaction_container.append(
+                                `<div class="invoice-wrapper" data-invoice-name="${escape(invoice.name)}">
+                                    <div class="invoice-name-date">
+                                        <div class="invoice-name">${invoice.name}</div>
+                                        <div class="invoice-date">${posting_datetime}</div>
+                                    </div>
+                                    <div class="invoice-total-status">
+                                        <div class="invoice-total">
+                                            ${format_currency(invoice.grand_total, invoice.currency, 0) || 0}
+                                        </div>
+                                        <div class="invoice-status">
+                                            <span class="indicator-pill whitespace-nowrap ${indicator_color[invoice.status] || "gray"}">
+                                                <span>${invoice.status}</span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="seperator"></div>`
+                            );
+                        });
+                    });
+            };
+
+            window.__wmn_v1595_cart_customer_transactions_patch = true;
+        }
+
+        function wmn_install_v1595_pos_compatibility() {
+            wmn_install_v1595_sales_invoice_events();
+            wmn_install_v1595_cart_customer_transactions_patch();
+        }
+
+
+
 
 
 
@@ -2759,6 +2996,8 @@ function wmn_user_lang() {
 class MyPOSController extends erpnext.PointOfSale.Controller {
             constructor(wrapper) {
                 super(wrapper);
+                this.settings = wmn_safe_settings(this.settings || {});
+                wmn_install_v1595_pos_compatibility();
                 this.wmn_start_offline_preload();
             }
 
@@ -3120,81 +3359,43 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
 
                 return super.save_and_checkout();
             }
-
             make_sales_invoice_frm() {
-                if (wmn_is_pos_offline()) {
-                    return wmn_make_offline_invoice_doc(this).then((doc) => {
-                        this.frm = wmn_make_offline_frm(doc);
-                        window.cur_frm = this.frm;
-                        window.cur_pos = this;
-                        console.log("WMN POS Offline: using lightweight offline Sales Invoice doc", doc.name);
-                        return this.frm;
-                    });
-                }
+                const doctype = wmn_pos_invoice_doctype(this);
 
-                //const doctype = this.save_as_sales_invoice ? "Sales Invoice" : "POS Invoice";
-                const doctype = this.settings.as_sales_invoice === 1 ? "Sales Invoice" : "POS Invoice";
-                console.log("as_sales_invoice value:", this.settings.as_sales_invoice);
                 return new Promise((resolve) => {
-                    frappe.model.with_doctype(doctype, () => {
+                    const build = () => {
                         this.frm = this.get_new_frm(this.frm, doctype);
-                        this.frm.doc.items = [];
-                        this.frm.doc.is_pos = 1;
-                        this.frm.doc.update_stock = 1;
-                        this.frm.doc.pos_profile = this.settings.pos_profile;
-                        resolve();
-                    });
+                        wmn_prepare_pos_frm_doc(this);
+                        resolve(this.frm);
+                    };
+
+                    frappe.model.with_doctype(doctype, build);
                 });
             }
-            
             async make_return_invoice(doc) {
                 frappe.dom.freeze();
-                this.frm = this.get_new_frm(this.frm, doc.doctype);
+
+                const invoiceDoctype = wmn_pos_invoice_doctype(this);
+                this.frm = this.get_new_frm(this.frm, invoiceDoctype);
                 this.frm.doc.items = [];
-    
-                let method = "";
-                let args = {};
-    
-                // Check if the original document is Sales Invoice or POS Invoice
-                if (doc.doctype === "Sales Invoice") {
-                    method = "erpnext.accounts.doctype.sales_invoice.sales_invoice.make_sales_return";
-                    args = {
-                        source_name: doc.name,
-                        target_doc: this.frm.doc,
-                    };
-                } else {
-                    method = "erpnext.accounts.doctype.pos_invoice.pos_invoice.make_sales_return";
-                    args = {
-                        source_name: doc.name,
-                        target_doc: this.frm.doc,
-                    };
-                }
-    
+
                 return frappe.call({
-                    method: method,
-                    args: args,
-                    callback: (r) => {
-                        if (r.message) {
-                            frappe.model.sync(r.message);
-                            frappe.get_doc(r.message.doctype, r.message.name).__run_link_triggers = false;
-                            this.set_pos_profile_data().then(() => {
-                                            frappe.dom.unfreeze();
-                            });
-                        } else {
-                            frappe.dom.unfreeze();
-                            frappe.msgprint(__("Could not create return invoice"));
-                        }
+                    method: wmn_pos_return_method(invoiceDoctype),
+                    args: {
+                        source_name: doc.name,
+                        target_doc: this.frm.doc,
                     },
-                    error: (err) => {
-                        frappe.dom.unfreeze();
-                        console.error("Error making return invoice:", err);
-                        frappe.msgprint(__("Error creating return: {0}", [err.message]));
-                    }
+                    callback: (r) => {
+                        frappe.model.sync(r.message);
+                        frappe.get_doc(r.message.doctype, r.message.name).__run_link_triggers = false;
+                        this.set_pos_profile_data().then(() => {
+                            frappe.dom.unfreeze();
+                        });
+                    },
                 });
             }
-
             get_new_frm(_frm, doctype) {
-                const target_doctype = doctype || "POS Invoice";
+                const target_doctype = doctype || wmn_pos_invoice_doctype(this);
                 const can_reuse =
                     _frm &&
                     (
@@ -3202,9 +3403,6 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                         (_frm.doc && _frm.doc.doctype === target_doctype)
                     );
 
-                // ERPNext POS الأصلي يعيد استخدام نفس Form عند New Order.
-                // في Sales Invoice كان v42 ينشئ Form جديد كل مرة، فيبقى refresh-fields
-                // مربوطاً بالـ wrapper القديم ويسبب خطأ أول item بعد New Order.
                 if (!can_reuse && _frm && _frm.wrapper) {
                     try {
                         $(_frm.wrapper).off("refresh-fields");
@@ -3318,15 +3516,12 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                 setTimeout(bind, 300);
                 setTimeout(bind, 1000);
             }
-
-
             init_recent_order_list() {
-                const doctype = this.settings.as_sales_invoice === 1  ? "Sales Invoice" : "POS Invoice";
                 this.recent_order_list = new erpnext.PointOfSale.PastOrderList({
                     wrapper: this.$components_wrapper,
                     events: {
                         open_invoice_data: (name) => {
-                            frappe.db.get_doc(doctype, name).then((doc) => {
+                            frappe.db.get_doc(wmn_pos_invoice_doctype(this), name).then((doc) => {
                                 this.order_summary.load_summary_of(doc);
                             });
                         },
@@ -3336,6 +3531,7 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
             }
             init_order_summary() {
                 const doctype = this.settings.as_sales_invoice === 1  ? "Sales Invoice" : "POS Invoice";
+                this.settings = wmn_safe_settings(this.settings || {});
                 this.order_summary = new erpnext.PointOfSale.PastOrderSummary({
                     wrapper: this.$components_wrapper,
                     events: {
@@ -3844,4 +4040,5 @@ console.log("✅ WMN v32 offline receipt print installed");
 
 
 
-console.log("✅ WMN v50 offline invoice stays offline after reconnect fixed");
+
+console.log("✅ WMN v51 ERPNext 15.95.1 compatibility loaded");
