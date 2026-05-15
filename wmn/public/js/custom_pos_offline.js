@@ -119,7 +119,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
 
             const LEGACY_DB_NAME = "wmn_erpnext_pos_offline";
             const DB_NAME = "wmn_erpnext_pos_offline__" + getSiteKey();
-            const DB_VERSION = 78;
+            const DB_VERSION = 80;
             const STORES = {
                 items: "items",
                 customers: "customers",
@@ -2982,6 +2982,58 @@ function wmn_user_lang() {
             wmn_install_v1595_sales_invoice_events();
             wmn_install_v1595_cart_customer_transactions_patch();
         }
+        function wmn_as_frappe_call_like(promise) {
+            // ERPNext 15.95 ItemSelector.load_items_data may call:
+            // this.get_items(...).then(...).always(...)
+            // Native Promise has no always(), while frappe.call returns jqXHR-like object.
+            const p = Promise.resolve(promise);
+
+            return {
+                then(onFulfilled, onRejected) {
+                    const next = p.then(onFulfilled, onRejected);
+                    return wmn_as_frappe_call_like(next);
+                },
+                catch(onRejected) {
+                    const next = p.catch(onRejected);
+                    return wmn_as_frappe_call_like(next);
+                },
+                finally(onFinally) {
+                    const next = p.finally(onFinally);
+                    return wmn_as_frappe_call_like(next);
+                },
+                always(callback) {
+                    p.then(
+                        (value) => {
+                            if (callback) callback(value);
+                            return value;
+                        },
+                        (error) => {
+                            if (callback) callback(error);
+                            throw error;
+                        }
+                    );
+                    return this;
+                },
+                done(callback) {
+                    p.then((value) => {
+                        if (callback) callback(value);
+                    });
+                    return this;
+                },
+                fail(callback) {
+                    p.catch((error) => {
+                        if (callback) callback(error);
+                    });
+                    return this;
+                },
+                promise() {
+                    return p;
+                },
+            };
+        }
+
+
+
 
 
 
@@ -3534,6 +3586,7 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                 this.settings = wmn_safe_settings(this.settings || {});
                 this.order_summary = new erpnext.PointOfSale.PastOrderSummary({
                     wrapper: this.$components_wrapper,
+                    settings: wmn_safe_settings(this.settings || {}),
                     events: {
                         get_frm: () => this.frm,
         
@@ -3596,8 +3649,24 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
         
         
         class MyPastOrderSummary extends OriginalPastOrderSummary {
-            constructor(wrapper, args) {
-                super(wrapper, args);
+            constructor(options = {}, args = {}) {
+                // ERPNext 15.95 PastOrderSummary constructor expects one object:
+                // { wrapper, settings, events }.
+                let opts = options || {};
+
+                if (!opts.wrapper && args && args.wrapper) {
+                    opts = args;
+                }
+
+                opts.settings = wmn_safe_settings(
+                    opts.settings ||
+                    (window.cur_pos && window.cur_pos.settings) ||
+                    {}
+                );
+
+                opts.events = opts.events || {};
+
+                super(opts);
                 this.after_submission = false;
             }
             
@@ -3632,8 +3701,15 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
         
         
         class MyPastOrderList extends OriginalPastOrderList {
-            constructor(wrapper, args) {
-                super(wrapper, args);
+            constructor(options = {}, args = {}) {
+                let opts = options || {};
+
+                if (!opts.wrapper && args && args.wrapper) {
+                    opts = args;
+                }
+
+                opts.events = opts.events || {};
+                super(opts);
                 this.after_submission = false;
             }
             
@@ -3702,28 +3778,27 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
             constructor(wrapper, args) {
                 super(wrapper, args);
             }
+            get_items({ start = 0, page_length = 40, search_term = "" } = {}) {
+                if (wmn_is_pos_offline && wmn_is_pos_offline() && window.wmnPOSOffline) {
+                    const promise = window.wmnPOSOffline
+                        .searchItems({
+                            start,
+                            page_length,
+                            search_term,
+                            price_list: this.price_list,
+                            item_group: this.item_group,
+                        })
+                        .then((items) => ({
+                            message: {
+                                items: items || [],
+                            },
+                        }));
 
-            async get_items({ start = 0, page_length = 40, search_term = "" } = {}) {
-                if (!navigator.onLine && window.wmnPOSOffline) {
-                    const pos_ctrl = window.cur_pos;
-                    const doc = pos_ctrl && pos_ctrl.frm ? pos_ctrl.frm.doc : {};
-                    const settings = pos_ctrl && pos_ctrl.settings ? pos_ctrl.settings : {};
-                    const price_list = doc.selling_price_list || settings.selling_price_list || this.price_list || "";
-                    const item_group = this.item_group || this.parent_item_group || "";
-                    const items = await window.wmnPOSOffline.searchItems({
-                        search_term,
-                        price_list,
-                        start,
-                        page_length,
-                        item_group
-                    });
-                    return { message: { items } };
+                    return wmn_as_frappe_call_like(promise);
                 }
 
-                if (window.wmnPOSOffline && navigator.onLine) {
-                    window.wmnPOSOffline.preload(window.cur_pos, false);
-                }
-
+                // Online must return ERPNext original frappe.call/jqXHR object,
+                // so load_items_data can safely call .then(...).always(...).
                 return super.get_items({ start, page_length, search_term });
             }
 
@@ -4041,4 +4116,6 @@ console.log("✅ WMN v32 offline receipt print installed");
 
 
 
-console.log("✅ WMN v51 ERPNext 15.95.1 compatibility loaded");
+
+
+console.log("✅ WMN v53 ERPNext 15.95 ItemSelector always compatibility fixed");
