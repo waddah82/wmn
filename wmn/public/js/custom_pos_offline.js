@@ -1,3 +1,13 @@
+/* ============================================================================
+ * WMN POS Offline Clean for ERPNext 15.95.x
+ * Reference behavior: v53
+ * Purpose:
+ * - Same runtime behavior as v53.
+ * - Clean naming for old patch/install markers.
+ * - Single final console marker.
+ * - No new features added in this clean version.
+ * ============================================================================ */
+
 frappe.provide("erpnext.PointOfSale");
 
 frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
@@ -18,10 +28,10 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
          */
         function registerWMNPOSServiceWorker() {
             try {
-                if (!document.querySelector('link[rel="manifest"][href="/assets/wmn/pos-offline-manifest.webmanifest"]')) {
+                if (!document.querySelector('link[rel="manifest"][href="/pos-offline-manifest.webmanifest"]')) {
                     const manifest = document.createElement("link");
                     manifest.rel = "manifest";
-                    manifest.href = "/assets/wmn/pos-offline-manifest.webmanifest";
+                    manifest.href = "/pos-offline-manifest.webmanifest";
                     document.head.appendChild(manifest);
                 }
 
@@ -1480,8 +1490,6 @@ async function wmn_make_offline_invoice_doc(ctrl) {
         }
 
 
-
-
 async function wmn_v9_direct_add_or_update(ctrl, args) {
             const frm = (ctrl && ctrl.frm) || (window.cur_pos && window.cur_pos.frm);
             const doc = frm && frm.doc;
@@ -1802,10 +1810,7 @@ function wmn_recalc_offline_payment_doc(doc) {
         }
 
 
-
-
-
-function installWMNOfflineInvoiceManagerDialogV5(pos) {
+function wmn_init_offline_invoice_manager_dialog(pos) {
             if (!window.wmnPOSOffline || window.wmnPOSOffline.__wmn_invoice_manager_dialog_v5) return;
 
             async function deleteInvoiceQueueRow(row) {
@@ -2145,11 +2150,7 @@ function installWMNOfflineInvoiceManagerDialogV5(pos) {
             setTimeout(() => clearInterval(t), 15000);
 
             window.wmnPOSOffline.__wmn_invoice_manager_dialog_v5 = true;
-            console.log("✅ WMN offline invoice manager dialog v5 installed");
-        }
-
-
-
+}
 
 
 function wmn_user_lang() {
@@ -2180,13 +2181,6 @@ function wmn_user_lang() {
             }
             return text;
         }
-
-
-
-
-
-
-
 
 
         window.getAvailableBatchesForItem = function(batches, itemCode, warehouse = "") {
@@ -2323,7 +2317,6 @@ function wmn_user_lang() {
                 });
             });
         };
-
 
 
         function wmn_money(value, currency) {
@@ -2734,11 +2727,11 @@ function wmn_user_lang() {
 
             return doc;
         }
-        if (!window.__wmn_keep_offline_doc_after_online_v50) {
+        if (!window.__wmn_keep_offline_doc_after_online_clean) {
             window.addEventListener("online", function () {
                 if (wmn_current_doc_is_offline_pos()) {
                     window.__wmn_pos_effective_offline = true;
-                    console.log("WMN POS: connection restored, current offline invoice will remain offline until New Order/Complete Order");
+                    console.log("WMN POS: connection restored, current offline invoice remains offline until New Order or Complete Order");
                 }
             });
 
@@ -2746,7 +2739,7 @@ function wmn_user_lang() {
                 window.__wmn_pos_effective_offline = true;
             });
 
-            window.__wmn_keep_offline_doc_after_online_v50 = true;
+            window.__wmn_keep_offline_doc_after_online_clean = true;
         }
         function wmn_pos_invoice_doctype(ctrl) {
             ctrl = ctrl || window.cur_pos || {};
@@ -3031,18 +3024,6 @@ function wmn_user_lang() {
                 },
             };
         }
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 class MyPOSController extends erpnext.PointOfSale.Controller {
@@ -3772,7 +3753,6 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
         erpnext.PointOfSale.PastOrderList = MyPastOrderList;
 
 
-
         const OriginalItemSelector = erpnext.PointOfSale.ItemSelector;
         class MyItemSelector extends OriginalItemSelector {
             constructor(wrapper, args) {
@@ -4081,20 +4061,14 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
         // Assigning the new class back to the namespace
         erpnext.PointOfSale.ItemSelector = MyItemSelector;
 wrapper.pos = new MyPOSController(wrapper);
-installWMNOfflineInvoiceManagerDialogV5(wrapper.pos);
-
-console.log("✅ WMN clean integrated POS offline v27 loaded");
-
+wmn_init_offline_invoice_manager_dialog(wrapper.pos);
 window.cur_pos = wrapper.pos;
 
     });
 };
 
 
-
-
-
-        if (!window.__wmn_offline_print_delegation_v32) {
+        if (!window.__wmn_offline_print_delegation_clean) {
             $(document).on("click.wmnOfflinePrintReceiptV32", "button, .btn", function(e) {
                 const text = ($(this).text() || "").trim().toLowerCase();
                 if (text !== "print receipt" && text !== String(__("Print Receipt")).toLowerCase()) return;
@@ -4106,16 +4080,7 @@ window.cur_pos = wrapper.pos;
                 window.wmn_print_offline_receipt(window.cur_pos && window.cur_pos.frm && window.cur_pos.frm.doc);
                 return false;
             });
-            window.__wmn_offline_print_delegation_v32 = true;
+            window.__wmn_offline_print_delegation_clean = true;
         }
 
-
-
-console.log("✅ WMN v32 offline receipt print installed");
-
-
-
-
-
-
-console.log("✅ WMN v53 ERPNext 15.95 ItemSelector always compatibility fixed");
+console.log("✅ WMN POS Offline CLEAN 15.95 loaded");
