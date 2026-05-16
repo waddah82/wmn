@@ -28,10 +28,10 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
          */
         function registerWMNPOSServiceWorker() {
             try {
-                if (!document.querySelector('link[rel="manifest"][href="/pos-offline-manifest.webmanifest"]')) {
+                if (!document.querySelector('link[rel="manifest"][href="/assets/wmn/pos-offline-manifest.webmanifest"]')) {
                     const manifest = document.createElement("link");
                     manifest.rel = "manifest";
-                    manifest.href = "/pos-offline-manifest.webmanifest";
+                    manifest.href = "/assets/wmn/pos-offline-manifest.webmanifest";
                     document.head.appendChild(manifest);
                 }
 
