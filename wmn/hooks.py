@@ -15,7 +15,7 @@ app_license = "mit"
 app_include_js = [
     "/assets/wmn/js/ui_setting.js",
     "/assets/wmn/js/pos_barcode_override.js",
-    "assets/wmn/js/workspace_header_unified.js",
+    "assets/wmn/js/workspace_header_V16.js",
     #"/assets/wmn/js/workspace_header.js",
 ]
 #app_include_css = "assets/your_app/css/workspace_header.css"
