@@ -1,3 +1,13 @@
+/* ============================================================================
+ * WMN POS Offline Clean for ERPNext 15.95.x
+ * Reference behavior: v53
+ * Purpose:
+ * - Same runtime behavior as v53.
+ * - Clean naming for old patch/install markers.
+ * - Single final console marker.
+ * - No new features added in this clean version.
+ * ============================================================================ */
+
 frappe.provide("erpnext.PointOfSale");
 
 frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
@@ -16,6 +26,8 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
          * - The service worker file must be served from root: /pos-offline-sw.js
          * - The manifest file should be served from root: /pos-offline-manifest.webmanifest
          */
+         
+         
         function registerWMNPOSServiceWorker() {
             try {
                 if (!document.querySelector('link[rel="manifest"][href="/assets/wmn/pos-offline-manifest.webmanifest"]')) {
@@ -137,6 +149,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                 doctype_meta: "doctype_meta",
                 invoice_queue: "invoice_queue",
                 sync_log: "sync_log",
+                barcode_structures: "barcode_structures",
             };
 
             let dbPromise = null;
@@ -249,6 +262,10 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
 
                         if (!db.objectStoreNames.contains(STORES.sync_log)) {
                             db.createObjectStore(STORES.sync_log, { keyPath: "key" });
+                        }
+                        if (!db.objectStoreNames.contains(STORES.barcode_structures)) {
+                            const store = db.createObjectStore(STORES.barcode_structures, { keyPath: "name" });
+                            store.createIndex("prefix", "prefix", { unique: false });
                         }
                     };
 
@@ -488,6 +505,8 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                 preloadRunning = true;
                 try {
                     const data = await fetchMasterData(ctrl);
+                    const barcodeStructures = (data.barcode_structures || [])
+                        .filter(d => d && d.name && d.prefix);
 
                     const items = (data.items || []).map(normalizeItem).filter(d => d.item_code);
                     const prices = (data.item_prices || data.prices || []).map(normalizePrice).filter(d => d.item_code);
@@ -524,6 +543,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                     }));
 
                     await bulkPut(STORES.items, items);
+                    await bulkPut(STORES.barcode_structures, barcodeStructures);
                     await bulkPut(STORES.item_prices, prices);
                     await bulkPut(STORES.customers, customers);
                     await bulkPut(STORES.stock, stock);
@@ -571,6 +591,105 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                     preloadRunning = false;
                 }
             }
+
+
+
+async function wmn_scan_barcode_structure_offline1111(searchValue) {
+    if (!window.wmnPOSOffline || !searchValue) return null;
+
+    const barcode = String(searchValue || "").trim();
+    const structures = await window.wmnPOSOffline.getAll(
+        window.wmnPOSOffline.STORES.barcode_structures
+    );
+
+    for (const structure of structures || []) {
+        const prefix = String(structure.prefix || "");
+        const totalLength = cint(structure.total_length || 0);
+
+        if (!barcode.startsWith(prefix)) continue;
+        if (totalLength && barcode.length !== totalLength) continue;
+
+        let cursor = prefix.length;
+        const res = { barcode };
+
+        for (const row of structure.structure_table || []) {
+            const fieldName = row.field_type;
+            const length = cint(row.length || 0);
+            const dataType = row.field_data_type;
+            const divisor = flt(row.divisor || 1);
+
+            if (!fieldName || !length) continue;
+
+            const rawValue = barcode.substr(cursor, length);
+            cursor += length;
+
+            if (dataType === "Float") {
+                res[fieldName] = flt(rawValue) / divisor;
+            } else {
+                res[fieldName] = rawValue;
+            }
+        }
+
+        if (!res.item_code) continue;
+
+        let itemCode = res.item_code;
+
+        let item = await window.wmnPOSOffline.get(
+            window.wmnPOSOffline.STORES.items,
+            itemCode
+        );
+
+        if (!item) {
+            const barcodeRows = await window.wmnPOSOffline.getAll(
+                window.wmnPOSOffline.STORES.item_barcodes
+            );
+
+            const foundBarcode = (barcodeRows || []).find(b =>
+                String(b.barcode || "").trim() === String(itemCode).trim()
+            );
+
+            if (foundBarcode && foundBarcode.item_code) {
+                itemCode = foundBarcode.item_code;
+                item = await window.wmnPOSOffline.get(
+                    window.wmnPOSOffline.STORES.items,
+                    itemCode
+                );
+
+                if (foundBarcode.uom) {
+                    res.uom = foundBarcode.uom;
+                }
+            }
+        }
+
+        if (!item) return null;
+
+        const settings = await window.wmnPOSOffline.getFullSettings();
+        const priceList = settings.selling_price_list || "";
+        const uom = res.uom || item.uom || item.stock_uom || "";
+
+        const price = await wmn_find_price_offline(item.item_code, priceList, uom);
+
+        return Object.assign({}, item, {
+            barcode,
+            item_code: item.item_code,
+            item_name: item.item_name || item.item_code,
+            qty: flt(res.qty || 1),
+            uom: uom,
+            stock_uom: item.stock_uom || uom,
+            price_list_rate: price ? flt(price.price_list_rate) : flt(item.price_list_rate || item.rate || 0),
+            rate: price ? flt(price.price_list_rate) : flt(item.rate || item.price_list_rate || 0),
+            has_batch_no: cint(item.has_batch_no || 0),
+            has_serial_no: cint(item.has_serial_no || 0),
+            __wmn_from_barcode_structure: 1,
+        });
+    }
+
+    return null;
+}
+
+
+
+
 
             async function getFullSettings() {
                 const saved = await getSetting("full_settings") || {};
@@ -1003,7 +1122,15 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
             }
 
             async function findItem(itemCode, price_list = "") {
+            
+            
+            
+            
                 if (!itemCode) return null;
+                
+
+
+                
 
                 let row = await get(STORES.items, itemCode);
                 let foundBatch = null;
@@ -1480,8 +1607,6 @@ async function wmn_make_offline_invoice_doc(ctrl) {
         }
 
 
-
-
 async function wmn_v9_direct_add_or_update(ctrl, args) {
             const frm = (ctrl && ctrl.frm) || (window.cur_pos && window.cur_pos.frm);
             const doc = frm && frm.doc;
@@ -1802,10 +1927,7 @@ function wmn_recalc_offline_payment_doc(doc) {
         }
 
 
-
-
-
-function installWMNOfflineInvoiceManagerDialogV5(pos) {
+function wmn_init_offline_invoice_manager_dialog(pos) {
             if (!window.wmnPOSOffline || window.wmnPOSOffline.__wmn_invoice_manager_dialog_v5) return;
 
             async function deleteInvoiceQueueRow(row) {
@@ -2145,11 +2267,7 @@ function installWMNOfflineInvoiceManagerDialogV5(pos) {
             setTimeout(() => clearInterval(t), 15000);
 
             window.wmnPOSOffline.__wmn_invoice_manager_dialog_v5 = true;
-            console.log("✅ WMN offline invoice manager dialog v5 installed");
-        }
-
-
-
+}
 
 
 function wmn_user_lang() {
@@ -2180,13 +2298,6 @@ function wmn_user_lang() {
             }
             return text;
         }
-
-
-
-
-
-
-
 
 
         window.getAvailableBatchesForItem = function(batches, itemCode, warehouse = "") {
@@ -2323,7 +2434,6 @@ function wmn_user_lang() {
                 });
             });
         };
-
 
 
         function wmn_money(value, currency) {
@@ -2734,11 +2844,11 @@ function wmn_user_lang() {
 
             return doc;
         }
-        if (!window.__wmn_keep_offline_doc_after_online_v50) {
+        if (!window.__wmn_keep_offline_doc_after_online_clean) {
             window.addEventListener("online", function () {
                 if (wmn_current_doc_is_offline_pos()) {
                     window.__wmn_pos_effective_offline = true;
-                    console.log("WMN POS: connection restored, current offline invoice will remain offline until New Order/Complete Order");
+                    console.log("WMN POS: connection restored, current offline invoice remains offline until New Order or Complete Order");
                 }
             });
 
@@ -2746,7 +2856,7 @@ function wmn_user_lang() {
                 window.__wmn_pos_effective_offline = true;
             });
 
-            window.__wmn_keep_offline_doc_after_online_v50 = true;
+            window.__wmn_keep_offline_doc_after_online_clean = true;
         }
         function wmn_pos_invoice_doctype(ctrl) {
             ctrl = ctrl || window.cur_pos || {};
@@ -3031,18 +3141,6 @@ function wmn_user_lang() {
                 },
             };
         }
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 class MyPOSController extends erpnext.PointOfSale.Controller {
@@ -3625,6 +3723,10 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                                 () => this.make_new_invoice(),
                                 () => this.cart && this.cart.load_invoice ? this.cart.load_invoice() : null,
                                 () => this.item_selector.toggle_component(true),
+                                () => this.cart.enable_customer_selection(),
+                                () => this.cart.$numpad_section.css("display", "none"),
+                                () => this.cart.$totals_section.css("display", "flex"),
+                                
                                 () => frappe.dom.unfreeze(),
                             ]);
                         },
@@ -3772,7 +3874,6 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
         erpnext.PointOfSale.PastOrderList = MyPastOrderList;
 
 
-
         const OriginalItemSelector = erpnext.PointOfSale.ItemSelector;
         class MyItemSelector extends OriginalItemSelector {
             constructor(wrapper, args) {
@@ -3801,8 +3902,252 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                 // so load_items_data can safely call .then(...).always(...).
                 return super.get_items({ start, page_length, search_term });
             }
+            
+                        async wmn_scan_barcode_structure_offline(searchValue) {
+                if (!window.wmnPOSOffline || !searchValue) return null;
 
+                const barcode = String(searchValue || "").trim();
+                const structures = await window.wmnPOSOffline.getAll(
+                    window.wmnPOSOffline.STORES.barcode_structures
+                );
+
+                for (const structure of structures || []) {
+                    const prefix = String(structure.prefix || "");
+                    const totalLength = cint(structure.total_length || 0);
+
+                    if (!barcode.startsWith(prefix)) continue;
+                    if (totalLength && barcode.length !== totalLength) continue;
+
+                    let cursor = prefix.length;
+                    const res = { barcode };
+
+                    for (const row of structure.structure_table || []) {
+                        const fieldName = row.field_type;
+                        const length = cint(row.length || 0);
+                        const dataType = row.field_data_type;
+                        const divisor = flt(row.divisor || 1);
+
+                        if (!fieldName || !length) continue;
+
+                        const rawValue = barcode.substr(cursor, length);
+                        cursor += length;
+
+                        if (dataType === "Float") {
+                            res[fieldName] = flt(rawValue) / divisor;
+                        } else {
+                            res[fieldName] = rawValue;
+                        }
+                    }
+
+                    if (!res.item_code) continue;
+
+                    let itemCode = res.item_code;
+
+                    let item = await window.wmnPOSOffline.get(
+                        window.wmnPOSOffline.STORES.items,
+                        itemCode
+                    );
+
+                    if (!item) {
+                        const barcodeRows = await window.wmnPOSOffline.getAll(
+                            window.wmnPOSOffline.STORES.item_barcodes
+                        );
+
+                        const foundBarcode = (barcodeRows || []).find(b =>
+                            String(b.barcode || "").trim() === String(itemCode).trim()
+                        );
+
+                        if (foundBarcode && foundBarcode.item_code) {
+                            itemCode = foundBarcode.item_code;
+
+                            item = await window.wmnPOSOffline.get(
+                                window.wmnPOSOffline.STORES.items,
+                                itemCode
+                            );
+
+                            if (foundBarcode.uom) {
+                                res.uom = foundBarcode.uom;
+                            }
+                        }
+                    }
+
+                    if (!item) return null;
+
+                    const settings = await window.wmnPOSOffline.getFullSettings();
+                    const priceList = settings.selling_price_list || "";
+                    const uom = res.uom || item.uom || item.stock_uom || "";
+
+                    const price = await wmn_find_price_offline(
+                        item.item_code,
+                        priceList,
+                        uom
+                    );
+
+                    return Object.assign({}, item, {
+                        barcode,
+                        item_code: item.item_code,
+                        item_name: item.item_name || item.item_code,
+                        qty: flt(res.qty || 1),
+                        uom: uom,
+                        stock_uom: item.stock_uom || uom,
+                        price_list_rate: price
+                            ? flt(price.price_list_rate)
+                            : flt(item.price_list_rate || item.rate || 0),
+                        rate: price
+                            ? flt(price.price_list_rate)
+                            : flt(item.rate || item.price_list_rate || 0),
+                        has_batch_no: cint(item.has_batch_no || 0),
+                        has_serial_no: cint(item.has_serial_no || 0),
+                        __wmn_from_barcode_structure: 1,
+                    });
+                }
+
+                return null;
+            }     
+            
             filter_items({ search_term = "" } = {}) {
+
+
+                if (!navigator.onLine && window.wmnPOSOffline) {
+                    return this.wmn_scan_barcode_structure_offline(search_term).then((structured_item) => {
+                        if (structured_item && structured_item.item_code && search_term && search_term.length >= 12) {
+                            this.events.item_selected({
+                                field: "qty",
+                                value: structured_item.qty || 1,
+                                item: structured_item,
+                            });
+
+                            this.set_search_value("");
+                            frappe.utils.play_sound("submit");
+                            return;
+                        }
+
+                        return this.get_items({ search_term }).then(({ message }) => {
+                            const items = (message && message.items) || [];
+
+                            if (items.length === 1 && search_term && search_term.length >= 8) {
+                                this.events.item_selected({
+                                    field: "qty",
+                                    value: items[0].qty || 1,
+                                    item: items[0],
+                                });
+
+                                this.set_search_value("");
+                                frappe.utils.play_sound("submit");
+                                return;
+                            }
+
+                            this.render_item_list(items);
+                        });
+                    });
+                }
+                console.log("settings:", this.settings);
+                if (search_term && search_term.length >= 12) {
+                    const pos_ctrl = window.cur_pos;
+                    
+                    let pos_profile_name = null;
+                    if (pos_ctrl.pos_profile && typeof pos_ctrl.pos_profile === 'string') {
+                        pos_profile_name = pos_ctrl.pos_profile;
+                        console.log("pos_ctrl.pos_profile:", pos_profile_name);
+                    } else if (pos_ctrl.settings && pos_ctrl.settings) {
+                        pos_profile_name = pos_ctrl.settings;
+                        console.log("pos_ctrl.settings.name:", pos_profile_name);
+                    } else if (pos_ctrl.frm?.doc?.pos_profile) {
+                        pos_profile_name = pos_ctrl.frm.doc.pos_profile;
+                    }
+                    
+                    console.log("pos_profile_name:", pos_profile_name);
+                    
+                    return frappe.call({
+                        method: "wmn.barcode_handler.custom_scan_barcode_pos",
+                        args: { 
+                            search_value: search_term,
+                            //pos_profile: this.pos_profile || this.events.get_frm().doc.pos_profile,
+        price_list: this.price_list || this.events.get_frm().doc.selling_price_list,
+
+                            pos_profile: pos_profile_name
+                        }
+                    }).then(async (r) => {
+                        if (r.message && r.message.item_code) {
+                            const data = r.message;
+                            const pos_ctrl = window.cur_pos;
+                            let qty_value = data.qty || 1;
+
+                            let existing_item = null;
+                            if (pos_ctrl.frm && pos_ctrl.frm.doc.items) {
+                                existing_item = pos_ctrl.frm.doc.items.find(i => 
+                                    i.item_code === data.item_code && 
+                                    (i.batch_no === data.batch_no || (!i.batch_no && !data.batch_no))
+                                );
+                            }
+
+                            if (existing_item) {
+                                frappe.dom.freeze();
+                                const new_qty = flt(existing_item.qty) + flt(qty_value);
+                                
+                                await frappe.model.set_value(existing_item.doctype, existing_item.name, "qty", new_qty);
+                                if (data.batch_no && existing_item.batch_no !== data.batch_no) {
+                                    await frappe.model.set_value(existing_item.doctype, existing_item.name, "batch_no", data.batch_no);
+                                }
+                                if (data.serial_no) {
+                                    let new_serial_no = existing_item.serial_no ? existing_item.serial_no + "\n" + data.serial_no : data.serial_no;
+                                    await frappe.model.set_value(existing_item.doctype, existing_item.name, "serial_no", new_serial_no);
+                                }
+                                
+                                if (pos_ctrl.update_cart_html) {
+                                    pos_ctrl.update_cart_html(existing_item);
+                                }
+                                frappe.dom.unfreeze();
+                            } else {
+                                let final_rate = data.rate || data.price_list_rate || 0;
+                                
+                                if (final_rate === 0 && pos_ctrl.item_selector && pos_ctrl.item_selector.items) {
+                                    let ui_item = pos_ctrl.item_selector.items.find(i => i.item_code === data.item_code);
+                                    final_rate = ui_item ? (ui_item.price_list_rate || ui_item.rate) : 0;
+                                }
+                                
+                                console.log("DEBUG - final_rate before adding:", final_rate);
+                                console.log("Data to be sent to item_selected:", data);
+                                
+                                if (pos_ctrl.add_item) {
+                                    await pos_ctrl.add_item({
+                                        item_code: data.item_code,
+                                        qty: qty_value,
+                                        rate: final_rate,
+                                        price_list_rate: final_rate,
+                                        batch_no: data.batch_no,
+                                        serial_no: data.serial_no,
+                                        uom: data.uom
+                                    });
+                                } else {
+                                    this.events.item_selected({
+                                        field: "qty",
+                                        value: qty_value,
+                                        item: {
+                                            item_code: data.item_code,
+                                            batch_no: data.batch_no,
+                                            serial_no: data.serial_no,
+                                            uom: data.uom,
+                                            rate: final_rate
+                                        },
+                                    });
+                                }
+                            }
+
+                            this.set_search_value("");
+                            frappe.utils.play_sound("submit");
+                            return;
+                        }
+                        return super.filter_items({ search_term });
+                    }).catch(err => {
+                        console.error(err);
+                        frappe.dom.unfreeze();
+                        return super.filter_items({ search_term });
+                    });
+                }
+                return super.filter_items({ search_term });
+            }
+            filter_items111333({ search_term = "" } = {}) {
                 if (!navigator.onLine && window.wmnPOSOffline) {
                     return this.get_items({ search_term }).then(({ message }) => {
                         const items = (message && message.items) || [];
@@ -3856,6 +4201,19 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                                 
                                 frappe.dom.unfreeze();
                             } else {
+                            
+                            
+                                let final_rate = data.rate || data.price_list_rate || 0;
+                                console.log("DEBUG - this.item_selector:", this.items);
+                                console.log("DEBUG - windo pos_ctrl.item_selector.items:", pos_ctrl.item_selector.items);
+                                
+                                if (final_rate === 0 && pos_ctrl.item_selector && pos_ctrl.item_selector.items) {
+                                    let ui_item = pos_ctrl.item_selector.items.find(i => i.item_code === data.item_code);
+                                    final_rate = ui_item ? (ui_item.price_list_rate || ui_item.rate) : 0;
+                                }
+                                
+                                console.log("DEBUG - final_rate before adding:", final_rate);
+                                console.log("Data to be sent to item_selected:", data);
                                 this.events.item_selected({
                                     field: "qty",
                                     value: qty_value,
@@ -3864,7 +4222,8 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                                         batch_no: data.batch_no,
                                         serial_no: data.serial_no,
                                         uom: data.uom,
-                                        rate: data.price_list_rate
+                                        rate: final_rate,
+                                        stock_uom: data.uom
                                     },
                                 });
                             }
@@ -3926,6 +4285,10 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                                 </svg>
                                 <span>B</span>
                             </button>
+                            <button class="btn wmn-list-offline-btn">
+                                ${wmn_t("Offline Sync", "مزامنة")}
+                            </button>
+                            
                         </div>
                     </div>
                 `); 
@@ -3944,17 +4307,23 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
                                 </svg>
                             </button>
+                            <button class="wmn-list-offline-btn p-1.5 sm:p-2 rounded transition-all duration-75 touch-manipulation" title="Button View" aria-label="Switch to list view">
+                                <svg class="w-4 h-4 sm:w-4.5 sm:h-4.5" fill="none" stroke="currentColor" viewBox="0 0 50 50">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                                </svg>
+                            </button>
                         </div>
                     </div>
                 `);
                 
                 this.$component.prepend($toggleContainer);
-                
+                this.$offlineBtn = $toggleContainer.find('.wmn-list-offline-btn');
                 this.$gridBtn = $toggleContainer.find('.wmn-grid-view-btn');
                 this.$listBtn = $toggleContainer.find('.wmn-list-view-btn');
                 
                 this.updateActiveButton();
                 
+                this.$offlineBtn.on('click', () => window.wmnPOSOffline.openInvoiceManagerDialog());
                 this.$gridBtn.on('click', () => this.setCardMode());
                 this.$listBtn.on('click', () => this.setButtonMode());
                 
@@ -3964,6 +4333,7 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                     this.setCardMode();
                 }
             }
+            
             
             updateActiveButton() {
                 if (this.button_mode) {
@@ -4081,20 +4451,14 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
         // Assigning the new class back to the namespace
         erpnext.PointOfSale.ItemSelector = MyItemSelector;
 wrapper.pos = new MyPOSController(wrapper);
-installWMNOfflineInvoiceManagerDialogV5(wrapper.pos);
-
-console.log("✅ WMN clean integrated POS offline v27 loaded");
-
+wmn_init_offline_invoice_manager_dialog(wrapper.pos);
 window.cur_pos = wrapper.pos;
 
     });
 };
 
 
-
-
-
-        if (!window.__wmn_offline_print_delegation_v32) {
+        if (!window.__wmn_offline_print_delegation_clean) {
             $(document).on("click.wmnOfflinePrintReceiptV32", "button, .btn", function(e) {
                 const text = ($(this).text() || "").trim().toLowerCase();
                 if (text !== "print receipt" && text !== String(__("Print Receipt")).toLowerCase()) return;
@@ -4106,16 +4470,7 @@ window.cur_pos = wrapper.pos;
                 window.wmn_print_offline_receipt(window.cur_pos && window.cur_pos.frm && window.cur_pos.frm.doc);
                 return false;
             });
-            window.__wmn_offline_print_delegation_v32 = true;
+            window.__wmn_offline_print_delegation_clean = true;
         }
 
-
-
-console.log("✅ WMN v32 offline receipt print installed");
-
-
-
-
-
-
-console.log("✅ WMN v53 ERPNext 15.95 ItemSelector always compatibility fixed");
+console.log("✅ WMN POS Offline CLEAN 15.95 loaded");
