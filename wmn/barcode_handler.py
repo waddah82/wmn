@@ -36,8 +36,9 @@ def custom_search_by_barcode(barcode, pos_profile):
         pos_profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
         item_doc = frappe.get_cached_doc("Item", item_code)
         
+        
         try:
-            get_item_detail = frappe.get_attr("pos_next.api.items.get_item_detail")
+            get_item_detail = frappe.get_attr("wmn.items.get_item_detail")
         except ImportError:
             frappe.throw(_("Application 'pos_next' is not installed"))
 
@@ -240,3 +241,126 @@ def custom_get_item_details11(args=None, doc=None, for_validate=False, overwrite
                 out["total_weight"] = qty_value * out["weight_per_unit"]
 
     return out
+    
+    
+    
+@frappe.whitelist()
+def custom_scan_barcode_pos(search_value: str, pos_profile: str = None, price_list: str = None):
+    all_structures = frappe.get_all("Barcode Structure", fields=["name", "prefix", "total_length"])
+
+    for s in all_structures:
+        if search_value.startswith(s.prefix) and len(search_value) == s.total_length:
+            structure_doc = frappe.get_cached_doc("Barcode Structure", s.name)
+            regex_pattern = f"^{re.escape(structure_doc.prefix)}"
+            field_meta = {}
+
+            for row in structure_doc.structure_table:
+                regex_pattern += f"(?P<{row.field_type}>\\d{{{row.length}}})"
+                field_meta[row.field_type] = {
+                    "type": row.field_data_type,
+                    "divisor": row.divisor or 1.0,
+                }
+
+            match = re.match(regex_pattern, search_value)
+
+            if match:
+                extracted = match.groupdict()
+                res = {"barcode": search_value}
+
+                for field_name, value in extracted.items():
+                    meta = field_meta.get(field_name)
+
+                    if meta["type"] == "Float":
+                        res[field_name] = float(value) / meta["divisor"]
+                    else:
+                        res[field_name] = value
+
+                if res.get("item_code"):
+                    item_code = res["item_code"]
+
+                    if not frappe.db.exists("Item", item_code):
+                        item_code = frappe.db.get_value(
+                            "Item Barcode",
+                            {"barcode": item_code},
+                            "parent",
+                        )
+
+                    if item_code:
+                        res["item_code"] = item_code
+
+                        _update_item_info(res)
+
+                        _apply_pos_price_info(
+                            res,
+                            pos_profile=pos_profile,
+                            price_list=price_list,
+                        )
+
+                        frappe.cache().hset(
+                            "weighted_barcode_qty",
+                            frappe.session.user,
+                            res.get("qty"),
+                        )
+
+                        return res
+
+    res = original_scan_barcode(search_value)
+
+    if isinstance(res, dict):
+        _apply_pos_price_info(
+            res,
+            pos_profile=pos_profile,
+            price_list=price_list,
+        )
+
+    return res
+    
+
+
+def _apply_pos_price_info(res: dict, pos_profile: str = None, price_list: str = None):
+    if not res or not res.get("item_code"):
+        return res
+
+    item_code = res.get("item_code")
+    uom = res.get("uom") or res.get("stock_uom")
+
+    if not price_list and pos_profile:
+        price_list = frappe.db.get_value("POS Profile", pos_profile, "selling_price_list")
+
+    if not price_list:
+        return res
+
+    price = None
+
+    if uom:
+        price = frappe.db.get_value(
+            "Item Price",
+            {
+                "item_code": item_code,
+                "price_list": price_list,
+                "uom": uom,
+                "selling": 1,
+            },
+            ["price_list_rate", "currency"],
+            as_dict=True,
+        )
+
+    if not price:
+        price = frappe.db.get_value(
+            "Item Price",
+            {
+                "item_code": item_code,
+                "price_list": price_list,
+                "selling": 1,
+            },
+            ["price_list_rate", "currency"],
+            as_dict=True,
+        )
+
+    if price:
+        res["price_list"] = price_list
+        res["price_list_rate"] = frappe.utils.flt(price.price_list_rate)
+        res["rate"] = frappe.utils.flt(price.price_list_rate)
+        res["currency"] = price.currency
+
+    return res

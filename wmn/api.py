@@ -212,9 +212,36 @@ def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
         "pos_opening_entries": opening_entries,
         "pos_opening_entry": opening_entries[0] if opening_entries else None,
         "doctype_meta": doctype_meta,
+        "barcode_structures": get_barcode_structures(),
     }
 
+def get_barcode_structures():
+    structures = frappe.get_all(
+        "Barcode Structure",
+        fields=["name", "prefix", "total_length"]
+    )
 
+    result = []
+
+    for s in structures:
+        doc = frappe.get_cached_doc("Barcode Structure", s.name)
+
+        result.append({
+            "name": doc.name,
+            "prefix": doc.prefix,
+            "total_length": doc.total_length,
+            "structure_table": [
+                {
+                    "field_type": row.field_type,
+                    "length": row.length,
+                    "field_data_type": row.field_data_type,
+                    "divisor": row.divisor or 1.0,
+                }
+                for row in doc.structure_table
+            ],
+        })
+
+    return result
 def get_offline_batches(default_warehouse=None):
     batch_fields = ["name", "item", "batch_id", "expiry_date", "manufacturing_date", "disabled"]
 
