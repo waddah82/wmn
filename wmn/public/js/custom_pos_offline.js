@@ -387,6 +387,10 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                     manufacturing_date: row.manufacturing_date || "",
                     actual_qty: flt(row.actual_qty || row.qty || row.balance_qty || 0),
                     disabled: cint(row.disabled || 0),
+                    price_list_rate: flt(row.price_list_rate || row.rate || 0),
+                    rate: flt(row.rate || row.price_list_rate || 0),
+                    currency: row.currency || "",
+                    uom: row.uom || "",
                 };
             }
 
@@ -1384,9 +1388,108 @@ async function wmn_scan_barcode_structure_offline1111(searchValue) {
                 return null;
             }
         }
+            function wmn_prepare_offline_item_detail_row(row, doc, settings) {
+                if (!row) return row;
 
+                row.uom = row.uom || row.stock_uom || "Nos";
+                row.stock_uom = row.stock_uom || row.uom || "Nos";
+                row.conversion_factor = flt(row.conversion_factor || 1);
 
+                row.warehouse =
+                    row.warehouse ||
+                    doc.set_warehouse ||
+                    settings.warehouse ||
+                    "";
+
+                row.price_list_rate = flt(row.price_list_rate || row.rate || 0);
+                row.rate = flt(row.rate || row.price_list_rate || 0);
+
+                row.qty = flt(row.qty || 1);
+                row.stock_qty = flt(row.stock_qty || row.qty * row.conversion_factor);
+
+                row.amount = flt(row.qty * row.rate);
+                row.net_amount = row.amount;
+                row.base_amount = row.amount;
+                row.base_net_amount = row.amount;
+
+                row.item_data = Object.assign({}, row.item_data || {}, {
+                    name: row.item_code,
+                    item_code: row.item_code,
+                    item_name: row.item_name || row.item_code,
+                    stock_uom: row.stock_uom,
+                    uom: row.uom,
+                    has_batch_no: cint(row.has_batch_no || 0),
+                    has_serial_no: cint(row.has_serial_no || 0),
+                });
+
+                return row;
+            }
         function mergeDuplicateOfflineItems(doc) {
+            if (!doc || !Array.isArray(doc.items)) return doc;
+
+            const merged = [];
+            const map = new Map();
+
+            for (const row of doc.items) {
+                const itemCode = String(row.item_code || "").trim();
+                if (!itemCode) continue;
+
+                const uom = String(row.uom || row.stock_uom || "Nos").trim();
+                const warehouse = String(row.warehouse || doc.set_warehouse || "").trim();
+                const rate = String(flt(row.rate || row.price_list_rate || 0));
+
+                const batchNo = String(row.batch_no || "").trim();
+                const serialNo = String(row.serial_no || "").trim();
+
+ 
+                const key = [
+                    itemCode,
+                    uom,
+                    warehouse,
+                    rate,
+                    batchNo,
+                    serialNo
+                ].join("||");
+
+                if (map.has(key)) {
+                    const existing = map.get(key);
+
+                    existing.qty = flt(existing.qty || 0) + flt(row.qty || 1);
+                    existing.conversion_factor = flt(existing.conversion_factor || row.conversion_factor || 1);
+                    existing.stock_qty = flt(existing.qty || 0) * flt(existing.conversion_factor || 1);
+
+                    existing.amount = flt(existing.qty || 0) * flt(existing.rate || existing.price_list_rate || 0);
+                    existing.net_amount = existing.amount;
+                    existing.base_amount = existing.amount;
+                    existing.base_net_amount = existing.amount;
+                } else {
+                    const copy = Object.assign({}, row);
+
+                    copy.qty = flt(copy.qty || 1);
+                    copy.conversion_factor = flt(copy.conversion_factor || 1);
+                    copy.stock_qty = flt(copy.stock_qty || copy.qty * copy.conversion_factor);
+
+                    copy.batch_no = batchNo;
+                    copy.serial_no = serialNo;
+
+                    copy.amount = flt(copy.qty || 0) * flt(copy.rate || copy.price_list_rate || 0);
+                    copy.net_amount = copy.amount;
+                    copy.base_amount = copy.amount;
+                    copy.base_net_amount = copy.amount;
+
+                    map.set(key, copy);
+                    merged.push(copy);
+                }
+            }
+
+            merged.forEach((row, idx) => {
+                row.idx = idx + 1;
+            });
+
+            doc.items = merged;
+            return doc;
+        }
+        function mergeDuplicateOfflineItems1111(doc) {
             if (!doc || !Array.isArray(doc.items)) return doc;
 
             const merged = [];
@@ -3327,6 +3430,32 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                             item.actual_qty = flt(selectedBatch.actual_qty || item.actual_qty || 0);
                             item.qty = flt(selectedBatch.__selected_qty || item.qty || 1);
                             item.__wmn_selected_batch_qty = item.qty;
+                            item = wmn_prepare_offline_item_detail_row(
+                                item,
+                                this.frm.doc,
+                                this.settings || {}
+                            );
+                            const batch_rate = flt(
+                                selectedBatch.price_list_rate ||
+                                selectedBatch.rate ||
+                                0
+                            );
+
+                            if (batch_rate > 0) {
+                                item.price_list_rate = batch_rate;
+                                item.rate = batch_rate;
+                            } else {
+                                item.price_list_rate = flt(item.price_list_rate || item.rate || 0);
+                                item.rate = flt(item.rate || item.price_list_rate || 0);
+                            }
+
+                            if (selectedBatch.currency) {
+                                item.currency = selectedBatch.currency;
+                            }
+
+                            if (selectedBatch.uom) {
+                                item.uom = selectedBatch.uom;
+                            }
                         } else {
                             frappe.show_alert({
                                 message: __("Batch No is required for this item"),
@@ -3449,7 +3578,8 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                     this.frm.dirty();
 
                     if (this.cart && this.cart.load_invoice) {
-                        this.cart.load_invoice();
+                        //this.cart.load_invoice();
+                        this.update_cart_html(item_row);
                     } else {
                         this.update_cart_html(item_row);
                     }
@@ -3481,6 +3611,15 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                         await wmn_show_offline_payment_dialog(this);
 
                         frappe.dom.freeze(wmn_t("Saving offline invoice...", "جاري حفظ الفاتورة أوفلاين..."));
+                        // console.table(
+                        //     (this.frm.doc.items || []).map(r => ({
+                        //         item_code: r.item_code,
+                        //         qty: r.qty,
+                        //         batch_no: r.batch_no,
+                        //         rate: r.rate,
+                        //         amount: r.amount
+                        //     }))
+                        // );
                         const row = await window.wmnPOSOffline.saveInvoice(this.frm.doc, this);
                         frappe.dom.unfreeze();
 
@@ -4462,6 +4601,317 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
 wrapper.pos = new MyPOSController(wrapper);
 wmn_init_offline_invoice_manager_dialog(wrapper.pos);
 window.cur_pos = wrapper.pos;
+
+
+
+
+
+
+function wmn_clean_link_value(value) {
+    if (value === null || value === undefined) return "";
+    const s = String(value).trim();
+    if (!s || s.toLowerCase() === "null" || s.toLowerCase() === "undefined") return "";
+    return s;
+}
+
+async function wmn_show_online_batch_selection_dialog(item, warehouse = "", price_list = "") {
+    const r = await frappe.call({
+        method: "wmn.api.get_pos_item_batches",
+        args: {
+            item_code: item.item_code,
+            warehouse: warehouse || "",
+            price_list: price_list || "",
+            uom: item.uom || item.stock_uom || "",
+        },
+        freeze: false,
+    });
+
+    const rows = r.message || [];
+
+    if (!rows.length) {
+        return null;
+    }
+
+    return new Promise((resolve) => {
+        const dialog = new frappe.ui.Dialog({
+            title: __("Select Batch No and Quantity"),
+            size: "large",
+            fields: [
+                {
+                    fieldtype: "HTML",
+                    fieldname: "batch_html",
+                    options: `
+                        <div style="max-height:55vh;overflow:auto;border:1px solid #e5e7eb;border-radius:10px;">
+                            <table class="table table-bordered table-hover" style="margin:0;">
+                                <thead style="position:sticky;top:0;background:#f8fafc;z-index:1;">
+                                    <tr>
+                                        <th>${__("Batch No")}</th>
+                                        <th>${__("Available Qty")}</th>
+                                        <th>${__("Rate")}</th>
+                                        <th>${__("Expiry Date")}</th>
+                                        <th style="width:130px;">${__("Qty")}</th>
+                                        <th style="width:110px;">${__("Action")}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${rows.map((b, idx) => {
+                                        const availableQty = flt(b.actual_qty || 0);
+                                        const defaultQty = Math.min(flt(item.qty || 1), availableQty || 1) || 1;
+                                        const rate = flt(b.price_list_rate || b.rate || item.price_list_rate || item.rate || 0);
+                                        const currency = b.currency || item.currency || frappe.defaults.get_default("currency") || "YER";
+
+                                        return `
+                                            <tr>
+                                                <td style="font-weight:700;">${frappe.utils.escape_html(b.batch_no || "")}</td>
+                                                <td>${availableQty}</td>
+                                                <td>${format_currency(rate, currency)}</td>
+                                                <td>${frappe.utils.escape_html(b.expiry_date || "")}</td>
+                                                <td>
+                                                    <input type="number"
+                                                        class="form-control input-xs wmn-online-batch-qty"
+                                                        data-idx="${idx}"
+                                                        min="0.001"
+                                                        step="0.001"
+                                                        max="${availableQty}"
+                                                        value="${defaultQty}">
+                                                </td>
+                                                <td>
+                                                    <button type="button"
+                                                        class="btn btn-xs btn-primary wmn-select-online-batch"
+                                                        data-idx="${idx}">
+                                                        ${__("Select")}
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        `;
+                                    }).join("")}
+                                </tbody>
+                            </table>
+                        </div>
+                    `,
+                },
+            ],
+            secondary_action_label: __("Cancel"),
+            secondary_action: () => {
+                document.activeElement && document.activeElement.blur();
+                dialog.hide();
+                resolve(null);
+            },
+        });
+
+        dialog.show();
+
+        dialog.$wrapper.on("click", ".wmn-select-online-batch", function () {
+            const idx = cint($(this).attr("data-idx"));
+            const selected = rows[idx];
+
+            if (!selected) {
+                document.activeElement && document.activeElement.blur();
+                dialog.hide();
+                resolve(null);
+                return;
+            }
+
+            const qty = flt(
+                dialog.$wrapper.find(`.wmn-online-batch-qty[data-idx="${idx}"]`).val()
+            );
+
+            if (qty <= 0) {
+                frappe.show_alert({
+                    message: __("Quantity must be greater than zero"),
+                    indicator: "orange",
+                });
+                return;
+            }
+
+            if (qty > flt(selected.actual_qty || 0)) {
+                frappe.show_alert({
+                    message: __("Quantity cannot exceed available batch quantity"),
+                    indicator: "orange",
+                });
+                return;
+            }
+
+            selected.__selected_qty = qty;
+
+            document.activeElement && document.activeElement.blur();
+            dialog.hide();
+            resolve(selected);
+        });
+    });
+}
+
+
+function wmn_install_online_batch_click_interceptor() {
+    if (window.__wmn_online_batch_click_interceptor_installed) return;
+
+    document.addEventListener("click", async function (event) {
+        const itemEl = event.target.closest(".item-wrapper");
+
+        if (!itemEl) return;
+
+        //console.log("WMN Online Batch Click Intercepted", itemEl);
+
+        if (!navigator.onLine) return;
+        if (!window.cur_pos || !window.cur_pos.item_selector) return;
+
+        const pos = window.cur_pos;
+        const selector = pos.item_selector;
+
+        if (!pos.frm || !pos.frm.doc) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+
+        const item_code = wmn_clean_link_value(
+    unescape(itemEl.getAttribute("data-item-code") || "")
+);
+        //console.log("WMN clicked item_code:", item_code);
+
+        if (!item_code) return;
+
+      
+const uom = wmn_clean_link_value(
+    unescape(itemEl.getAttribute("data-uom") || "")
+);
+
+const rate = flt(itemEl.getAttribute("data-rate") || 0);
+
+const stock_uom = wmn_clean_link_value(
+    unescape(itemEl.getAttribute("data-stock-uom") || "")
+) || uom;
+
+        const doc = pos.frm.doc;
+        const warehouse = doc.set_warehouse || doc.warehouse || pos.settings?.warehouse || "";
+        const price_list = doc.selling_price_list || selector.price_list || "";
+
+        const item_for_cart = {
+            item_code,
+            uom,
+            stock_uom,
+            rate,
+            price_list_rate: rate,
+        };
+
+        let selectedBatch = null;
+
+        try {
+            selectedBatch = await wmn_show_online_batch_selection_dialog(
+                item_for_cart,
+                warehouse,
+                price_list
+            );
+            //console.log("WMN selected online batch:", selectedBatch);
+        } catch (e) {
+            console.error("WMN online batch dialog failed", e);
+            selectedBatch = null;
+        }
+
+        if (selectedBatch) {
+            const batchRate = flt(
+                selectedBatch.price_list_rate ||
+                selectedBatch.rate ||
+                item_for_cart.price_list_rate ||
+                item_for_cart.rate ||
+                0
+            );
+
+            item_for_cart.batch_no = selectedBatch.batch_no;
+            item_for_cart.warehouse = selectedBatch.warehouse || warehouse;
+            item_for_cart.uom = selectedBatch.uom || item_for_cart.uom;
+            item_for_cart.stock_uom = item_for_cart.stock_uom || item_for_cart.uom;
+            item_for_cart.rate = batchRate;
+            item_for_cart.price_list_rate = batchRate;
+
+            selector.events.item_selected({
+                field: "qty",
+                value: selectedBatch.__selected_qty || 1,
+                item: item_for_cart,
+            });
+            
+            setTimeout(async function () {
+    try {
+        const doc = pos.frm && pos.frm.doc ? pos.frm.doc : null;
+        if (!doc || !doc.items) return;
+
+        const row = doc.items.find(r =>
+            String(r.item_code || "").trim() === String(item_for_cart.item_code || "").trim() &&
+            String(r.batch_no || "").trim() === String(item_for_cart.batch_no || "").trim()
+        );
+
+        if (!row) return;
+
+        const qty = flt(selectedBatch.__selected_qty || row.qty || 1);
+        const rate = flt(batchRate || selectedBatch.price_list_rate || selectedBatch.rate || 0);
+
+        if (rate > 0) {
+            await frappe.model.set_value(row.doctype, row.name, "price_list_rate", rate);
+            await frappe.model.set_value(row.doctype, row.name, "rate", rate);
+            await frappe.model.set_value(row.doctype, row.name, "net_rate", rate);
+            await frappe.model.set_value(row.doctype, row.name, "base_rate", rate);
+            await frappe.model.set_value(row.doctype, row.name, "base_net_rate", rate);
+        }
+
+        await frappe.model.set_value(row.doctype, row.name, "qty", qty);
+
+        row.amount = flt(row.qty || qty) * flt(row.rate || rate);
+        row.net_amount = row.amount;
+        row.base_amount = row.amount;
+        row.base_net_amount = row.amount;
+
+        if (pos.update_cart_html) {
+            pos.update_cart_html(row);
+        }
+
+        if (pos.cart && pos.cart.update_totals_section) {
+            pos.cart.update_totals_section(pos.frm);
+        }
+
+        if (pos.frm && pos.frm.refresh_field) {
+            pos.frm.refresh_field("items");
+        }
+    } catch (e) {
+        console.error("WMN failed to apply online batch price", e);
+    }
+}, 300);
+            
+            
+        } else {
+            selector.events.item_selected({
+                field: "qty",
+                value: "+1",
+                item: item_for_cart,
+            });
+        }
+
+        selector.search_field && selector.search_field.set_focus();
+    }, true);
+
+    window.__wmn_online_batch_click_interceptor_installed = true;
+}
+wmn_install_online_batch_click_interceptor();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     });
 };
