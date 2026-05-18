@@ -7,6 +7,143 @@ from frappe.utils import flt, now_datetime
 from erpnext.stock.doctype.batch.batch import get_batch_qty
 
 
+
+
+@frappe.whitelist()
+def get_pos_item_batches(item_code, warehouse=None, price_list=None, uom=None):
+    if not item_code:
+        frappe.throw(_("Item Code is required"))
+
+    item = frappe.db.get_value(
+        "Item",
+        item_code,
+        ["name", "stock_uom", "has_batch_no"],
+        as_dict=True,
+    )
+
+    if not item:
+        frappe.throw(_("Item {0} not found").format(item_code))
+
+    if not item.has_batch_no:
+        return []
+
+    stock_uom = uom or item.stock_uom
+
+    batches = frappe.get_all(
+        "Batch",
+        filters={
+            "item": item_code,
+            "disabled": 0,
+        },
+        fields=[
+            "name",
+            "item",
+            "expiry_date",
+            "manufacturing_date",
+        ],
+        order_by="expiry_date asc, name asc",
+    )
+
+    result = []
+
+    for b in batches:
+        batch_no = b.name
+
+        try:
+            qty = flt(
+                get_batch_qty(
+                    batch_no=batch_no,
+                    warehouse=warehouse,
+                    item_code=item_code,
+                )
+            )
+        except TypeError:
+            qty = flt(get_batch_qty(batch_no, warehouse, item_code))
+        except Exception:
+            qty = 0
+
+        if qty <= 0:
+            continue
+
+        price = None
+
+        if price_list:
+            price = frappe.db.get_value(
+                "Item Price",
+                {
+                    "item_code": item_code,
+                    "price_list": price_list,
+                    "selling": 1,
+                    "batch_no": batch_no,
+                    "uom": stock_uom,
+                },
+                ["price_list_rate", "currency", "uom", "batch_no"],
+                as_dict=True,
+            )
+
+            if not price:
+                price = frappe.db.get_value(
+                    "Item Price",
+                    {
+                        "item_code": item_code,
+                        "price_list": price_list,
+                        "selling": 1,
+                        "batch_no": batch_no,
+                    },
+                    ["price_list_rate", "currency", "uom", "batch_no"],
+                    as_dict=True,
+                )
+
+            if not price:
+                price = frappe.db.get_value(
+                    "Item Price",
+                    {
+                        "item_code": item_code,
+                        "price_list": price_list,
+                        "selling": 1,
+                        "uom": stock_uom,
+                    },
+                    ["price_list_rate", "currency", "uom", "batch_no"],
+                    as_dict=True,
+                )
+
+            if not price:
+                price = frappe.db.get_value(
+                    "Item Price",
+                    {
+                        "item_code": item_code,
+                        "price_list": price_list,
+                        "selling": 1,
+                    },
+                    ["price_list_rate", "currency", "uom", "batch_no"],
+                    as_dict=True,
+                )
+
+        result.append({
+            "batch_no": batch_no,
+            "warehouse": warehouse or "",
+            "actual_qty": qty,
+            "expiry_date": b.expiry_date,
+            "manufacturing_date": b.manufacturing_date,
+            "price_list_rate": flt(price.price_list_rate) if price else 0,
+            "rate": flt(price.price_list_rate) if price else 0,
+            "currency": price.currency if price else "",
+            "uom": price.uom if price and price.uom else stock_uom,
+        })
+
+    return result
+
+
+
+
+
+
+
+
+
+
+
+
 @frappe.whitelist()
 def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
     if not pos_profile:
@@ -161,7 +298,7 @@ def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
         limit_page_length=0,
     )
 
-    batches = get_offline_batches(default_warehouse)
+    batches = get_offline_batches(default_warehouse, selling_price_list)
     serial_rows = get_offline_serials(default_warehouse)
 
     item_groups = frappe.get_all(
@@ -242,7 +379,7 @@ def get_barcode_structures():
         })
 
     return result
-def get_offline_batches(default_warehouse=None):
+def get_offline_batches(default_warehouse=None, price_list=None ):
     batch_fields = ["name", "item", "batch_id", "expiry_date", "manufacturing_date", "disabled"]
 
     batch_meta = frappe.get_meta("Batch")
@@ -286,6 +423,13 @@ def get_offline_batches(default_warehouse=None):
             qty = get_erpnext_batch_qty(batch_no=batch_no, warehouse=wh, item_code=item_code)
             if flt(qty) <= 0:
                 continue
+            stock_uom = frappe.db.get_value("Item", item_code, "stock_uom") or ""
+            price = get_batch_price(
+                item_code=item_code,
+                batch_no=batch_no,
+                price_list=price_list,
+                uom=stock_uom,
+            )
 
             batches.append({
                 "item_code": item_code,
@@ -297,10 +441,41 @@ def get_offline_batches(default_warehouse=None):
                 "manufacturing_date": b.get("manufacturing_date"),
                 "barcode": b.get("barcode") if has_barcode else "",
                 "disabled": b.get("disabled") or 0,
+                "price_list_rate": flt(price.price_list_rate) if price else 0,
+                "rate": flt(price.price_list_rate) if price else 0,
+                "currency": price.currency if price else "",
+                "uom": price.uom if price and price.uom else stock_uom,
             })
 
     return batches
+def get_batch_price(item_code, batch_no, price_list, uom=None):
+    filters = {
+        "item_code": item_code,
+        "price_list": price_list,
+        "selling": 1,
+        "batch_no": batch_no,
+    }
 
+    if uom:
+        filters["uom"] = uom
+
+    price = frappe.db.get_value(
+        "Item Price",
+        filters,
+        ["price_list_rate", "currency", "uom"],
+        as_dict=True,
+    )
+
+    if not price and uom:
+        filters.pop("uom", None)
+        price = frappe.db.get_value(
+            "Item Price",
+            filters,
+            ["price_list_rate", "currency", "uom"],
+            as_dict=True,
+        )
+
+    return price
 
 def get_erpnext_batch_qty(batch_no, warehouse=None, item_code=None):
     if not batch_no:

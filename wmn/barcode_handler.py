@@ -289,6 +289,20 @@ def custom_scan_barcode_pos(search_value: str, pos_profile: str = None, price_li
                         res["item_code"] = item_code
 
                         _update_item_info(res)
+                        batch_no = res.get("batch_no")
+                        if batch_no:
+                            valid_batch = frappe.db.exists("Batch", {
+                                "name": batch_no,
+                                "item": res.get("item_code")
+                            })
+
+                            if valid_batch:
+                                res["batch_no"] = batch_no
+                                res["__batch_confirmed"] = 1
+                            else:
+                                res.pop("batch_no", None)
+                                res["__batch_confirmed"] = 0
+
 
                         _apply_pos_price_info(
                             res,
