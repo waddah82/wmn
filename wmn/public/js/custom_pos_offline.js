@@ -1794,9 +1794,15 @@ function wmn_recalc_offline_payment_doc(doc) {
             });
 
             const paidBefore = payments.reduce((s, p) => s + flt(p.amount || 0), 0);
-            if (defaultPayment && paidBefore <= 0) {
-                defaultPayment.amount = total;
-                defaultPayment.base_amount = total;
+            const difference = Math.max(0, total - paidBefore);
+            
+            //if (defaultPayment && paidBefore <= 0)
+            if (defaultPayment && difference > 0 && !doc.__wmn_default_payment_autofilled ) {
+                //defaultPayment.amount = total;
+                //defaultPayment.base_amount = total;
+                defaultPayment.amount = flt(defaultPayment.amount || 0) + difference;
+                defaultPayment.base_amount = flt(defaultPayment.base_amount || 0) + difference;
+                doc.__wmn_default_payment_autofilled = 1;
             }
 
             const rowsHtml = payments.map((p, idx) => {
@@ -3467,7 +3473,10 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
             async save_and_checkout() {
                 if (wmn_is_pos_offline && wmn_is_pos_offline()) {
                     try {
+                    
+                    
                         this.wmn_recalculate_offline_totals();
+                        
 
                         await wmn_show_offline_payment_dialog(this);
 
