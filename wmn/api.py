@@ -6,7 +6,21 @@ import json
 from frappe.utils import flt, now_datetime
 from erpnext.stock.doctype.batch.batch import get_batch_qty
 
+@frappe.whitelist(allow_guest=False)
+def pos_health_check(ts=None, source=None):
+    """Small HTTP application health check for POS online/offline detection.
 
+    This endpoint is intentionally independent from Sales Invoice/POS Invoice
+    controllers and does not touch pricing, taxes, customer, or item details.
+    The browser calls it with fetch(POST, no-store) before deciding whether
+    POS may run online.
+    """
+    return {
+        "ok": 1,
+        "service": "wmn_pos",
+        "source": source or "",
+        "ts": frappe.utils.now(),
+    }
 
 
 @frappe.whitelist()
