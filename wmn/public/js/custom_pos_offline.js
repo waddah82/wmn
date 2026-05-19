@@ -27,13 +27,124 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
          * - The manifest file should be served from root: /pos-offline-manifest.webmanifest
          */
          
-         
-        function registerWMNPOSServiceWorker() {
+         function registerWMNPOSServiceWorker() {
             try {
-                if (!document.querySelector('link[rel="manifest"][href="/assets/wmn/pos-offline-manifest.webmanifest"]')) {
+                if (!document.querySelector('link[rel="manifest"][href="/pos-offline-manifest.webmanifest"]')) {
                     const manifest = document.createElement("link");
                     manifest.rel = "manifest";
-                    manifest.href = "/assets/wmn/pos-offline-manifest.webmanifest";
+                    manifest.href = "/pos-offline-manifest.webmanifest";
+                    document.head.appendChild(manifest);
+                }
+
+                if (!document.querySelector('meta[name="theme-color"]')) {
+                    const theme = document.createElement("meta");
+                    theme.name = "theme-color";
+                    theme.content = "#4F46E5";
+                    document.head.appendChild(theme);
+                }
+
+                if (!document.querySelector('meta[name="mobile-web-app-capable"]')) {
+                    const mobileCapable = document.createElement("meta");
+                    mobileCapable.name = "mobile-web-app-capable";
+                    mobileCapable.content = "yes";
+                    document.head.appendChild(mobileCapable);
+                }
+
+                if (!document.querySelector('meta[name="apple-mobile-web-app-capable"]')) {
+                    const appleCapable = document.createElement("meta");
+                    appleCapable.name = "apple-mobile-web-app-capable";
+                    appleCapable.content = "yes";
+                    document.head.appendChild(appleCapable);
+                }
+
+                if (!document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')) {
+                    const appleStatus = document.createElement("meta");
+                    appleStatus.name = "apple-mobile-web-app-status-bar-style";
+                    appleStatus.content = "default";
+                    document.head.appendChild(appleStatus);
+                }
+
+                if (!document.querySelector('link[rel="apple-touch-icon"]')) {
+                    const appleIcon = document.createElement("link");
+                    appleIcon.rel = "apple-touch-icon";
+                    appleIcon.href = "/assets/wmn/icons/apple-touch-icon.png";
+                    document.head.appendChild(appleIcon);
+                }
+
+                if (!document.querySelector('link[rel="icon"][href="/assets/wmn/icons/icon-192.png"]')) {
+                    const icon = document.createElement("link");
+                    icon.rel = "icon";
+                    icon.type = "image/png";
+                    icon.sizes = "192x192";
+                    icon.href = "/assets/wmn/icons/icon-192.png";
+                    document.head.appendChild(icon);
+                }
+
+                if (!("serviceWorker" in navigator)) {
+                    console.warn("WMN POS Offline: Service Worker is not supported in this browser");
+                    return;
+                }
+
+                if (location.protocol !== "https:" && location.hostname !== "localhost") {
+                    console.warn("WMN POS Offline: Service Worker requires HTTPS or localhost");
+                    return;
+                }
+
+                if (window.__wmn_pos_sw_register_started) {
+                    return;
+                }
+
+                window.__wmn_pos_sw_register_started = true;
+
+                const doRegister = function () {
+                    navigator.serviceWorker.register("/pos-offline-sw.js", {
+                        scope: "/",
+                        updateViaCache: "none"
+                    })
+                        .then(function (reg) {
+                            console.log("WMN POS Service Worker registered", reg.scope);
+
+                            if (reg && reg.update) {
+                                reg.update().catch(function (e) {
+                                    console.warn("WMN POS Service Worker update check failed", e);
+                                });
+                            }
+                        })
+                        .catch(function (err) {
+                            console.error("WMN POS Service Worker registration failed", err);
+
+                            if (window.frappe && frappe.show_alert) {
+                                frappe.show_alert({
+                                    message: __("Service Worker registration failed: /pos-offline-sw.js"),
+                                    indicator: "orange"
+                                });
+                            }
+                        });
+                };
+
+                if (document.readyState === "complete" || document.readyState === "interactive") {
+                    doRegister();
+                } else {
+                    window.addEventListener("load", doRegister, { once: true });
+                }
+
+                if (!window.__wmn_sw_controllerchange_v25) {
+                    navigator.serviceWorker.addEventListener("controllerchange", function () {
+                        console.log("WMN POS Service Worker controller changed");
+                    });
+
+                    window.__wmn_sw_controllerchange_v25 = true;
+                }
+            } catch (e) {
+                console.error("WMN POS PWA registration error", e);
+            }
+        }        
+        function registerWMNPOSServiceWorker111() {
+            try {
+                if (!document.querySelector('link[rel="manifest"][href="/pos-offline-manifest.webmanifest"]')) {
+                    const manifest = document.createElement("link");
+                    manifest.rel = "manifest";
+                    manifest.href = "/pos-offline-manifest.webmanifest";
                     document.head.appendChild(manifest);
                 }
 
@@ -98,7 +209,46 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
 
         registerWMNPOSServiceWorker();
 
+function wmn_install_pos_pwa_app_css() {
+    if (window.__wmn_pos_pwa_app_css_installed) return;
+    window.__wmn_pos_pwa_app_css_installed = true;
 
+    const style = document.createElement("style");
+    style.id = "wmn-pos-pwa-app-css";
+
+    style.textContent = `
+    @media (display-mode: standalone) {
+            body > div.main-section > div.sticky-top {
+                display: none !important;
+            }
+            body > div.global-workspace-header {
+                display: none !important;
+            }
+            .page-head {
+                display: none !important;
+            }
+
+            #page-point-of-sale .page-body,
+            #page-point-of-sale .layout-main-section,
+            #page-point-of-sale .point-of-sale-app {
+                padding-top: 0 !important;
+                margin-top: 0 !important;
+            }
+        }
+    `;
+
+    document.head.appendChild(style);
+
+    const isStandalone =
+        window.matchMedia("(display-mode: standalone)").matches ||
+        window.navigator.standalone === true;
+
+    if (isStandalone) {
+        document.body.classList.add("wmn-pos-pwa-app");
+    }
+}
+
+wmn_install_pos_pwa_app_css();
         /**
          * WMN POS Offline Bridge
          * - Stores POS master data in IndexedDB
@@ -4021,7 +4171,39 @@ function wmn_user_lang() {
 
 
         wmn_install_online_batch_click_interceptor();
+        
+        
+        
+        function wmn_safe_offline_cart_reload(pos) {
+            if (!pos || !pos.cart || !pos.cart.load_invoice) {
+                return;
+            }
 
+            try {
+                window.__wmn_loading_offline_cart_ui = true;
+
+                pos.cart.load_invoice();
+
+                if (pos.cart.$numpad_section) {
+                    pos.cart.$numpad_section.css("display", "");
+                }
+
+                if (pos.cart.$totals_section) {
+                    pos.cart.$totals_section.css("display", "flex");
+                }
+
+                if (pos.cart.$component) {
+                    pos.cart.$component.find(".numpad-section").css("display", "");
+                    pos.cart.$component.find(".number-pad").css("display", "");
+                    pos.cart.$component.find(".cart-item").css("pointer-events", "auto");
+                    pos.cart.$component.find(".cart-items, .cart-item-wrapper").css("pointer-events", "auto");
+                }
+            } catch (e) {
+                console.warn("WMN offline cart UI reload skipped", e);
+            } finally {
+                window.__wmn_loading_offline_cart_ui = false;
+            }
+        }
 
 class MyPOSController extends erpnext.PointOfSale.Controller {
             constructor(wrapper) {
@@ -4087,6 +4269,8 @@ async make_new_invoice() {
                         if (this.cart && this.cart.toggle_component) {
                             this.cart.toggle_component(true);
                         }
+                        wmn_safe_offline_cart_reload(this);
+
                         if (this.order_summary && this.order_summary.toggle_component) {
                             this.order_summary.toggle_component(false);
                         }
