@@ -2,10 +2,10 @@
  * WMN POS Offline Clean for ERPNext 15.27.x
  * Reference behavior: v53 adapted for ERPNext 15.27 offline form isolation
  * Purpose:
- * - Same runtime behavior as v53.
- * - Clean naming for old patch/install markers.
- * - Single final console marker.
- * - No new features added in this clean version.
+ * - Same runtime behavior as last verified working build.
+ * - Removed old unused duplicate functions and dead 1111 helpers.
+ * - Centralized POS offline state detection to reduce repeated checks.
+ * - No feature behavior changed in this refactor.
  * ============================================================================ */
 
 frappe.provide("erpnext.PointOfSale");
@@ -139,74 +139,8 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                 console.error("WMN POS PWA registration error", e);
             }
         }        
-        function registerWMNPOSServiceWorker111() {
-            try {
-                if (!document.querySelector('link[rel="manifest"][href="/pos-offline-manifest.webmanifest"]')) {
-                    const manifest = document.createElement("link");
-                    manifest.rel = "manifest";
-                    manifest.href = "/pos-offline-manifest.webmanifest";
-                    document.head.appendChild(manifest);
-                }
-
-                if (!document.querySelector('meta[name="theme-color"]')) {
-                    const theme = document.createElement("meta");
-                    theme.name = "theme-color";
-                    theme.content = "#4F46E5";
-                    document.head.appendChild(theme);
-                }
-
-                if (!("serviceWorker" in navigator)) {
-                    console.warn("WMN POS Offline: Service Worker is not supported in this browser");
-                    return;
-                }
-
-                if (location.protocol !== "https:" && location.hostname !== "localhost") {
-                    console.warn("WMN POS Offline: Service Worker requires HTTPS or localhost");
-                    return;
-                }
-
-                const doRegister = function () {
-                    navigator.serviceWorker.register("/pos-offline-sw.js", {
-                        scope: "/",
-                        updateViaCache: "none"
-                    })
-                        .then(function(reg) {
-                            console.log("\u2705 WMN POS Service Worker registered", reg.scope);
-
-                            // Force browser to check updated /pos-offline-sw.js now.
-                            if (reg && reg.update) {
-                                reg.update().catch(function(e) {
-                                    console.warn("WMN POS Service Worker update check failed", e);
-                                });
-                            }
-                        })
-                        .catch(function(err) {
-                            console.error("\u274C WMN POS Service Worker registration failed", err);
-                            frappe.show_alert({
-                                message: __("Service Worker registration failed: /pos-offline-sw.js"),
-                                indicator: "orange"
-                            });
-                        });
-                };
-
-                // custom_pos_offline.js may load after window load, so do not rely on load event only.
-                if (document.readyState === "complete" || document.readyState === "interactive") {
-                    doRegister();
-                } else {
-                    window.addEventListener("load", doRegister, { once: true });
-                }
-
-                if (!window.__wmn_sw_controllerchange_v25) {
-                    navigator.serviceWorker.addEventListener("controllerchange", function () {
-                        console.log("WMN POS Service Worker controller changed");
-                    });
-                    window.__wmn_sw_controllerchange_v25 = true;
-                }
-            } catch (e) {
-                console.error("WMN POS PWA registration error", e);
-            }
-        }
-
+        
+        
         registerWMNPOSServiceWorker();
 
 function wmn_install_pos_pwa_app_css() {
@@ -471,6 +405,25 @@ wmn_install_pos_pwa_app_css();
 
             function normalizeItem(row) {
                 row = row || {};
+
+                let offlineItemTaxMap = row.offline_item_tax_map
+                    || row.item_tax_rate
+                    || row.item_tax_map
+                    || row.__wmn_item_tax_map
+                    || {};
+
+                try {
+                    if (typeof offlineItemTaxMap === "string") {
+                        offlineItemTaxMap = JSON.parse(offlineItemTaxMap || "{}");
+                    }
+                } catch (e) {
+                    offlineItemTaxMap = {};
+                }
+
+                if (!offlineItemTaxMap || typeof offlineItemTaxMap !== "object") {
+                    offlineItemTaxMap = {};
+                }
+
                 return Object.assign({}, row, {
                     item_code: row.item_code || row.name,
                     item_name: row.item_name || row.item_code || row.name,
@@ -495,6 +448,8 @@ wmn_install_pos_pwa_app_css();
                     cost_center: row.cost_center || row.default_cost_center || "",
                     warehouse: row.warehouse || row.default_warehouse || "",
                     item_tax_template: row.item_tax_template || "",
+                    offline_item_tax_map: offlineItemTaxMap,
+                    item_tax_rate: row.item_tax_rate || row.item_tax_map || row.__wmn_item_tax_map || offlineItemTaxMap,
                     brand: row.brand || "",
                     disabled: cint(row.disabled || 0),
                 });
@@ -751,99 +706,6 @@ wmn_install_pos_pwa_app_css();
             }
 
 
-
-async function wmn_scan_barcode_structure_offline1111(searchValue) {
-    if (!window.wmnPOSOffline || !searchValue) return null;
-
-    const barcode = String(searchValue || "").trim();
-    const structures = await window.wmnPOSOffline.getAll(
-        window.wmnPOSOffline.STORES.barcode_structures
-    );
-
-    for (const structure of structures || []) {
-        const prefix = String(structure.prefix || "");
-        const totalLength = cint(structure.total_length || 0);
-
-        if (!barcode.startsWith(prefix)) continue;
-        if (totalLength && barcode.length !== totalLength) continue;
-
-        let cursor = prefix.length;
-        const res = { barcode };
-
-        for (const row of structure.structure_table || []) {
-            const fieldName = row.field_type;
-            const length = cint(row.length || 0);
-            const dataType = row.field_data_type;
-            const divisor = flt(row.divisor || 1);
-
-            if (!fieldName || !length) continue;
-
-            const rawValue = barcode.substr(cursor, length);
-            cursor += length;
-
-            if (dataType === "Float") {
-                res[fieldName] = flt(rawValue) / divisor;
-            } else {
-                res[fieldName] = rawValue;
-            }
-        }
-
-        if (!res.item_code) continue;
-
-        let itemCode = res.item_code;
-
-        let item = await window.wmnPOSOffline.get(
-            window.wmnPOSOffline.STORES.items,
-            itemCode
-        );
-
-        if (!item) {
-            const barcodeRows = await window.wmnPOSOffline.getAll(
-                window.wmnPOSOffline.STORES.item_barcodes
-            );
-
-            const foundBarcode = (barcodeRows || []).find(b =>
-                String(b.barcode || "").trim() === String(itemCode).trim()
-            );
-
-            if (foundBarcode && foundBarcode.item_code) {
-                itemCode = foundBarcode.item_code;
-                item = await window.wmnPOSOffline.get(
-                    window.wmnPOSOffline.STORES.items,
-                    itemCode
-                );
-
-                if (foundBarcode.uom) {
-                    res.uom = foundBarcode.uom;
-                }
-            }
-        }
-
-        if (!item) return null;
-
-        const settings = await window.wmnPOSOffline.getFullSettings();
-        const priceList = settings.selling_price_list || "";
-        const uom = res.uom || item.uom || item.stock_uom || "";
-
-        const price = await wmn_find_price_offline(item.item_code, priceList, uom);
-
-        return Object.assign({}, item, {
-            barcode,
-            item_code: item.item_code,
-            item_name: item.item_name || item.item_code,
-            qty: flt(res.qty || 1),
-            uom: uom,
-            stock_uom: item.stock_uom || uom,
-            price_list_rate: price ? flt(price.price_list_rate) : flt(item.price_list_rate || item.rate || 0),
-            rate: price ? flt(price.price_list_rate) : flt(item.rate || item.price_list_rate || 0),
-            has_batch_no: cint(item.has_batch_no || 0),
-            has_serial_no: cint(item.has_serial_no || 0),
-            __wmn_from_barcode_structure: 1,
-        });
-    }
-
-    return null;
-}
 
 
 
@@ -1551,12 +1413,9 @@ async function wmn_scan_barcode_structure_offline1111(searchValue) {
             const original_call = frappe.call;
 
             frappe.call = function (opts) {
-                const in_pos = wmn_pos_is_page();
-                const effective_offline = !!(
-                    window.__wmn_force_pos_offline === true ||
-                    window.__wmn_pos_effective_offline === true ||
-                    navigator.onLine === false
-                );
+                const pos_state = wmn_pos_runtime_state();
+                const in_pos = pos_state.in_pos_page;
+                const effective_offline = pos_state.browser_offline || pos_state.forced_offline || pos_state.effective_offline;
 
                 if (in_pos && effective_offline && wmn_pos_is_online_form_call(opts)) {
                     console.warn("WMN 15.27 OFFLINE: blocked online form call", wmn_pos_call_method_name(opts), opts);
@@ -1612,12 +1471,8 @@ async function wmn_scan_barcode_structure_offline1111(searchValue) {
                     const original = proto[name];
 
                     proto[name] = function () {
-                        if (wmn_pos_is_page() && (
-                            window.__wmn_force_pos_offline === true ||
-                            window.__wmn_pos_effective_offline === true ||
-                            navigator.onLine === false ||
-                            wmn_current_doc_is_offline_pos()
-                        )) {
+                        const pos_state = wmn_pos_runtime_state();
+                        if (pos_state.in_pos_page && (pos_state.forced_offline || pos_state.effective_offline || pos_state.browser_offline || pos_state.offline_doc)) {
                             console.warn("WMN 15.27 OFFLINE: skipped doctype script", name);
                             return Promise.resolve();
                         }
@@ -1821,20 +1676,34 @@ async function wmn_scan_barcode_structure_offline1111(searchValue) {
             );
         }
 
-        function wmn_is_pos_offline() {
-            const in_pos_page = location.pathname.includes("point-of-sale") || location.hash.includes("point-of-sale");
+        function wmn_pos_runtime_state() {
+            const in_pos_page = wmn_pos_is_page();
+            const browser_offline = navigator.onLine === false;
+            const forced_offline = window.__wmn_force_pos_offline === true;
+            const effective_offline = window.__wmn_pos_effective_offline === true;
+            const offline_doc = wmn_current_doc_is_offline_pos();
 
-            return !!(
-                in_pos_page &&
-                window.wmnPOSOffline &&
-                (
-                    navigator.onLine === false ||
-                    window.__wmn_force_pos_offline === true ||
-                    window.__wmn_pos_effective_offline === true ||
-                    wmn_current_doc_is_offline_pos()
+            return {
+                in_pos_page,
+                browser_offline,
+                forced_offline,
+                effective_offline,
+                offline_doc,
+                has_offline_db: !!window.wmnPOSOffline,
+                is_offline: !!(
+                    in_pos_page &&
+                    window.wmnPOSOffline &&
+                    (browser_offline || forced_offline || effective_offline || offline_doc)
                 )
-            );
+            };
         }
+
+        function wmn_is_pos_offline() {
+            return wmn_pos_runtime_state().is_offline;
+        }
+
+        wmn_install_offline_meta_adapter();
+        wmn_install_offline_form_model_adapter();
 
         async function wmn_find_customer_offline(name) {
             if (!name || !window.wmnPOSOffline) return null;
@@ -1968,50 +1837,314 @@ async function wmn_scan_barcode_structure_offline1111(searchValue) {
             doc.items = merged;
             return doc;
         }
-        function mergeDuplicateOfflineItems1111(doc) {
-            if (!doc || !Array.isArray(doc.items)) return doc;
 
-            const merged = [];
-            const map = new Map();
 
-            for (const row of doc.items) {
-                const itemCode = String(row.item_code || "").trim();
-                if (!itemCode) continue;
-
-                const uom = String(row.uom || row.stock_uom || "Nos").trim();
-                const warehouse = String(row.warehouse || doc.set_warehouse || "").trim();
-                const rate = String(flt(row.rate || row.price_list_rate || 0));
-                const key = [itemCode, uom, warehouse, rate].join("||");
-
-                if (map.has(key)) {
-                const existing = map.get(key);
-                existing.qty = flt(existing.qty || 0) + flt(row.qty || 1);
-                existing.stock_qty = flt(existing.qty || 0) * flt(existing.conversion_factor || 1);
-                } else {
-                const copy = Object.assign({}, row);
-                copy.qty = flt(copy.qty || 1);
-                copy.conversion_factor = flt(copy.conversion_factor || 1);
-                copy.stock_qty = flt(copy.stock_qty || copy.qty * copy.conversion_factor);
-                map.set(key, copy);
-                merged.push(copy);
-                }
+        function wmn_parse_json_map(value) {
+            if (!value) return {};
+            if (typeof value === "object") return value || {};
+            try {
+                const parsed = JSON.parse(String(value || "{}"));
+                return parsed && typeof parsed === "object" ? parsed : {};
+            } catch (e) {
+                return {};
             }
+        }
 
-            merged.forEach((row, idx) => {
-                row.idx = idx + 1;
+        function wmn_normalize_offline_item_tax_map(item) {
+            item = item || {};
+            const taxMap = wmn_parse_json_map(
+                item.offline_item_tax_map ||
+                item.item_tax_rate ||
+                item.item_tax_map ||
+                item.__wmn_item_tax_map ||
+                (item.item_data && (item.item_data.offline_item_tax_map || item.item_data.item_tax_rate)) ||
+                {}
+            );
+            item.offline_item_tax_map = taxMap;
+            item.item_tax_rate = item.item_tax_rate || taxMap;
+            return taxMap;
+        }
+
+        function wmn_make_offline_tax_row(row, idx, parentDoc) {
+            row = row || {};
+            return {
+                doctype: row.doctype || "Sales Taxes and Charges",
+                name: row.name || row.row_id || ("OFFLINE-TAX-" + Date.now() + "-" + idx),
+                parent: (parentDoc && parentDoc.name) || row.parent || "",
+                parenttype: (parentDoc && parentDoc.doctype) || row.parenttype || "Sales Invoice",
+                parentfield: "taxes",
+                idx: idx + 1,
+                charge_type: row.charge_type || "On Net Total",
+                account_head: row.account_head || "",
+                description: row.description || row.account_head || "Tax",
+                rate: flt(row.rate || 0),
+                tax_amount: 0,
+                base_tax_amount: 0,
+                tax_amount_after_discount_amount: 0,
+                base_tax_amount_after_discount_amount: 0,
+                total: 0,
+                base_total: 0,
+                included_in_print_rate: cint(row.included_in_print_rate || 0),
+                cost_center: row.cost_center || wmn_get_offline_tax_cost_center(parentDoc, row) || "",
+            };
+        }
+
+        function wmn_get_offline_tax_cost_center(doc, preferredRow) {
+            doc = doc || {};
+
+            return (
+                (preferredRow && preferredRow.cost_center) ||
+                doc.cost_center ||
+                ((doc.items || []).find(r => r && r.cost_center) || {}).cost_center ||
+                (window.cur_pos && window.cur_pos.settings && window.cur_pos.settings.cost_center) ||
+                ""
+            );
+        }
+
+        function wmn_fill_offline_tax_cost_centers(doc) {
+            if (!doc || !Array.isArray(doc.taxes)) return doc;
+
+            const fallbackCostCenter = wmn_get_offline_tax_cost_center(doc, null);
+
+            (doc.taxes || []).forEach(tax => {
+                if (!tax) return;
+                if (!tax.cost_center) {
+                    tax.cost_center = fallbackCostCenter;
+                }
             });
 
-            doc.items = merged;
             return doc;
         }
 
+        function wmn_clone_offline_tax_rows(rows, parentDoc) {
+            return (rows || [])
+                .filter(r => r && (r.account_head || flt(r.rate || 0)))
+                .map((r, idx) => wmn_make_offline_tax_row(r, idx, parentDoc));
+        }
+
+        async function wmn_get_cached_offline_tax_rows(parentDoc) {
+            try {
+                if (!window.wmnPOSOffline || !window.wmnPOSOffline.getSetting) return [];
+                const rows = await window.wmnPOSOffline.getSetting("pos_tax_rows");
+                return wmn_clone_offline_tax_rows(rows || [], parentDoc);
+            } catch (e) {
+                console.warn("WMN offline tax cache read skipped", e);
+                return [];
+            }
+        }
+
+        async function wmn_refresh_offline_tax_cache_from_online_doc(doc) {
+            try {
+                if (!window.wmnPOSOffline || !window.wmnPOSOffline.setSetting || !window.wmnPOSOffline.getSetting) return false;
+                if (!doc || !Array.isArray(doc.taxes) || !doc.taxes.length) return false;
+
+                const rows = doc.taxes
+                    .filter(t => t && (t.account_head || flt(t.rate || 0)))
+                    .map((t, idx) => ({
+                        idx: idx + 1,
+                        charge_type: t.charge_type || "On Net Total",
+                        account_head: t.account_head || "",
+                        description: t.description || t.account_head || "Tax",
+                        rate: flt(t.rate || 0),
+                        included_in_print_rate: cint(t.included_in_print_rate || 0),
+                        cost_center: t.cost_center || "",
+                    }));
+
+                if (!rows.length) return false;
+
+                const signature = JSON.stringify(rows.map(r => ({
+                    charge_type: r.charge_type,
+                    account_head: r.account_head,
+                    rate: r.rate,
+                    included_in_print_rate: r.included_in_print_rate,
+                })));
+
+                const oldSignature = await window.wmnPOSOffline.getSetting("pos_tax_signature");
+                if (oldSignature === signature) return true;
+
+                await window.wmnPOSOffline.setSetting("pos_tax_rows", rows);
+                await window.wmnPOSOffline.setSetting("pos_tax_signature", signature);
+                console.log("WMN offline tax cache refreshed", rows);
+                return true;
+            } catch (e) {
+                console.warn("WMN offline tax cache refresh skipped", e);
+                return false;
+            }
+        }
+
+        function wmn_tax_account_key(value) {
+            return String(value || "")
+                .trim()
+                .toLowerCase()
+                .replace(/\s+/g, " ");
+        }
+
+        function wmn_tax_account_code(value) {
+            return String(value || "")
+                .split("-")[0]
+                .trim()
+                .toLowerCase();
+        }
+
+        function wmn_get_item_tax_rate_for_account(row, accountHead, defaultRate) {
+            const taxMap = wmn_normalize_offline_item_tax_map(row);
+            const directKey = String(accountHead || "");
+
+            if (directKey && Object.prototype.hasOwnProperty.call(taxMap, directKey)) {
+                return flt(taxMap[directKey] || 0);
+            }
+
+            const targetKey = wmn_tax_account_key(accountHead);
+            const targetCode = wmn_tax_account_code(accountHead);
+
+            for (const key in taxMap) {
+                if (!Object.prototype.hasOwnProperty.call(taxMap, key)) continue;
+
+                if (wmn_tax_account_key(key) === targetKey) {
+                    return flt(taxMap[key] || 0);
+                }
+
+                if (targetCode && wmn_tax_account_code(key) === targetCode) {
+                    return flt(taxMap[key] || 0);
+                }
+            }
+
+            return flt(defaultRate || 0);
+        }
+
+        function wmn_add_missing_item_tax_rows_to_offline_taxes(taxes, items, doc) {
+            taxes = taxes || [];
+            const existing = {};
+
+            taxes.forEach(tax => {
+                const account = tax && tax.account_head;
+                if (!account) return;
+                existing[wmn_tax_account_key(account)] = true;
+                const code = wmn_tax_account_code(account);
+                if (code) existing["code::" + code] = true;
+            });
+
+            (items || []).forEach(row => {
+                const taxMap = wmn_normalize_offline_item_tax_map(row);
+
+                Object.keys(taxMap || {}).forEach(accountHead => {
+                    if (!accountHead) return;
+
+                    const normalized = wmn_tax_account_key(accountHead);
+                    const code = wmn_tax_account_code(accountHead);
+
+                    if (existing[normalized] || (code && existing["code::" + code])) {
+                        return;
+                    }
+
+                    taxes.push(wmn_make_offline_tax_row({
+                        charge_type: "On Net Total",
+                        account_head: accountHead,
+                        description: accountHead,
+                        rate: 0,
+                        included_in_print_rate: 0,
+                        cost_center: row.cost_center || (doc && doc.cost_center) || "",
+                    }, taxes.length, doc));
+
+                    existing[normalized] = true;
+                    if (code) existing["code::" + code] = true;
+                });
+            });
+
+            return taxes;
+        }
+
+        function wmn_apply_offline_taxes_and_discount(doc, total_qty, net_total, round_total) {
+            doc = doc || {};
+            const items = doc.items || [];
+            const taxes = wmn_add_missing_item_tax_rows_to_offline_taxes(
+                wmn_clone_offline_tax_rows(doc.taxes || [], doc),
+                items,
+                doc
+            );
+            let total_taxes = 0;
+            let running_total = flt(net_total || 0);
+
+            taxes.forEach((tax, idx) => {
+                let tax_amount = 0;
+                const chargeType = String(tax.charge_type || "On Net Total");
+
+                if (chargeType === "Actual") {
+                    tax_amount = flt(tax.tax_amount || tax.base_tax_amount || 0);
+                } else {
+                    items.forEach(row => {
+                        const rate = wmn_get_item_tax_rate_for_account(row, tax.account_head, tax.rate);
+                        tax_amount += flt(row.net_amount || row.amount || 0) * rate / 100;
+                    });
+                }
+
+                tax.idx = idx + 1;
+                tax.tax_amount = tax_amount;
+                tax.base_tax_amount = tax_amount;
+                tax.tax_amount_after_discount_amount = tax_amount;
+                tax.base_tax_amount_after_discount_amount = tax_amount;
+                running_total += tax_amount;
+                tax.total = running_total;
+                tax.base_total = running_total;
+                total_taxes += tax_amount;
+            });
+
+            const discount_percentage = flt(doc.additional_discount_percentage || 0);
+            let discount_amount = flt(doc.discount_amount || 0);
+            const before_discount = flt(net_total || 0) + flt(total_taxes || 0);
+
+            if (discount_percentage > 0) {
+                discount_amount = before_discount * discount_percentage / 100;
+            }
+
+            discount_amount = Math.max(0, Math.min(discount_amount, before_discount));
+            const grand_total = Math.max(0, before_discount - discount_amount);
+            const rounded_total = round_total ? Math.round(grand_total) : grand_total;
+
+            doc.taxes = taxes;
+            wmn_fill_offline_tax_cost_centers(doc);
+            doc.total_taxes_and_charges = total_taxes;
+            doc.base_total_taxes_and_charges = total_taxes;
+            doc.apply_discount_on = doc.apply_discount_on || "Grand Total";
+            doc.additional_discount_percentage = discount_percentage;
+            doc.discount_amount = discount_amount;
+            doc.base_discount_amount = discount_amount;
+            doc.total_qty = total_qty;
+            doc.total = net_total;
+            doc.net_total = net_total;
+            doc.base_total = net_total;
+            doc.base_net_total = net_total;
+            doc.grand_total = grand_total;
+            doc.rounded_total = rounded_total;
+            doc.base_grand_total = grand_total;
+            doc.base_rounded_total = rounded_total;
+
+            let paid = 0;
+            (doc.payments || []).forEach(p => {
+                p.amount = flt(p.amount || 0);
+                p.base_amount = flt(p.base_amount || p.amount || 0);
+                paid += p.amount;
+            });
+
+            const payable = flt(doc.rounded_total || doc.grand_total || 0);
+            doc.paid_amount = paid;
+            doc.base_paid_amount = paid;
+            doc.outstanding_amount = payable - paid;
+            doc.change_amount = Math.max(0, paid - payable);
+            doc.base_change_amount = doc.change_amount;
+            return doc;
+        }
 
         function wmn_recalculate_offline_doc(doc) {
+            if (!doc) return doc;
+
             if (typeof mergeDuplicateOfflineItems === "function") {
                 mergeDuplicateOfflineItems(doc);
             }
+
             let total_qty = 0;
             let total = 0;
+
             (doc.items || []).forEach((row, idx) => {
                 row.idx = idx + 1;
                 row.qty = flt(row.qty || 1);
@@ -2027,27 +2160,8 @@ async function wmn_scan_barcode_structure_offline1111(searchValue) {
                 total_qty += row.qty;
                 total += row.net_amount;
             });
-            doc.total_qty = total_qty;
-            doc.total = total;
-            doc.net_total = total;
-            doc.base_total = total;
-            doc.base_net_total = total;
-            doc.grand_total = total;
-            doc.rounded_total = total;
-            doc.base_grand_total = total;
-            doc.base_rounded_total = total;
-            doc.outstanding_amount = total;
-            let paid = 0;
-            (doc.payments || []).forEach(p => {
-                p.amount = flt(p.amount || 0);
-                p.base_amount = flt(p.base_amount || p.amount || 0);
-                paid += p.amount;
-            });
-            doc.paid_amount = paid;
-            doc.base_paid_amount = paid;
-            doc.change_amount = Math.max(0, paid - total);
-            doc.base_change_amount = doc.change_amount;
-            return doc;
+
+            return wmn_apply_offline_taxes_and_discount(doc, total_qty, total, false);
         }
 
 
@@ -2086,6 +2200,7 @@ async function wmn_make_offline_invoice_doc(ctrl) {
             const payments = window.wmnPOSOffline
                 ? await window.wmnPOSOffline.getAll(window.wmnPOSOffline.STORES.payment_methods)
                 : [];
+            const cachedTaxRows = await wmn_get_cached_offline_tax_rows(null);
 
             const today = frappe.datetime.get_today();
 
@@ -2134,7 +2249,7 @@ async function wmn_make_offline_invoice_doc(ctrl) {
                     amount: 0,
                     base_amount: 0,
                 })),
-                taxes: [],
+                taxes: wmn_clone_offline_tax_rows(cachedTaxRows, { name: offlineName, doctype: invoiceDoctype }),
             };
 
             doc.__wmn_item_doctype = childDoctypes.itemDoctype;
@@ -2142,23 +2257,298 @@ async function wmn_make_offline_invoice_doc(ctrl) {
             return wmn_recalculate_offline_doc(wmn_normalize_current_offline_invoice_child_doctypes(doc));
         }
 
-        function wmn_make_offline_frm(doc) {
+
+
+        function wmn_register_offline_doc_locals(doc) {
+            if (!doc || !window.frappe) return doc;
+
+            frappe.locals = frappe.locals || {};
+
+            const putLocal = function (row) {
+                if (!row || !row.doctype || !row.name) return;
+                frappe.locals[row.doctype] = frappe.locals[row.doctype] || {};
+                frappe.locals[row.doctype][row.name] = row;
+            };
+
+            putLocal(doc);
+            (doc.items || []).forEach(putLocal);
+            (doc.payments || []).forEach(putLocal);
+            (doc.taxes || []).forEach(putLocal);
+
+            return doc;
+        }
+
+        function wmn_get_offline_child_doc(doc, doctype, name) {
+            if (!doc || !doctype || !name) return null;
+            if (doc.doctype === doctype && doc.name === name) return doc;
+
+            const tables = [doc.items || [], doc.payments || [], doc.taxes || []];
+            for (const rows of tables) {
+                const found = (rows || []).find(row => row && row.doctype === doctype && row.name === name);
+                if (found) return found;
+            }
+
+            return null;
+        }
+
+        function wmn_emit_offline_refresh_fields(frm) {
+            if (!frm || !frm.doc) return;
+
+            try {
+                wmn_register_offline_doc_locals(frm.doc);
+            } catch (e) {}
+
+            try {
+                if (frm.wrapper && window.jQuery) {
+                    $(frm.wrapper).trigger("refresh-fields");
+                }
+            } catch (e) {
+                console.warn("WMN offline refresh-fields event skipped", e);
+            }
+        }
+
+        function wmn_recalculate_and_emit_offline_form(frm, fieldname) {
+            if (!frm || !frm.doc) return Promise.resolve();
+
+            try {
+                if (typeof wmn_recalculate_offline_doc === "function") {
+                    wmn_recalculate_offline_doc(frm.doc);
+                }
+            } catch (e) {
+                console.warn("WMN offline form recalculation skipped", e);
+            }
+
+            if (!fieldname || fieldname === "items" || fieldname === "payments" || fieldname === "taxes") {
+                wmn_emit_offline_refresh_fields(frm);
+            }
+
+            return Promise.resolve({ message: frm.doc });
+        }
+
+
+
+        function wmn_make_offline_item_meta(doctype) {
+            const make = (fieldname, label, fieldtype, options = "", read_only = 0) => ({
+                fieldname,
+                label: __(label || fieldname),
+                fieldtype,
+                options,
+                read_only,
+            });
+
             return {
+                name: doctype,
+                doctype: "DocType",
+                module: "Accounts",
+                fields: [
+                    make("qty", "Quantity", "Float"),
+                    make("uom", "UOM", "Link", "UOM"),
+                    make("rate", "Rate", "Currency"),
+                    make("conversion_factor", "Conversion Factor", "Float"),
+                    make("discount_percentage", "Discount (%)", "Percent"),
+                    make("warehouse", "Warehouse", "Link", "Warehouse"),
+                    make("actual_qty", "Available Qty", "Float", "", 1),
+                    make("price_list_rate", "Price List Rate", "Currency", "", 1),
+                    make("serial_no", "Serial No", "Small Text"),
+                    make("batch_no", "Batch No", "Link", "Batch"),
+                ],
+            };
+        }
+
+        function wmn_install_offline_meta_adapter() {
+            if (window.__wmn_offline_meta_adapter_installed) return;
+            if (!window.frappe || !frappe.get_meta) return;
+
+            const original_get_meta = frappe.get_meta;
+            const fallbackChildDoctypes = {
+                "POS Invoice Item": true,
+                "Sales Invoice Item": true,
+            };
+
+            frappe.get_meta = function (doctype) {
+                const meta = original_get_meta.apply(this, arguments);
+
+                if (meta && Array.isArray(meta.fields) && meta.fields.length) {
+                    return meta;
+                }
+
+                try {
+                    if (
+                        typeof wmn_is_pos_offline === "function" &&
+                        wmn_is_pos_offline() &&
+                        fallbackChildDoctypes[doctype]
+                    ) {
+                        return wmn_make_offline_item_meta(doctype);
+                    }
+                } catch (e) {}
+
+                return meta;
+            };
+
+            window.__wmn_offline_meta_adapter_installed = true;
+        }
+
+        function wmn_install_offline_form_model_adapter() {
+            if (window.__wmn_offline_form_model_adapter_installed) return;
+            if (!window.frappe || !frappe.model || !frappe.model.set_value) return;
+
+            const original_set_value = frappe.model.set_value;
+            const original_get_doc = frappe.get_doc;
+
+            frappe.model.set_value = function (doctype, name, fieldname, value) {
+                try {
+                    if (typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline()) {
+                        const frm = window.cur_pos && window.cur_pos.frm ? window.cur_pos.frm : null;
+                        const doc = frm && frm.doc ? frm.doc : null;
+                        const target = wmn_get_offline_child_doc(doc, doctype, name);
+
+                        if (doc && doc.doctype === doctype && doc.name === name) {
+                            if (typeof fieldname === "object") {
+                                Object.assign(doc, fieldname || {});
+                            } else {
+                                doc[fieldname] = value;
+                            }
+
+                            if (typeof wmn_recalculate_offline_doc === "function") {
+                                wmn_recalculate_offline_doc(doc);
+                            }
+
+                            wmn_register_offline_doc_locals(doc);
+                            wmn_emit_offline_refresh_fields(frm);
+
+                            const pos = window.cur_pos;
+                            try {
+                                if (pos && pos.cart && pos.cart.update_totals_section) {
+                                    pos.cart.update_totals_section(frm);
+                                }
+                                if (pos && pos.payment && pos.payment.update_totals_section) {
+                                    pos.payment.update_totals_section(doc);
+                                }
+                            } catch (e) {}
+
+                            return Promise.resolve({ message: doc });
+                        }
+
+                        if (target) {
+                            if (typeof fieldname === "object") {
+                                Object.assign(target, fieldname || {});
+                            } else {
+                                target[fieldname] = value;
+                            }
+
+                            if (typeof wmn_recalculate_offline_doc === "function") {
+                                wmn_recalculate_offline_doc(doc);
+                            }
+
+                            wmn_register_offline_doc_locals(doc);
+                            wmn_emit_offline_refresh_fields(frm);
+
+                            return Promise.resolve({ message: target });
+                        }
+                    }
+                } catch (e) {
+                    console.warn("WMN offline model.set_value adapter skipped", e);
+                }
+
+                return original_set_value.apply(this, arguments);
+            };
+
+            frappe.get_doc = function (doctype, name) {
+                try {
+                    if (typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline()) {
+                        const frm = window.cur_pos && window.cur_pos.frm ? window.cur_pos.frm : null;
+                        const doc = frm && frm.doc ? frm.doc : null;
+
+                        if (doc && doc.doctype === doctype && doc.name === name) {
+                            return doc;
+                        }
+
+                        const target = wmn_get_offline_child_doc(doc, doctype, name);
+                        if (target) {
+                            return target;
+                        }
+
+                        if (
+                            window.frappe &&
+                            frappe.locals &&
+                            frappe.locals[doctype] &&
+                            frappe.locals[doctype][name]
+                        ) {
+                            return frappe.locals[doctype][name];
+                        }
+                    }
+                } catch (e) {
+                    console.warn("WMN offline get_doc adapter skipped", e);
+                }
+
+                if (typeof original_get_doc === "function") {
+                    return original_get_doc.apply(this, arguments);
+                }
+
+                return null;
+            };
+
+            window.__wmn_offline_form_model_adapter_installed = true;
+        }
+
+        function wmn_make_offline_frm(doc) {
+            const wrapper = document.createElement("div");
+            wrapper.className = "wmn-offline-form-wrapper";
+
+            const frm = {
                 doctype: doc.doctype,
                 docname: doc.name,
                 doc,
+                wrapper,
                 fields_dict: {},
-                script_manager: { trigger: () => Promise.resolve(), has_handlers: () => false },
+                script_manager: {
+                    trigger: (fieldname, doctype, name) => {
+                        const target = wmn_get_offline_child_doc(frm.doc, doctype, name) || frm.doc;
+
+                        if (target && target.parentfield === "items") {
+                            target.qty = flt(target.qty || 0);
+                            target.conversion_factor = flt(target.conversion_factor || 1);
+                            target.stock_qty = flt(target.stock_qty || target.qty * target.conversion_factor);
+                            target.price_list_rate = flt(target.price_list_rate || target.rate || 0);
+                            target.rate = flt(target.rate || target.price_list_rate || 0);
+                            target.amount = flt(target.qty || 0) * flt(target.rate || 0);
+                            target.net_rate = flt(target.net_rate || target.rate || 0);
+                            target.net_amount = flt(target.qty || 0) * flt(target.net_rate || target.rate || 0);
+                            target.base_rate = flt(target.base_rate || target.rate || 0);
+                            target.base_amount = flt(target.base_amount || target.amount || 0);
+                            target.base_net_rate = flt(target.base_net_rate || target.net_rate || 0);
+                            target.base_net_amount = flt(target.base_net_amount || target.net_amount || 0);
+                        }
+
+                        return wmn_recalculate_and_emit_offline_form(frm, "items");
+                    },
+                    has_handlers: () => false
+                },
                 dashboard: { clear_headline: () => {} },
                 page: { set_title: () => {}, clear_indicator: () => {}, set_indicator: () => {} },
-                dirty: () => {},
+                dirty: () => { frm.__dirty = true; },
                 is_dirty: () => true,
-                refresh: () => Promise.resolve(),
-                refresh_field: () => {},
-                refresh_fields: () => {},
-                trigger: () => Promise.resolve(),
-                call: () => Promise.resolve({ message: doc }),
-                save: () => Promise.resolve({ message: doc }),
+                refresh: () => {
+                    wmn_emit_offline_refresh_fields(frm);
+                    return Promise.resolve();
+                },
+                refresh_field: (fieldname) => {
+                    if (!fieldname || ["items", "payments", "taxes"].includes(fieldname)) {
+                        wmn_emit_offline_refresh_fields(frm);
+                    }
+                },
+                refresh_fields: () => {
+                    wmn_emit_offline_refresh_fields(frm);
+                },
+                trigger: (fieldname) => {
+                    return wmn_recalculate_and_emit_offline_form(frm, fieldname);
+                },
+                call: () => Promise.resolve({ message: frm.doc }),
+                save: () => {
+                    wmn_recalculate_offline_doc(frm.doc);
+                    wmn_register_offline_doc_locals(frm.doc);
+                    return Promise.resolve({ message: frm.doc, doc: frm.doc });
+                },
                 reload_doc: () => Promise.resolve(),
                 set_df_property: () => {},
                 toggle_display: () => {},
@@ -2168,24 +2558,43 @@ async function wmn_make_offline_invoice_doc(ctrl) {
                 set_intro: () => {},
                 add_child(fieldname, values) {
                     this.doc[fieldname] = this.doc[fieldname] || [];
+                    const childDoctypes = wmn_get_invoice_child_doctypes(this.doc.doctype || "Sales Invoice");
                     const row = Object.assign({
+                        doctype: fieldname === "items" ? childDoctypes.itemDoctype : childDoctypes.paymentDoctype,
                         name: "OFFLINE-ROW-" + Date.now() + "-" + this.doc[fieldname].length,
                         parent: this.doc.name,
                         parenttype: this.doc.doctype,
                         parentfield: fieldname,
                         idx: this.doc[fieldname].length + 1,
                     }, values || {});
+
+                    row.doctype = row.doctype || (fieldname === "items" ? childDoctypes.itemDoctype : childDoctypes.paymentDoctype);
+                    row.parent = row.parent || this.doc.name;
+                    row.parenttype = row.parenttype || this.doc.doctype;
+                    row.parentfield = row.parentfield || fieldname;
+                    row.idx = row.idx || (this.doc[fieldname].length + 1);
+
                     this.doc[fieldname].push(row);
                     wmn_recalculate_offline_doc(this.doc);
+                    wmn_register_offline_doc_locals(this.doc);
                     return row;
                 },
                 set_value(fieldname, value) {
                     if (typeof fieldname === "object") Object.assign(this.doc, fieldname);
                     else this.doc[fieldname] = value;
-                    wmn_recalculate_offline_doc(this.doc);
-                    return Promise.resolve();
+                    return wmn_recalculate_and_emit_offline_form(frm, fieldname);
                 },
             };
+
+            wmn_register_offline_doc_locals(doc);
+
+            if (window.frappe) {
+                frappe.locals = frappe.locals || {};
+                frappe.locals[doc.doctype] = frappe.locals[doc.doctype] || {};
+                frappe.locals[doc.doctype][doc.name] = doc;
+            }
+
+            return frm;
         }
 
 
@@ -3032,6 +3441,227 @@ function wmn_user_lang() {
         function wmn_escape_html(value) {
             return frappe.utils.escape_html(value == null ? "" : String(value));
         }
+async function wmn_get_offline_print_template_from_pos_profile() {
+    if (!window.wmnPOSOffline || !window.wmnPOSOffline.getFullSettings) {
+        return "";
+    }
+
+    const settings = await window.wmnPOSOffline.getFullSettings();
+    console.log(settings.offline_print_template);  
+
+    return (
+        settings.custom_offline_print_template ||
+        settings.offline_print_template ||
+        ""
+    );
+}
+
+
+
+async function wmn_print_offline_receipt_with_pos_profile_template(template, doc) {
+    
+
+    const html = wmn_render_offline_print_template(template, doc);
+
+    const win = window.open("", "_blank");
+
+    win.document.write(`
+        <!doctype html>
+        <html>
+            <head>
+                <meta charset="utf-8">
+                <title>${frappe.utils.escape_html(doc.name || "Offline Receipt")}</title>
+                <style>
+                    body {
+                        font-family: Arial, sans-serif;
+                        direction: rtl;
+                        font-size: 12px;
+                    }
+
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                    }
+
+                    th, td {
+                        border-bottom: 1px solid #ddd;
+                        padding: 4px;
+                        text-align: right;
+                    }
+
+                    @media print {
+                        body {
+                            margin: 0;
+                        }
+                    }
+                </style>
+            </head>
+            <body>
+                ${html}
+            </body>
+        </html>
+    `);
+
+    win.document.close();
+    win.focus();
+
+    setTimeout(() => {
+        win.print();
+    }, 300);
+}
+
+
+
+
+
+
+
+function wmn_render_offline_print_template(template, doc) {
+    const currency = doc.currency || "YER";
+    
+    function get_formatted(doc, fieldname) {
+        const value = doc[fieldname];
+        if (value === undefined || value === null) return "";
+        
+        const field = frappe.meta.get_field(doc.doctype, fieldname);
+        if (field && field.fieldtype === "Currency") {
+            return format_currency(flt(value), currency);
+        }
+        if (field && field.fieldtype === "Date") {
+            return frappe.datetime.str_to_user(value);
+        }
+        if (field && field.fieldtype === "Time") {
+            return value;
+        }
+        return value;
+    }
+    
+    function process_item(item, doc) {
+        let html = `
+            <tr>
+                <td>
+                    ${frappe.utils.escape_html(item.item_code || "")}
+                    ${(item.item_name && item.item_name !== item.item_code) ? `<br>${frappe.utils.escape_html(item.item_name)}` : ""}
+                    ${item.serial_no ? `<br><b>SR.No:</b><br>${frappe.utils.escape_html(item.serial_no.replace(/\n/g, ", "))}` : ""}
+                </td>
+                <td class="text-right">${flt(item.qty || 0)}<br>@ ${format_currency(flt(item.rate || 0), currency)}</td>
+                <td class="text-right">${format_currency(flt(item.amount || 0), currency)}</td>
+            </tr>
+        `;
+        return html;
+    }
+    
+    function process_taxes(doc) {
+        let taxesHtml = "";
+        (doc.taxes || []).forEach(row => {
+            if (!row.included_in_print_rate || doc.flags?.show_inclusive_tax_in_print) {
+                let description = row.description || "";
+                if (!description.includes('%') && row.rate) {
+                    description = `${description}@${row.rate}%`;
+                }
+                taxesHtml += `
+                    <tr>
+                        <td class="text-right" style="width: 70%">${frappe.utils.escape_html(description)}</td>
+                        <td class="text-right">${format_currency(flt(row.tax_amount || 0), currency)}</td>
+                    </tr>
+                `;
+            }
+        });
+        return taxesHtml;
+    }
+    
+    function process_payments(doc) {
+        let paymentsHtml = "";
+        (doc.payments || []).forEach(row => {
+            paymentsHtml += `
+                <tr>
+                    <td class="text-right" style="width: 70%">${frappe.utils.escape_html(row.mode_of_payment || "")}</td>
+                    <td class="text-right">${format_currency(flt(row.amount || 0), currency)}</td>
+                </tr>
+            `;
+        });
+        return paymentsHtml;
+    }
+    
+    const itemsHtml = (doc.items || []).map(item => process_item(item, doc)).join("");
+    const taxesHtml = process_taxes(doc);
+    const paymentsHtml = process_payments(doc);
+    
+    let html = template || "";
+    
+    html = html.replace(/\{\%-?\s*for\s+item\s+in\s+doc\.items\s*-?\%\}([\s\S]*?)\{\%-?\s*endfor\s*-?\%\}/g, itemsHtml);
+    html = html.replace(/\{\%-?\s*for\s+row\s+in\s+doc\.taxes\s*-?\%\}([\s\S]*?)\{\%-?\s*endfor\s*-?\%\}/g, taxesHtml);
+    html = html.replace(/\{\%-?\s*for\s+row\s+in\s+doc\.payments\s*-?\%\}([\s\S]*?)\{\%-?\s*endfor\s*-?\%\}/g, paymentsHtml);
+    
+    html = html.replace(/\{\%\s*if\s+letter_head\s*\%\}([\s\S]*?)\{\%\s*endif\s*\%\}/g, "");
+    
+    html = html.replace(/\{\{\s*doc\.get_formatted\("([^"]+)"\)\s*\}\}/g, (match, fieldname) => {
+        return get_formatted(doc, fieldname);
+    });
+    
+    html = html.replace(/\{\{\s*doc\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g, (match, fieldname) => {
+        const value = doc[fieldname];
+        if (value === undefined || value === null) return "";
+        if (typeof value === "object") return JSON.stringify(value);
+        return frappe.utils.escape_html(String(value));
+    });
+    
+    html = html.replace(/\{\{\s*item\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g, (match, fieldname) => {
+        return `{{ item.${fieldname} }}`;
+    });
+    
+    html = html.replace(/\{\{\s*row\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g, (match, fieldname) => {
+        return `{{ row.${fieldname} }}`;
+    });
+    
+    html = html.replace(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\.get_formatted\("([^"]+)"\)\s*\}\}/g, (match, obj, fieldname) => {
+        return `{{ ${obj}.${fieldname} }}`;
+    });
+    
+    html = html.replace(/\{\{\s*([^|]+)\s*\|\s*replace\("([^"]+)",\s*"([^"]+)"\)\s*\}\}/g, (match, value, search, replace) => {
+        return String(value || "").split(search).join(replace);
+    });
+    
+    const simpleReplacements = {
+        "doc.name": doc.name || doc.custom_offline_id || "",
+        "doc.company": doc.company || "",
+        "doc.customer_name": doc.customer_name || doc.customer || "",
+        "doc.owner": doc.owner || frappe.session?.user || "",
+        "doc.posting_date": doc.posting_date || "",
+        "doc.posting_time": doc.posting_time || "",
+        "doc.total": format_currency(flt(doc.total || 0), currency),
+        "doc.net_total": format_currency(flt(doc.net_total || 0), currency),
+        "doc.grand_total": format_currency(flt(doc.grand_total || 0), currency),
+        "doc.rounded_total": format_currency(flt(doc.rounded_total || 0), currency),
+        "doc.paid_amount": format_currency(flt(doc.paid_amount || 0), currency),
+        "doc.change_amount": format_currency(flt(doc.change_amount || 0), currency),
+        "doc.discount_amount": format_currency(flt(doc.discount_amount || 0), currency),
+        "doc.terms": doc.terms || "",
+        "doc.select_print_heading": doc.select_print_heading || __("Invoice"),
+    };
+    
+    Object.keys(simpleReplacements).forEach(key => {
+        const re = new RegExp("\\{\\{\\s*" + key.replace(".", "\\.") + "\\s*\\}\\}", "g");
+        html = html.replace(re, simpleReplacements[key]);
+    });
+    
+    html = html.replace(/\{\{\s*_\(\"([^\"]+)\"\)\s*\}\}/g, (match, text) => __(text));
+    
+    html = html.replace(/\{\{[^{}]+\}\}/g, (match) => {
+        if (match.includes("item.") || match.includes("row.")) return match;
+        return "";
+    });
+    
+    return html;
+}
+
+
+
+
+
+
+
+
 
         function wmn_build_offline_receipt_html(doc) {
             doc = doc || {};
@@ -3253,7 +3883,7 @@ function wmn_user_lang() {
 </html>`;
         }
 
-        function wmn_print_offline_receipt(doc) {
+        async function wmn_print_offline_receipt(doc) {
             doc = doc || (window.cur_pos && window.cur_pos.frm && window.cur_pos.frm.doc);
             if (!doc) {
                 frappe.show_alert({
@@ -3261,6 +3891,11 @@ function wmn_user_lang() {
                     indicator: "orange"
                 });
                 return;
+            }
+            const template = await wmn_get_offline_print_template_from_pos_profile();
+
+            if (template) {
+                return window.wmn_print_offline_receipt_with_pos_profile_template(template, doc);
             }
 
             const html = wmn_build_offline_receipt_html(doc);
@@ -3281,6 +3916,7 @@ function wmn_user_lang() {
         }
 
         window.wmn_print_offline_receipt = wmn_print_offline_receipt;
+        window.wmn_print_offline_receipt_with_pos_profile_template = wmn_print_offline_receipt_with_pos_profile_template;
         function wmn_clean_link_value(value) {
             if (value === null || value === undefined) return "";
             const s = String(value).trim();
@@ -3367,6 +4003,8 @@ function wmn_user_lang() {
             row.base_net_rate = flt(row.base_net_rate || row.net_rate || row.rate || 0);
             row.base_net_amount = flt(row.qty || 0) * flt(row.base_net_rate || row.net_rate || row.rate || 0);
 
+            row.offline_item_tax_map = wmn_normalize_offline_item_tax_map(row);
+
             row.item_data = Object.assign({}, row.item_data || {}, {
                 name: row.item_code,
                 item_code: row.item_code,
@@ -3376,7 +4014,9 @@ function wmn_user_lang() {
                 stock_uom: row.stock_uom,
                 uom: row.uom,
                 has_batch_no: row.has_batch_no || 0,
-                has_serial_no: row.has_serial_no || 0
+                has_serial_no: row.has_serial_no || 0,
+                offline_item_tax_map: row.offline_item_tax_map,
+                item_tax_rate: row.item_tax_rate || row.offline_item_tax_map
             });
 
             return row;
@@ -3429,6 +4069,8 @@ function wmn_user_lang() {
             if (typeof wmn_recalculate_offline_doc === "function") {
                 wmn_recalculate_offline_doc(doc);
             }
+
+            wmn_fill_offline_tax_cost_centers(doc);
 
             return doc;
         }
@@ -3751,12 +4393,7 @@ function wmn_user_lang() {
         }
 
 
-        function wmn_clean_link_value(value) {
-            if (value === null || value === undefined) return "";
-            const s = String(value).trim();
-            if (!s || s.toLowerCase() === "null" || s.toLowerCase() === "undefined") return "";
-            return s;
-        }
+
 
         function wmn_decode_item_data_value(value) {
             try {
@@ -4071,104 +4708,6 @@ function wmn_user_lang() {
             window.__wmn_online_batch_click_interceptor_installed = true;
         }
 
-        function wmn_install_online_batch_click_interceptor1111() {
-            if (window.__wmn_online_batch_click_interceptor_installed) return;
-
-            document.addEventListener("click", async function (event) {
-                const itemEl = event.target.closest(".item-wrapper");
-                if (!itemEl) return;
-                if (!wmn_can_use_online_batch_dialog()) return;
-                if (!window.cur_pos || !window.cur_pos.item_selector) return;
-
-                const pos = window.cur_pos;
-                const selector = pos.item_selector;
-                if (!pos.frm || !pos.frm.doc) return;
-
-                const item_code = wmn_decode_item_data_value(itemEl.getAttribute("data-item-code"));
-                if (!item_code) return;
-
-                const doc = pos.frm.doc;
-                const warehouse = doc.set_warehouse || doc.warehouse || (pos.settings && pos.settings.warehouse) || "";
-                const price_list = doc.selling_price_list || selector.price_list || "";
-                const uom = wmn_decode_item_data_value(itemEl.getAttribute("data-uom"));
-                const stock_uom = wmn_decode_item_data_value(itemEl.getAttribute("data-stock-uom")) || uom;
-                const rate = flt(itemEl.getAttribute("data-rate") || 0);
-
-                const item_for_cart = { item_code, uom, stock_uom, rate, price_list_rate: rate };
-
-                let selectedBatch = null;
-                try {
-                    selectedBatch = await wmn_show_online_batch_selection_dialog(item_for_cart, warehouse, price_list);
-                } catch (e) {
-                    console.error("WMN online batch dialog failed", e);
-                    selectedBatch = null;
-                }
-
-                if (!selectedBatch) return;
-
-                event.preventDefault();
-                event.stopPropagation();
-                event.stopImmediatePropagation();
-
-                const batchRate = flt(selectedBatch.price_list_rate || selectedBatch.rate || item_for_cart.price_list_rate || item_for_cart.rate || 0);
-
-                item_for_cart.batch_no = selectedBatch.batch_no;
-                item_for_cart.warehouse = selectedBatch.warehouse || warehouse;
-                item_for_cart.uom = selectedBatch.uom || item_for_cart.uom;
-                item_for_cart.stock_uom = item_for_cart.stock_uom || item_for_cart.uom;
-                item_for_cart.rate = batchRate;
-                item_for_cart.price_list_rate = batchRate;
-
-                selector.events.item_selected({
-                    field: "qty",
-                    value: selectedBatch.__selected_qty || 1,
-                    item: item_for_cart,
-                });
-
-                setTimeout(async function () {
-                    try {
-                        const doc = pos.frm && pos.frm.doc ? pos.frm.doc : null;
-                        if (!doc || !doc.items) return;
-
-                        const row = doc.items.find(r =>
-                            String(r.item_code || "").trim() === String(item_for_cart.item_code || "").trim() &&
-                            String(r.batch_no || "").trim() === String(item_for_cart.batch_no || "").trim()
-                        );
-
-                        if (!row) return;
-
-                        const qty = flt(selectedBatch.__selected_qty || row.qty || 1);
-                        const rate = flt(batchRate || selectedBatch.price_list_rate || selectedBatch.rate || 0);
-
-                        if (rate > 0) {
-                            await frappe.model.set_value(row.doctype, row.name, "price_list_rate", rate);
-                            await frappe.model.set_value(row.doctype, row.name, "rate", rate);
-                            await frappe.model.set_value(row.doctype, row.name, "net_rate", rate);
-                            await frappe.model.set_value(row.doctype, row.name, "base_rate", rate);
-                            await frappe.model.set_value(row.doctype, row.name, "base_net_rate", rate);
-                        }
-
-                        await frappe.model.set_value(row.doctype, row.name, "qty", qty);
-
-                        row.amount = flt(row.qty || qty) * flt(row.rate || rate);
-                        row.net_amount = row.amount;
-                        row.base_amount = row.amount;
-                        row.base_net_amount = row.amount;
-
-                        if (pos.update_cart_html) pos.update_cart_html(row);
-                        if (pos.cart && pos.cart.update_totals_section) pos.cart.update_totals_section(pos.frm);
-                        if (pos.frm && pos.frm.refresh_field) pos.frm.refresh_field("items");
-                    } catch (e) {
-                        console.error("WMN failed to apply online batch price", e);
-                    }
-                }, 300);
-
-                //selector.search_field && selector.search_field.set_focus();
-            }, true);
-
-            window.__wmn_online_batch_click_interceptor_installed = true;
-        }
-
 
         wmn_install_online_batch_click_interceptor();
         
@@ -4295,6 +4834,17 @@ async make_new_invoice() {
 
                 const result = await super.make_new_invoice();
 
+                setTimeout(() => {
+                    try {
+                        const doc = this.frm && this.frm.doc ? this.frm.doc : null;
+                        if (doc && Array.isArray(doc.taxes) && doc.taxes.length) {
+                            wmn_refresh_offline_tax_cache_from_online_doc(doc);
+                        }
+                    } catch (e) {
+                        console.warn("WMN tax cache refresh skipped", e);
+                    }
+                }, 1200);
+
                 if (navigator.onLine !== false && window.__wmn_force_pos_offline !== true) {
                     window.__wmn_pos_effective_offline = false;
                 }
@@ -4309,7 +4859,273 @@ async make_new_invoice() {
             
             
 
-            
+            wmn_register_offline_row_in_frappe_model(row) {
+            if (!row || !row.doctype || !row.name) return row;
+
+            frappe.locals = frappe.locals || {};
+            frappe.locals[row.doctype] = frappe.locals[row.doctype] || {};
+            frappe.locals[row.doctype][row.name] = row;
+
+            return row;
+        }
+
+        wmn_ensure_offline_item_stock_map(row) {
+            if (!row || !row.item_code) return;
+
+            this.item_stock_map = this.item_stock_map || {};
+            this.item_stock_map[row.item_code] = this.item_stock_map[row.item_code] || {};
+
+            const warehouse = row.warehouse || this.frm.doc.set_warehouse || "";
+            if (!warehouse) return;
+
+            this.item_stock_map[row.item_code][warehouse] = [
+                flt(row.actual_qty || 0),
+                cint(row.is_stock_item || 0)
+            ];
+        }
+
+
+        wmn_get_active_offline_item_detail_row() {
+            const details = this.item_details || {};
+            const doc = this.frm && this.frm.doc ? this.frm.doc : null;
+            if (!doc || !Array.isArray(doc.items)) return null;
+
+            const candidates = [
+                details.current_item,
+                details.item_row,
+                details.item,
+            ].filter(Boolean);
+
+            const detail_doctype = details.doctype || (candidates[0] && candidates[0].doctype) || "";
+            const detail_name = details.name || (candidates[0] && candidates[0].name) || "";
+
+            if (detail_doctype && detail_name) {
+                const by_name = doc.items.find(row => row && row.doctype === detail_doctype && row.name === detail_name);
+                if (by_name) return by_name;
+            }
+
+            for (const candidate of candidates) {
+                if (!candidate) continue;
+                if (candidate.name) {
+                    const by_candidate_name = doc.items.find(row => row && row.name === candidate.name);
+                    if (by_candidate_name) return by_candidate_name;
+                }
+                if (candidate.item_code) {
+                    const by_item_code = doc.items.find(row =>
+                        row &&
+                        String(row.item_code || "") === String(candidate.item_code || "") &&
+                        String(row.batch_no || "") === String(candidate.batch_no || "") &&
+                        String(row.serial_no || "") === String(candidate.serial_no || "")
+                    );
+                    if (by_item_code) return by_item_code;
+                }
+            }
+
+            return null;
+        }
+
+        wmn_apply_offline_item_detail_value(row, fieldname, value) {
+            if (!row || !fieldname) return row;
+
+            if (["qty", "rate", "price_list_rate", "discount_percentage", "discount_amount", "conversion_factor"].includes(fieldname)) {
+                row[fieldname] = flt(value || 0);
+            } else {
+                row[fieldname] = value;
+            }
+
+            row.qty = flt(row.qty || 0);
+            row.conversion_factor = flt(row.conversion_factor || 1);
+            row.stock_qty = row.qty * row.conversion_factor;
+
+            row.price_list_rate = flt(row.price_list_rate || row.rate || 0);
+
+            if (fieldname === "discount_percentage") {
+                const discount_percentage = flt(row.discount_percentage || 0);
+                row.rate = flt(row.price_list_rate || row.rate || 0) * (1 - (discount_percentage / 100));
+            } else if (fieldname === "discount_amount") {
+                const qty = flt(row.qty || 0) || 1;
+                const list_rate = flt(row.price_list_rate || row.rate || 0);
+                row.rate = Math.max(0, list_rate - (flt(row.discount_amount || 0) / qty));
+            } else {
+                row.rate = flt(row.rate || row.price_list_rate || 0);
+            }
+
+            row.amount = flt(row.qty || 0) * flt(row.rate || 0);
+            row.net_rate = flt(row.net_rate || row.rate || 0);
+
+            if (["qty", "rate", "price_list_rate", "discount_percentage", "discount_amount", "conversion_factor"].includes(fieldname)) {
+                row.net_rate = row.rate;
+            }
+
+            row.net_amount = flt(row.qty || 0) * flt(row.net_rate || row.rate || 0);
+            row.base_rate = row.rate;
+            row.base_amount = row.amount;
+            row.base_net_rate = row.net_rate;
+            row.base_net_amount = row.net_amount;
+
+            return row;
+        }
+
+        wmn_refresh_offline_cart_from_item_detail(row) {
+            if (!row || !this.frm || !this.frm.doc) return;
+
+            try {
+                this.wmn_register_offline_row_in_frappe_model(row);
+                this.wmn_ensure_offline_item_stock_map(row);
+            } catch (e) {}
+
+            try {
+                this.wmn_recalculate_offline_totals();
+            } catch (e) {
+                console.warn("WMN offline detail recalc skipped", e);
+            }
+
+            try {
+                if (this.cart && this.cart.update_item_html) {
+                    this.cart.update_item_html(row);
+                } else if (this.update_cart_html) {
+                    this.update_cart_html(row);
+                }
+            } catch (e) {
+                console.warn("WMN offline detail cart row refresh skipped", e);
+            }
+
+            try {
+                if (this.cart && this.cart.update_totals_section) {
+                    this.cart.update_totals_section(this.frm);
+                }
+            } catch (e) {
+                console.warn("WMN offline detail totals refresh skipped", e);
+            }
+
+            try {
+                if (this.payment && this.payment.update_totals_section) {
+                    this.payment.update_totals_section(this.frm.doc);
+                }
+            } catch (e) {}
+
+            try {
+                if (this.frm && this.frm.dirty) {
+                    this.frm.dirty();
+                }
+            } catch (e) {}
+        }
+
+
+        wmn_remove_offline_item_detail_row(row) {
+            if (!row || !this.frm || !this.frm.doc) return false;
+
+            const doc = this.frm.doc;
+            doc.items = (doc.items || []).filter((candidate) => {
+                if (!candidate) return false;
+                if (row.name && candidate.name === row.name) return false;
+                return !(
+                    String(candidate.item_code || "") === String(row.item_code || "") &&
+                    String(candidate.batch_no || "") === String(row.batch_no || "") &&
+                    String(candidate.serial_no || "") === String(row.serial_no || "") &&
+                    String(candidate.uom || candidate.stock_uom || "") === String(row.uom || row.stock_uom || "") &&
+                    String(candidate.warehouse || "") === String(row.warehouse || "")
+                );
+            });
+
+            try {
+                if (window.frappe && frappe.locals && row.doctype && row.name && frappe.locals[row.doctype]) {
+                    delete frappe.locals[row.doctype][row.name];
+                }
+            } catch (e) {}
+
+            try {
+                (doc.items || []).forEach((item, index) => {
+                    item.idx = index + 1;
+                });
+                this.wmn_recalculate_offline_totals();
+            } catch (e) {
+                console.warn("WMN offline remove recalc skipped", e);
+            }
+
+            try {
+                if (this.update_cart_html) {
+                    this.update_cart_html(row, true);
+                } else if (this.cart && this.cart.update_item_html) {
+                    this.cart.update_item_html(row, true);
+                }
+            } catch (e) {
+                console.warn("WMN offline remove cart row refresh skipped", e);
+            }
+
+            try {
+                if (this.cart && this.cart.update_totals_section) {
+                    this.cart.update_totals_section(this.frm);
+                }
+            } catch (e) {}
+
+            try {
+                if (this.payment && this.payment.update_totals_section) {
+                    this.payment.update_totals_section(doc);
+                }
+            } catch (e) {}
+
+            try {
+                if (this.item_details && this.item_details.toggle_item_details_section) {
+                    this.item_details.toggle_item_details_section(null);
+                }
+            } catch (e) {}
+
+            try {
+                if (this.frm && this.frm.dirty) {
+                    this.frm.dirty();
+                }
+            } catch (e) {}
+
+            return true;
+        }
+
+        update_item_field(value, field_or_action) {
+            const result = super.update_item_field(value, field_or_action);
+
+            try {
+                if (!(wmn_is_pos_offline && wmn_is_pos_offline())) {
+                    return result;
+                }
+
+                if (field_or_action === "remove") {
+                    setTimeout(() => {
+                        try {
+                            const row = this.wmn_get_active_offline_item_detail_row();
+                            if (row) {
+                                this.wmn_remove_offline_item_detail_row(row);
+                            }
+                        } catch (e) {
+                            console.warn("WMN offline numpad remove sync skipped", e);
+                        }
+                    }, 0);
+                    return result;
+                }
+
+                if (!["qty", "rate", "price_list_rate", "discount_percentage", "discount_amount", "conversion_factor"].includes(field_or_action)) {
+                    return result;
+                }
+
+                setTimeout(() => {
+                    try {
+                        const row = this.wmn_get_active_offline_item_detail_row();
+                        if (!row) return;
+
+                        const control = this.item_details && this.item_details[`${field_or_action}_control`];
+                        const control_value = control && control.get_value ? control.get_value() : value;
+
+                        this.wmn_apply_offline_item_detail_value(row, field_or_action, control_value);
+                        this.wmn_refresh_offline_cart_from_item_detail(row);
+                    } catch (e) {
+                        console.warn("WMN offline numpad to cart sync skipped", e);
+                    }
+                }, 0);
+            } catch (e) {
+                console.warn("WMN offline update_item_field bridge skipped", e);
+            }
+
+            return result;
+        }
 
             async check_stock_availability(item, qty, warehouse) {
                 const target_warehouse = warehouse || (this.settings ? this.settings.warehouse : null);
@@ -4352,40 +5168,24 @@ async make_new_invoice() {
                 items.forEach((row, index) => {
                     row.idx = index + 1;
                     row.conversion_factor = flt(row.conversion_factor || 1);
-                    row.stock_qty = flt(row.qty || 0) * row.conversion_factor;
-                    row.rate = flt(row.rate || row.price_list_rate || 0);
+                    row.qty = flt(row.qty || 0);
+                    row.stock_qty = row.qty * row.conversion_factor;
                     row.price_list_rate = flt(row.price_list_rate || row.rate || 0);
                     row.discount_percentage = flt(row.discount_percentage || 0);
                     row.discount_amount = flt(row.discount_amount || 0);
-                    row.amount = flt(row.qty || 0) * flt(row.rate || 0);
-                    row.net_rate = row.rate;
-                    row.net_amount = row.amount;
+                    row.rate = flt(row.rate || row.price_list_rate || 0);
+                    row.amount = row.qty * row.rate;
+                    row.net_rate = flt(row.net_rate || row.rate || 0);
+                    row.net_amount = row.qty * row.net_rate;
                     row.base_rate = row.rate;
                     row.base_amount = row.amount;
                     row.base_net_rate = row.net_rate;
                     row.base_net_amount = row.net_amount;
-                    total_qty += flt(row.qty || 0);
+                    total_qty += row.qty;
                     net_total += flt(row.net_amount || row.amount || 0);
                 });
 
-                doc.total_qty = total_qty;
-                doc.total = net_total;
-                doc.net_total = net_total;
-                doc.base_total = net_total;
-                doc.base_net_total = net_total;
-                doc.grand_total = net_total;
-                doc.rounded_total = Math.round(net_total);
-                doc.base_grand_total = net_total;
-                doc.base_rounded_total = Math.round(net_total);
-                doc.outstanding_amount = doc.rounded_total || doc.grand_total || 0;
-
-                if (doc.payments && doc.payments.length) {
-                    let paid = 0;
-                    doc.payments.forEach((p) => paid += flt(p.amount || p.base_amount || 0));
-                    doc.paid_amount = paid;
-                    doc.base_paid_amount = paid;
-                    doc.outstanding_amount = flt(doc.grand_total || 0) - paid;
-                }
+                wmn_apply_offline_taxes_and_discount(doc, total_qty, net_total, true);
             }
 
             async wmn_offline_get_full_item(item) {
@@ -4515,6 +5315,12 @@ async make_new_invoice() {
                             }
                         }
 
+                        if (item && item.offline_item_tax_map && (!item_row.offline_item_tax_map || !Object.keys(wmn_parse_json_map(item_row.offline_item_tax_map)).length)) {
+                            item_row.offline_item_tax_map = wmn_parse_json_map(item.offline_item_tax_map);
+                            item_row.item_tax_rate = item_row.item_tax_rate || item_row.offline_item_tax_map;
+                            item_row.item_tax_template = item_row.item_tax_template || item.item_tax_template || "";
+                        }
+
                         item_row[field] = value;
                         if (field === "qty") {
                             item_row.stock_qty = flt(value || 0) * flt(item_row.conversion_factor || 1);
@@ -4559,11 +5365,20 @@ async make_new_invoice() {
                             net_amount: flt(qty) * flt(item.rate || item.price_list_rate || 0),
                             has_serial_no: item.has_serial_no || 0,
                             has_batch_no: item.has_batch_no || 0,
+                            item_tax_template: item.item_tax_template || "",
+                            offline_item_tax_map: wmn_parse_json_map(item.offline_item_tax_map || item.item_tax_rate || item.item_tax_map || {}),
+                            item_tax_rate: wmn_parse_json_map(item.item_tax_rate || item.offline_item_tax_map || item.item_tax_map || {}),
                         });
                     }
 
                     item_row = wmn_normalize_offline_cart_row(item_row, this.frm.doc, (this.frm.doc.items || []).indexOf(item_row), effective_warehouse);
                     wmn_normalize_all_offline_cart_rows(this.frm.doc, effective_warehouse);
+                    this.wmn_register_offline_row_in_frappe_model(item_row);
+                    
+                    
+                    this.wmn_ensure_offline_item_stock_map(item_row);
+
+
 
                     this.wmn_recalculate_offline_totals();
                     this.frm.dirty();
@@ -4577,6 +5392,14 @@ async make_new_invoice() {
 
                     if (this.item_details && this.item_details.$component && this.item_details.$component.is(":visible")) {
                         this.edit_item_details_of(item_row);
+                    }
+
+                    if (this.payment && this.payment.update_totals_section) {
+                        this.payment.update_totals_section(this.frm.doc);
+                    }
+
+                    if (this.frm && this.frm.refresh_field) {
+                        this.frm.refresh_field("items");
                     }
                     frappe.utils.play_sound("submit");
                     return item_row;
@@ -4975,15 +5798,6 @@ set_pos_profile_data() {
             }
         
 
-            init_recent_order_list1111() {
-                super.init_recent_order_list();
-                this.recent_order_list.events.open_invoice_data = (name) => {
-                    const doctype = this.settings.as_sales_invoice === 1  ? "Sales Invoice" : "POS Invoice";
-                    frappe.db.get_doc(doctype, name).then((doc) => {
-                        this.order_summary.load_summary_of(doc);
-                    });
-                };
-            }
         }
 
         const OriginalPastOrderSummary = erpnext.PointOfSale.PastOrderSummary;
@@ -5346,8 +6160,6 @@ set_pos_profile_data() {
                                     final_rate = ui_item ? (ui_item.price_list_rate || ui_item.rate) : 0;
                                 }
                                 
-                                console.log("DEBUG - final_rate before adding:", final_rate);
-                                console.log("Data to be sent to item_selected:", data);
                                 
                                 if (pos_ctrl.add_item) {
                                     await pos_ctrl.add_item({
@@ -5372,100 +6184,6 @@ set_pos_profile_data() {
                                         },
                                     });
                                 }
-                            }
-
-                            this.set_search_value("");
-                            frappe.utils.play_sound("submit");
-                            return;
-                        }
-                        return super.filter_items({ search_term });
-                    }).catch(err => {
-                        console.error(err);
-                        frappe.dom.unfreeze();
-                        return super.filter_items({ search_term });
-                    });
-                }
-                return super.filter_items({ search_term });
-            }
-            filter_items111333({ search_term = "" } = {}) {
-                if (!navigator.onLine && window.wmnPOSOffline) {
-                    return this.get_items({ search_term }).then(({ message }) => {
-                        const items = (message && message.items) || [];
-                        if (items.length === 1 && search_term && search_term.length >= 8) {
-                            this.events.item_selected({
-                                field: "qty",
-                                value: 1,
-                                item: items[0],
-                            });
-                            this.set_search_value("");
-                            frappe.utils.play_sound("submit");
-                            return;
-                        }
-                        this.render_item_list(items);
-                    });
-                }
-
-                if (search_term && search_term.length >= 12) {
-                    return frappe.call({
-                        method: "wmn.barcode_handler.custom_scan_barcode",
-                        args: { search_value: search_term }
-                    }).then(async (r) => {
-                        if (r.message && r.message.item_code) {
-                            const data = r.message;
-                            const pos_ctrl = window.cur_pos;
-                            let qty_value = data.qty || 1;
-
-                            let existing_item = null;
-                            if (pos_ctrl.frm && pos_ctrl.frm.doc.items) {
-                                existing_item = pos_ctrl.frm.doc.items.find(i => 
-                                    i.item_code === data.item_code && 
-                                    (i.batch_no === data.batch_no || (!i.batch_no && !data.batch_no))
-                                );
-                            }
-
-                            if (existing_item) {
-                                frappe.dom.freeze();
-                                const new_qty = flt(existing_item.qty) + flt(qty_value);
-                                
-                                // Directly set value in model to bypass selector logic constraints
-                                await frappe.model.set_value(existing_item.doctype, existing_item.name, "qty", new_qty);
-                                if (data.batch_no && existing_item.batch_no !== data.batch_no) {
-                                    await frappe.model.set_value(existing_item.doctype, existing_item.name, "batch_no", data.batch_no);
-                                }
-                                if (data.serial_no) {
-                                    let new_serial_no = existing_item.serial_no ? existing_item.serial_no + "\n" + data.serial_no : data.serial_no;
-                                    await frappe.model.set_value(existing_item.doctype, existing_item.name, "serial_no", new_serial_no);
-                                }
-                                // Refresh the UI components
-                                pos_ctrl.update_cart_html(existing_item);
-                                
-                                frappe.dom.unfreeze();
-                            } else {
-                            
-                            
-                                let final_rate = data.rate || data.price_list_rate || 0;
-                                console.log("DEBUG - this.item_selector:", this.items);
-                                console.log("DEBUG - windo pos_ctrl.item_selector.items:", pos_ctrl.item_selector.items);
-                                
-                                if (final_rate === 0 && pos_ctrl.item_selector && pos_ctrl.item_selector.items) {
-                                    let ui_item = pos_ctrl.item_selector.items.find(i => i.item_code === data.item_code);
-                                    final_rate = ui_item ? (ui_item.price_list_rate || ui_item.rate) : 0;
-                                }
-                                
-                                console.log("DEBUG - final_rate before adding:", final_rate);
-                                console.log("Data to be sent to item_selected:", data);
-                                this.events.item_selected({
-                                    field: "qty",
-                                    value: qty_value,
-                                    item: {
-                                        item_code: data.item_code,
-                                        batch_no: data.batch_no,
-                                        serial_no: data.serial_no,
-                                        uom: data.uom,
-                                        rate: final_rate,
-                                        stock_uom: data.uom
-                                    },
-                                });
                             }
 
                             this.set_search_value("");
