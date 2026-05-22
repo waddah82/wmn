@@ -266,7 +266,30 @@ def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
             or getattr(profile, "cost_center", None)
             or frappe.db.get_value("Company", company, "cost_center")
         )
-        it["item_tax_template"] = frappe.db.get_value("Item Tax", {"parent": it.name}, "item_tax_template")
+        #it["item_tax_template"] = frappe.db.get_value("Item Tax", {"parent": it.name}, "item_tax_template")
+        item_tax_template = frappe.db.get_value(
+            "Item Tax",
+            {"parent": it.name},
+            "item_tax_template",
+        )
+
+        it["item_tax_template"] = item_tax_template
+        it["offline_item_tax_map"] = {}
+
+        if item_tax_template:
+            rows = frappe.get_all(
+                "Item Tax Template Detail",
+                filters={"parent": item_tax_template},
+                fields=["tax_type", "tax_rate"],
+                limit_page_length=0,
+            )
+
+            for r in rows:
+                it["offline_item_tax_map"][r.tax_type] = flt(r.tax_rate or 0)
+        
+        
+        
+
 
     barcode_rows = frappe.get_all(
         "Item Barcode",
