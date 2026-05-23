@@ -102,7 +102,6 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
                         updateViaCache: "none"
                     })
                         .then(function (reg) {
-                            console.log("WMN POS Service Worker registered", reg.scope);
 
                             if (reg && reg.update) {
                                 reg.update().catch(function (e) {
@@ -130,7 +129,6 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
 
                 if (!window.__wmn_sw_controllerchange_v25) {
                     navigator.serviceWorker.addEventListener("controllerchange", function () {
-                        console.log("WMN POS Service Worker controller changed");
                     });
 
                     window.__wmn_sw_controllerchange_v25 = true;
@@ -241,14 +239,9 @@ wmn_install_pos_pwa_app_css();
             let preloadLoaded = false;
             let lastPreloadKey = "";
 
-            console.log("WMN POS Offline DB:", DB_NAME);
 
             function online() {
-                return !!(
-                    navigator.onLine !== false &&
-                    window.__wmn_force_pos_offline !== true &&
-                    window.__wmn_pos_effective_offline !== true
-                );
+                return !wmn_is_pos_offline();
             }
 
             function clone(obj) {
@@ -1536,23 +1529,11 @@ wmn_install_pos_pwa_app_css();
         }
 
         async function wmn_bootstrap_detect_effective_offline() {
-            /*
-             * ERPNext 15.27 POS needs a real HTTP application health check before
-             * creating the invoice/form. This is NOT ICMP ping and does not call
-             * ERPNext invoice/form methods. It calls only wmn.api.pos_health_check.
-             * If the endpoint fails, we switch to offline BEFORE make_new_invoice.
-             */
             if (!wmn_pos_is_page() || !window.wmnPOSOffline) return false;
 
-            if (window.__wmn_force_pos_offline === true || navigator.onLine === false) {
-                wmn_set_pos_effective_offline("browser/forced offline before POS start");
+            if (navigator.onLine === false) {
+                wmn_set_pos_effective_offline("navigator.onLine false");
                 return true;
-            }
-
-            if (window.__wmn_force_pos_online === true) {
-                window.__wmn_pos_effective_offline = false;
-                console.log("WMN 15.27 ONLINE: forced online before POS start");
-                return false;
             }
 
             const controller = new AbortController();
@@ -1571,29 +1552,20 @@ wmn_install_pos_pwa_app_css();
                         "Content-Type": "application/json",
                         "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
                         "Pragma": "no-cache",
-                        "X-Frappe-CSRF-Token": (frappe.csrf_token || ""),
-                        "X-WMN-POS-Health-Check": String(Date.now())
+                        "X-Frappe-CSRF-Token": (frappe.csrf_token || "")
                     },
-                    body: JSON.stringify({ ts: Date.now(), source: "pos_15_27" })
+                    body: JSON.stringify({ source: "pos_health" })
                 });
 
                 clearTimeout(timer);
 
-                if (!response || !response.ok) {
-                    wmn_set_pos_effective_offline("health check failed HTTP " + (response && response.status));
-                    return true;
-                }
-
                 const data = await response.json().catch(function () { return null; });
-                const ok = data && data.message && cint(data.message.ok) === 1;
-
-                if (!ok) {
-                    wmn_set_pos_effective_offline("health check invalid response");
+                if (!response.ok || (data && data._wmn_offline === true)) {
+                    wmn_set_pos_effective_offline("health check failed HTTP " + response.status);
                     return true;
                 }
 
                 window.__wmn_pos_effective_offline = false;
-                console.log("WMN 15.27 ONLINE: app health check ok");
                 return false;
             } catch (e) {
                 clearTimeout(timer);
@@ -1602,8 +1574,32 @@ wmn_install_pos_pwa_app_css();
             }
         }
 
+        function wmn_pos_cart_has_items() {
+            const doc = window.cur_pos && window.cur_pos.frm && window.cur_pos.frm.doc ? window.cur_pos.frm.doc : null;
+            const items = doc && Array.isArray(doc.items) ? doc.items : [];
+            return items.some(row => row && row.item_code && flt(row.qty || 0) > 0);
+        }
+
+        async function wmn_on_pos_online_event() {
+            if (wmn_pos_cart_has_items()) {
+                window.__wmn_pos_effective_offline = true;
+                return;
+            }
+
+            const isOffline = await wmn_bootstrap_detect_effective_offline();
+            if (!isOffline && !wmn_is_pos_offline()) {
+                setTimeout(function () {
+                    try { location.reload(); } catch (e) {}
+                }, 250);
+            }
+        }
+
         window.addEventListener("offline", function () {
             wmn_set_pos_effective_offline("browser offline event");
+        });
+
+        window.addEventListener("online", function () {
+            wmn_on_pos_online_event();
         });
 
         if (window.jQuery) {
@@ -1667,39 +1663,32 @@ wmn_install_pos_pwa_app_css();
         }
 
         function wmn_current_doc_is_offline_pos() {
-            const pos = window.cur_pos;
-            const doc = pos && pos.frm && pos.frm.doc ? pos.frm.doc : null;
-
-            return !!(
-                doc &&
-                (doc.__offline_pos || doc.offline_pos || String(doc.name || "").startsWith("OFFLINE-"))
-            );
+            const doc = window.cur_pos && window.cur_pos.frm && window.cur_pos.frm.doc ? window.cur_pos.frm.doc : null;
+            return !!(doc && (doc.__offline_pos || doc.offline_pos || String(doc.name || "").startsWith("OFFLINE-")));
         }
 
         function wmn_pos_runtime_state() {
             const in_pos_page = wmn_pos_is_page();
-            const browser_offline = navigator.onLine === false;
-            const forced_offline = window.__wmn_force_pos_offline === true;
             const effective_offline = window.__wmn_pos_effective_offline === true;
-            const offline_doc = wmn_current_doc_is_offline_pos();
-
             return {
                 in_pos_page,
-                browser_offline,
-                forced_offline,
+                browser_offline: false,
+                forced_offline: false,
                 effective_offline,
-                offline_doc,
+                offline_doc: effective_offline,
                 has_offline_db: !!window.wmnPOSOffline,
-                is_offline: !!(
-                    in_pos_page &&
-                    window.wmnPOSOffline &&
-                    (browser_offline || forced_offline || effective_offline || offline_doc)
-                )
+                is_offline: !!(in_pos_page && effective_offline)
             };
         }
 
+        window.__wmn_pos_effective_offline = window.__wmn_pos_effective_offline === true;
+
+        window.wmn_is_pos_offline = function () {
+            return window.__wmn_pos_effective_offline === true;
+        };
+
         function wmn_is_pos_offline() {
-            return wmn_pos_runtime_state().is_offline;
+            return window.wmn_is_pos_offline();
         }
 
         wmn_install_offline_meta_adapter();
@@ -1964,7 +1953,6 @@ wmn_install_pos_pwa_app_css();
 
                 await window.wmnPOSOffline.setSetting("pos_tax_rows", rows);
                 await window.wmnPOSOffline.setSetting("pos_tax_signature", signature);
-                console.log("WMN offline tax cache refreshed", rows);
                 return true;
             } catch (e) {
                 console.warn("WMN offline tax cache refresh skipped", e);
@@ -2719,16 +2707,6 @@ async function wmn_v9_direct_add_or_update(ctrl, args) {
             }
         }
 
-        function wmn_v9_is_offline() {
-            if (typeof wmn_is_pos_offline === "function") return wmn_is_pos_offline();
-            return (
-                (location.pathname.includes("point-of-sale") || location.hash.includes("point-of-sale")) &&
-                window.wmnPOSOffline &&
-                (navigator.onLine === false || window.__wmn_force_pos_offline === true || window.__wmn_pos_effective_offline === true)
-            );
-        }
-
-
 function wmn_recalc_offline_payment_doc(doc) {
             if (!doc) return doc;
             if (window.wmnPOSOffline && window.wmnPOSOffline.recalculateOfflineDoc) {
@@ -3246,10 +3224,13 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                 };
 
                 if (!add()) {
-                    const t = setInterval(() => {
-                        if (add()) clearInterval(t);
-                    }, 500);
-                    setTimeout(() => clearInterval(t), 10000);
+                    let attempts = 0;
+                    const retry = () => {
+                        attempts += 1;
+                        if (add() || attempts >= 6) return;
+                        setTimeout(retry, 500);
+                    };
+                    setTimeout(retry, 500);
                 }
             }
 
@@ -3257,11 +3238,6 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
             window.wmnPOSOffline.deleteInvoiceQueueRow = deleteInvoiceQueueRow;
 
             addManagerButton(pos || window.cur_pos);
-
-            const t = setInterval(() => {
-                addManagerButton(window.cur_pos);
-            }, 1000);
-            setTimeout(() => clearInterval(t), 15000);
 
             window.wmnPOSOffline.__wmn_invoice_manager_dialog_v5 = true;
 }
@@ -3441,13 +3417,228 @@ function wmn_user_lang() {
         function wmn_escape_html(value) {
             return frappe.utils.escape_html(value == null ? "" : String(value));
         }
+
+
+        function wmn_base64_utf8(value) {
+            try {
+                return btoa(unescape(encodeURIComponent(String(value || ""))));
+            } catch (e) {
+                try {
+                    return btoa(String(value || ""));
+                } catch (_e) {
+                    return "";
+                }
+            }
+        }
+
+        function wmn_wrap_offline_receipt_html(html, doc) {
+            return `
+                <!doctype html>
+                <html>
+                    <head>
+                        <meta charset="utf-8">
+                        <title>${frappe.utils.escape_html((doc && (doc.name || doc.custom_offline_id)) || "Offline Receipt")}</title>
+                        <style>
+                            body { font-family: Arial, sans-serif; direction: rtl; font-size: 12px; }
+                            table { width: 100%; border-collapse: collapse; }
+                            th, td { border-bottom: 1px solid #ddd; padding: 4px; text-align: right; }
+                            @media print { body { margin: 0; } }
+                        </style>
+                    </head>
+                    <body>${html || ""}</body>
+                </html>
+            `;
+        }
+
+        function wmn_format_offline_raw_money(value, currency) {
+            const amount = flt(value || 0).toFixed(2);
+            return currency ? (amount + " " + currency) : amount;
+        }
+
+        function wmn_raw_receipt_pad_left(value, width) {
+            value = String(value == null ? "" : value);
+            if (value.length >= width) return value.slice(0, width);
+            return " ".repeat(width - value.length) + value;
+        }
+
+        function wmn_raw_receipt_pad_right(value, width) {
+            value = String(value == null ? "" : value);
+            if (value.length >= width) return value.slice(0, width);
+            return value + " ".repeat(width - value.length);
+        }
+
+        function wmn_raw_receipt_money(value, currency) {
+            const amount = flt(value || 0).toFixed(2);
+            return currency ? (amount + " " + currency) : amount;
+        }
+
+        function wmn_raw_receipt_label_amount(label, amount, currency) {
+            const width = 42;
+            const left = String(label || "");
+            const right = wmn_raw_receipt_money(amount || 0, currency || "");
+            const space = Math.max(1, width - left.length - right.length);
+            return left + " ".repeat(space) + right;
+        }
+
+        function wmn_raw_receipt_center(text) {
+            const width = 42;
+            text = String(text || "");
+            if (text.length >= width) return text;
+            const left = Math.floor((width - text.length) / 2);
+            return " ".repeat(left) + text;
+        }
+
+        function wmn_raw_receipt_line() {
+            return "------------------------------------------";
+        }
+
+        function wmn_build_offline_raw_receipt_text(doc) {
+            doc = doc || {};
+            const settings = (window.cur_pos && window.cur_pos.settings) || {};
+            const currency = doc.currency || settings.currency || "";
+            const lines = [];
+
+            const company = doc.company || settings.company || "";
+            const heading = doc.select_print_heading || "Invoice";
+            const receiptNo = doc.name || doc.custom_offline_id || "";
+            const cashier = doc.owner || frappe.session.user || "";
+            const customer = doc.customer_name || doc.customer || "";
+            const postingDate = doc.posting_date || frappe.datetime.get_today();
+            const postingTime = doc.posting_time || "";
+
+            if (company) lines.push(wmn_raw_receipt_center(company));
+            lines.push(wmn_raw_receipt_center(heading));
+            lines.push("");
+
+            lines.push("Receipt No: " + receiptNo);
+            lines.push("Cashier: " + cashier);
+            lines.push("Customer: " + customer);
+            lines.push("Date: " + postingDate);
+            if (postingTime) lines.push("Time: " + postingTime);
+
+            lines.push(wmn_raw_receipt_line());
+            lines.push(
+                wmn_raw_receipt_pad_right("Item", 20) +
+                wmn_raw_receipt_pad_left("Qty", 7) +
+                wmn_raw_receipt_pad_left("Amount", 15)
+            );
+            lines.push(wmn_raw_receipt_line());
+
+            (doc.items || []).forEach(function (item) {
+                const code = item.item_code || "";
+                const name = item.item_name || "";
+                const label = code || name;
+                const qtyRate = flt(item.qty || 0) + " @ " + wmn_raw_receipt_money(item.rate || 0, currency);
+                const amount = wmn_raw_receipt_money(item.amount || item.net_amount || 0, currency);
+
+                lines.push(
+                    wmn_raw_receipt_pad_right(label, 20) +
+                    wmn_raw_receipt_pad_left(flt(item.qty || 0), 7) +
+                    wmn_raw_receipt_pad_left(amount, 15)
+                );
+
+                if (name && name !== code) {
+                    lines.push("  " + name);
+                }
+
+                lines.push("  @ " + wmn_raw_receipt_money(item.rate || 0, currency));
+
+                if (item.serial_no) {
+                    lines.push("  SR.No: " + String(item.serial_no || "").replace(/\n/g, ", "));
+                }
+            });
+
+            lines.push(wmn_raw_receipt_line());
+
+            if (doc.flags && doc.flags.show_inclusive_tax_in_print) {
+                lines.push(wmn_raw_receipt_label_amount("Total Excl. Tax", doc.net_total || 0, currency));
+            } else {
+                lines.push(wmn_raw_receipt_label_amount("Total", doc.total || doc.net_total || 0, currency));
+            }
+
+            (doc.taxes || []).forEach(function (row) {
+                if (row.included_in_print_rate && !(doc.flags && doc.flags.show_inclusive_tax_in_print)) {
+                    return;
+                }
+
+                const amount = flt(row.tax_amount_after_discount_amount || row.tax_amount || 0);
+                if (!amount) return;
+
+                let description = row.description || row.account_head || "Tax";
+                if (description.indexOf("%") === -1 && flt(row.rate || 0)) {
+                    description = description + "@" + flt(row.rate || 0) + "%";
+                }
+
+                lines.push(wmn_raw_receipt_label_amount(description, amount, currency));
+            });
+
+            if (flt(doc.discount_amount || 0)) {
+                lines.push(wmn_raw_receipt_label_amount("Discount", doc.discount_amount || 0, currency));
+            }
+
+            lines.push(wmn_raw_receipt_label_amount("Grand Total", doc.grand_total || 0, currency));
+
+            if (flt(doc.rounded_total || 0)) {
+                lines.push(wmn_raw_receipt_label_amount("Rounded Total", doc.rounded_total || 0, currency));
+            }
+
+            (doc.payments || []).forEach(function (row) {
+                if (!row || !row.mode_of_payment) return;
+                lines.push(wmn_raw_receipt_label_amount(row.mode_of_payment, row.amount || 0, currency));
+            });
+
+            lines.push(wmn_raw_receipt_label_amount("Paid Amount", doc.paid_amount || 0, currency));
+
+            if (flt(doc.change_amount || 0)) {
+                lines.push(wmn_raw_receipt_label_amount("Change Amount", doc.change_amount || 0, currency));
+            }
+
+            lines.push(wmn_raw_receipt_line());
+
+            if (doc.terms) {
+                lines.push(String(doc.terms || ""));
+            }
+
+            lines.push(wmn_raw_receipt_center("Thank you, please visit again."));
+            lines.push("\n\n\n");
+
+            return lines.filter(function (line) {
+                return line !== null && line !== undefined;
+            }).join("\n");
+        }
+
+        function wmn_try_silent_print_offline_html(fullHtml, doc) {
+            try {
+                if (!window.wmn || !wmn.utils || !wmn.utils.WebSocketPrinter) {
+                    return false;
+                }
+
+                const rawText = wmn_build_offline_raw_receipt_text(doc);
+                if (!rawText || !rawText.trim()) {
+                    return false;
+                }
+
+                const printService = new wmn.utils.WebSocketPrinter({
+                    onConnect: function () {
+                        printService.submit({
+                            type: "RECEIPT",
+                            raw_content: wmn_base64_utf8(rawText)
+                        });
+                    }
+                });
+
+                return true;
+            } catch (e) {
+                console.warn("WMN offline silent print skipped", e);
+                return false;
+            }
+        }
 async function wmn_get_offline_print_template_from_pos_profile() {
     if (!window.wmnPOSOffline || !window.wmnPOSOffline.getFullSettings) {
         return "";
     }
 
     const settings = await window.wmnPOSOffline.getFullSettings();
-    console.log(settings.offline_print_template);  
 
     return (
         settings.custom_offline_print_template ||
@@ -3459,49 +3650,26 @@ async function wmn_get_offline_print_template_from_pos_profile() {
 
 
 async function wmn_print_offline_receipt_with_pos_profile_template(template, doc) {
-    
-
     const html = wmn_render_offline_print_template(template, doc);
+    const fullHtml = wmn_wrap_offline_receipt_html(html, doc);
+
+    if (wmn_try_silent_print_offline_html(fullHtml, doc)) {
+        return;
+    }
 
     const win = window.open("", "_blank");
 
-    win.document.write(`
-        <!doctype html>
-        <html>
-            <head>
-                <meta charset="utf-8">
-                <title>${frappe.utils.escape_html(doc.name || "Offline Receipt")}</title>
-                <style>
-                    body {
-                        font-family: Arial, sans-serif;
-                        direction: rtl;
-                        font-size: 12px;
-                    }
+    if (!win) {
+        frappe.msgprint({
+            title: __("Popup Blocked"),
+            indicator: "orange",
+            message: __("Please allow popups to print the offline receipt.")
+        });
+        return;
+    }
 
-                    table {
-                        width: 100%;
-                        border-collapse: collapse;
-                    }
-
-                    th, td {
-                        border-bottom: 1px solid #ddd;
-                        padding: 4px;
-                        text-align: right;
-                    }
-
-                    @media print {
-                        body {
-                            margin: 0;
-                        }
-                    }
-                </style>
-            </head>
-            <body>
-                ${html}
-            </body>
-        </html>
-    `);
-
+    win.document.open();
+    win.document.write(fullHtml);
     win.document.close();
     win.focus();
 
@@ -3899,6 +4067,12 @@ function wmn_render_offline_print_template(template, doc) {
             }
 
             const html = wmn_build_offline_receipt_html(doc);
+            const fullHtml = wmn_wrap_offline_receipt_html(html, doc);
+
+            if (wmn_try_silent_print_offline_html(fullHtml, doc)) {
+                return;
+            }
+
             const win = window.open("", "_blank", "width=900,height=700");
 
             if (!win) {
@@ -3911,7 +4085,7 @@ function wmn_render_offline_print_template(template, doc) {
             }
 
             win.document.open();
-            win.document.write(html);
+            win.document.write(fullHtml);
             win.document.close();
         }
 
@@ -4086,28 +4260,8 @@ function wmn_render_offline_print_template(template, doc) {
             }
         }
 
-        if (!window.__wmn_keep_offline_doc_after_online_clean) {
-            window.addEventListener("online", function () {
-                if (wmn_pos_cart_is_empty_for_reload()) {
-                    console.log("WMN POS: connection restored and cart is empty; reloading POS page");
-                    setTimeout(function () {
-                        try { location.reload(); } catch (e) {}
-                    }, 300);
-                    return;
-                }
-
-                if (wmn_current_doc_is_offline_pos()) {
-                    window.__wmn_pos_effective_offline = true;
-                    console.log("WMN POS: connection restored, current offline invoice remains offline until New Order or Complete Order");
-                }
-            });
-
-            window.addEventListener("offline", function () {
-                window.__wmn_pos_effective_offline = true;
-            });
-
-            window.__wmn_keep_offline_doc_after_online_clean = true;
-        }
+        // Online/offline browser events are handled by wmn_on_pos_online_event above.
+        // If a cart has items, the current invoice remains offline until Complete Order or New Order.
         function wmn_pos_invoice_doctype(ctrl) {
             ctrl = ctrl || window.cur_pos || {};
             const settings = ctrl.settings || {};
@@ -4404,12 +4558,7 @@ function wmn_render_offline_print_template(template, doc) {
         }
 
         function wmn_can_use_online_batch_dialog() {
-            return !!(
-                navigator.onLine !== false &&
-                window.__wmn_force_pos_offline !== true &&
-                window.__wmn_pos_effective_offline !== true &&
-                !wmn_is_pos_offline()
-            );
+            return navigator.onLine !== false && !wmn_is_pos_offline();
         }
 
         async function wmn_show_online_batch_selection_dialog(item, warehouse = "", price_list = "") {
@@ -4753,10 +4902,11 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
             }
 
             wmn_start_offline_preload() {
+                if (this.__wmn_preload_started) return;
+                this.__wmn_preload_started = true;
+
                 const try_preload = () => {
-                    if (wmn_is_pos_offline && wmn_is_pos_offline()) {
-                        return true;
-                    }
+                    if (wmn_is_pos_offline()) return true;
                     if (window.wmnPOSOffline && this.settings && this.settings.pos_profile) {
                         window.wmnPOSOffline.preload(this, false);
                         return true;
@@ -4765,13 +4915,14 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                 };
 
                 if (try_preload()) return;
+
                 let attempts = 0;
-                const timer = setInterval(() => {
+                const retry = () => {
                     attempts += 1;
-                    if (try_preload() || attempts > 30) {
-                        clearInterval(timer);
-                    }
-                }, 1000);
+                    if (try_preload() || attempts >= 3) return;
+                    setTimeout(retry, 1000);
+                };
+                setTimeout(retry, 1000);
             }
 async make_new_invoice() {
                 await wmn_bootstrap_detect_effective_offline();
@@ -4779,8 +4930,7 @@ async make_new_invoice() {
                 const force_online_new_order =
                     this.__wmn_new_order_online === true &&
                     navigator.onLine === true &&
-                    window.__wmn_force_pos_offline !== true &&
-                    window.__wmn_pos_effective_offline !== true;
+                    !wmn_is_pos_offline();
 
                 if (force_online_new_order) {
                     window.__wmn_pos_effective_offline = false;
@@ -4788,7 +4938,6 @@ async make_new_invoice() {
                 }
 
                 if (!force_online_new_order && wmn_is_pos_offline()) {
-                    console.log("WMN 15.27 OFFLINE: isolated make_new_invoice");
 
                     const doc = await wmn_make_offline_invoice_doc(this);
                     this.frm = wmn_make_offline_frm(doc);
@@ -4845,7 +4994,7 @@ async make_new_invoice() {
                     }
                 }, 1200);
 
-                if (navigator.onLine !== false && window.__wmn_force_pos_offline !== true) {
+                if (navigator.onLine !== false) {
                     window.__wmn_pos_effective_offline = false;
                 }
                 this.__wmn_new_order_online = false;
@@ -5084,7 +5233,7 @@ async make_new_invoice() {
             const result = super.update_item_field(value, field_or_action);
 
             try {
-                if (!(wmn_is_pos_offline && wmn_is_pos_offline())) {
+                if (!(wmn_is_pos_offline())) {
                     return result;
                 }
 
@@ -5146,7 +5295,7 @@ async make_new_invoice() {
             }
 
             async on_cart_update(args) {
-                if (wmn_is_pos_offline && wmn_is_pos_offline()) {
+                if (wmn_is_pos_offline()) {
                     return this.wmn_offline_on_cart_update(args);
                 }
                 return super.on_cart_update(args);
@@ -5415,7 +5564,7 @@ async make_new_invoice() {
             }
 
             async save_and_checkout() {
-                if (wmn_is_pos_offline && wmn_is_pos_offline()) {
+                if (wmn_is_pos_offline()) {
                     try {
                     
                     
@@ -5476,7 +5625,7 @@ async make_new_invoice() {
 
                 // ERPNext 15.27 fix:
                 // Offline must use the lightweight fake frm only.
-                if (wmn_is_pos_offline && wmn_is_pos_offline()) {
+                if (wmn_is_pos_offline()) {
                     const doc = await wmn_make_offline_invoice_doc(this);
                     this.frm = wmn_make_offline_frm(doc);
                     wmn_prepare_pos_frm_doc(this);
@@ -5521,7 +5670,7 @@ async make_new_invoice() {
                 const target_doctype = doctype || wmn_pos_invoice_doctype(this);
 
                 // Never create real ERPNext Form while effective offline.
-                if (wmn_is_pos_offline && wmn_is_pos_offline()) {
+                if (wmn_is_pos_offline()) {
                     const doc = {
                         doctype: target_doctype,
                         name: (target_doctype === "Sales Invoice" ? "OFFLINE-SINV-" : "OFFLINE-PINV-") + Date.now(),
@@ -5573,8 +5722,7 @@ async make_new_invoice() {
                 return frm;
             }
 set_pos_profile_data() {
-                if (wmn_is_pos_offline && wmn_is_pos_offline()) {
-                    console.log("WMN 15.27 OFFLINE: set_pos_profile_data skipped");
+                if (wmn_is_pos_offline()) {
 
                     const doc = this.frm && this.frm.doc;
                     const settings = this.settings || {};
@@ -5607,7 +5755,7 @@ set_pos_profile_data() {
                 super.init_payments();
 
                 this.payment.events.submit_invoice = async () => {
-                    if (wmn_is_pos_offline && wmn_is_pos_offline()) {
+                    if (wmn_is_pos_offline()) {
                         try {
                             await wmn_show_offline_payment_dialog(this);
 
@@ -5769,9 +5917,7 @@ set_pos_profile_data() {
                                 async () => {
                                     const isOffline = await wmn_bootstrap_detect_effective_offline();
 
-                                    this.__wmn_new_order_online =
-                                        !isOffline &&
-                                        window.__wmn_force_pos_offline !== true;
+                                    this.__wmn_new_order_online = !isOffline;
 
                                     
 
@@ -5934,7 +6080,7 @@ set_pos_profile_data() {
                 super(wrapper, args);
             }
             get_items({ start = 0, page_length = 40, search_term = "" } = {}) {
-                if (wmn_is_pos_offline && wmn_is_pos_offline() && window.wmnPOSOffline) {
+                if (wmn_is_pos_offline() && window.wmnPOSOffline) {
                     const promise = window.wmnPOSOffline
                         .searchItems({
                             start,
@@ -6095,22 +6241,18 @@ set_pos_profile_data() {
                         });
                     });
                 }
-                console.log("settings:", this.settings);
                 if (search_term && search_term.length >= 12) {
                     const pos_ctrl = window.cur_pos;
                     
                     let pos_profile_name = null;
                     if (pos_ctrl.pos_profile && typeof pos_ctrl.pos_profile === 'string') {
                         pos_profile_name = pos_ctrl.pos_profile;
-                        console.log("pos_ctrl.pos_profile:", pos_profile_name);
                     } else if (pos_ctrl.settings && pos_ctrl.settings) {
                         pos_profile_name = pos_ctrl.settings;
-                        console.log("pos_ctrl.settings.name:", pos_profile_name);
                     } else if (pos_ctrl.frm?.doc?.pos_profile) {
                         pos_profile_name = pos_ctrl.frm.doc.pos_profile;
                     }
                     
-                    console.log("pos_profile_name:", pos_profile_name);
                     
                     return frappe.call({
                         method: "wmn.barcode_handler.custom_scan_barcode_pos",
@@ -6445,23 +6587,7 @@ window.cur_pos = wrapper.pos;
                     return;
                 }
 
-                const isOffline =
-                    (
-                        typeof wmn_is_pos_offline === "function" &&
-                        wmn_is_pos_offline()
-                    ) ||
-                    window.__wmn_pos_effective_offline === true ||
-                    window.__wmn_force_pos_offline === true ||
-                    (
-                        window.cur_pos &&
-                        window.cur_pos.frm &&
-                        window.cur_pos.frm.doc &&
-                        (
-                            window.cur_pos.frm.doc.__offline_pos ||
-                            window.cur_pos.frm.doc.offline_pos ||
-                            String(window.cur_pos.frm.doc.name || "").startsWith("OFFLINE-")
-                        )
-                    );
+                const isOffline = (window.wmn_is_pos_offline ? window.wmn_is_pos_offline() : window.__wmn_pos_effective_offline === true);
 
                 if (!isOffline) {
                     return;
@@ -6596,10 +6722,8 @@ function wmn_install_mobile_pos_search_focus_guard() {
     patch_set_focus(frappe.ui?.form?.ControlAutocomplete?.prototype);
     patch_set_focus(frappe.ui?.form?.ControlLink?.prototype);
 
-    console.log("WMN mobile POS search focus guard installed");
 }
 
 wmn_install_mobile_pos_search_focus_guard();
 
 
-console.log("WMN POS Offline CLEAN 15.27 HEALTH+BATCH v6 loaded");
