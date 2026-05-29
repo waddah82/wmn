@@ -1,0 +1,127 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "SBI-.YYYY.-.MM.-.DD.-.####",
+ "creation": "2026-05-13 10:00:00",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "section_details",
+  "warehouse",
+  "company",
+  "dry_run",
+  "column_break_4",
+  "status",
+  "use_background_job",
+  "section_log",
+  "log",
+  "items_table_section",
+  "items_table"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_details",
+   "fieldtype": "Section Break",
+   "label": "Import Details"
+  },
+  {
+   "fieldname": "warehouse",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Target Warehouse",
+   "options": "Warehouse",
+   "reqd": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "dry_run",
+   "fieldtype": "Check",
+   "label": "Dry Run (Test Only)"
+  },
+  {
+   "fieldname": "column_break_4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nProcessing\nDry Run Completed\nCompleted\nFailed",
+   "read_only": 1
+  },
+  {
+   "default": "1",
+   "description": "Recommended for more than 100 rows",
+   "fieldname": "use_background_job",
+   "fieldtype": "Check",
+   "label": "Use Background Job (for large data)"
+  },
+  {
+   "fieldname": "section_log",
+   "fieldtype": "Section Break",
+   "label": "Execution Log"
+  },
+  {
+   "fieldname": "log",
+   "fieldtype": "Text Editor",
+   "label": "Log",
+   "read_only": 1
+  },
+  {
+   "fieldname": "items_table_section",
+   "fieldtype": "Section Break",
+   "label": "Items and Batches"
+  },
+  {
+   "allow_bulk_edit": 1,
+   "fieldname": "items_table",
+   "fieldtype": "Table",
+   "label": "Items Table",
+   "options": "Stock Balance Import Item",
+   "reqd": 1
+  }
+ ],
+ "icon": "fa fa-upload",
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-05-13 23:27:39.441525",
+ "modified_by": "Administrator",
+ "module": "Wmn",
+ "name": "Stock Balance Import",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Stock User",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
