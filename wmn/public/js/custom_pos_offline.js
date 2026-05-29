@@ -638,6 +638,72 @@ wmn_install_pos_pwa_app_css();
                         }
                     );
                     const posSettings = Object.assign({}, data.pos_settings || {}, { key: "pos_settings" });
+
+                    let wmnPrintFormat = data.wmn_print_format || data.wmn_print_format_doc || data.wmn_print_format_data || {};
+                    const wmnPrintFormatName =
+                        (wmnPrintFormat && wmnPrintFormat.name) ||
+                        posProfile.print_format ||
+                        liveSettings.print_format ||
+                        liveSettings.wmn_print_format ||
+                        "";
+
+                    if ((!wmnPrintFormat || !wmnPrintFormat.name) && wmnPrintFormatName) {
+                        try {
+                            const pfRes = await frappe.call({
+                                method: "frappe.client.get",
+                                args: {
+                                    doctype: "WMN Print Format",
+                                    name: wmnPrintFormatName
+                                },
+                                freeze: false,
+                            });
+                            wmnPrintFormat = pfRes && pfRes.message ? pfRes.message : {};
+                        } catch (e) {
+                            wmnPrintFormat = {};
+                        }
+                    }
+
+                    let printFormatDoc = data.print_format_doc || data.print_format || data.erpnext_print_format || {};
+                    const printFormatName =
+                        (printFormatDoc && printFormatDoc.name) ||
+                        (wmnPrintFormat && (wmnPrintFormat.wmn_print_format || wmnPrintFormat.print_format || wmnPrintFormat.print_format_name)) ||
+                        wmnPrintFormatName ||
+                        posProfile.print_format ||
+                        liveSettings.print_format ||
+                        "";
+
+                    if ((!printFormatDoc || !printFormatDoc.name) && printFormatName) {
+                        try {
+                            const pfDocRes = await frappe.call({
+                                method: "frappe.client.get",
+                                args: {
+                                    doctype: "Print Format",
+                                    name: printFormatName
+                                },
+                                freeze: false,
+                            });
+                            printFormatDoc = pfDocRes && pfDocRes.message ? pfDocRes.message : {};
+                        } catch (e) {
+                            printFormatDoc = {};
+                        }
+                    }
+
+                    if (printFormatDoc && printFormatDoc.name) {
+                        wmnPrintFormat.print_format_doc = printFormatDoc;
+                        wmnPrintFormat.print_format_name = wmnPrintFormat.print_format_name || printFormatDoc.name;
+                        wmnPrintFormat.print_format_html =
+                            printFormatDoc.html ||
+                            printFormatDoc.custom_html ||
+                            printFormatDoc.print_format ||
+                            printFormatDoc.format_data ||
+                            wmnPrintFormat.print_format_html ||
+                            "";
+                    }
+
+                    if (wmnPrintFormat && wmnPrintFormat.name) {
+                        posProfile.wmn_print_format = wmnPrintFormat;
+                        posProfile.default_print_type = posProfile.default_print_type || wmnPrintFormat.default_print_type || wmnPrintFormat.print_type || "";
+                    }
                     const openingEntries = []
                         .concat(data.pos_opening_entry ? [data.pos_opening_entry] : [])
                         .concat(data.pos_opening_entries || [])
@@ -663,13 +729,25 @@ wmn_install_pos_pwa_app_css();
                     await bulkPut(STORES.pos_opening_entry, openingEntries);
                     await bulkPut(STORES.doctype_meta, doctypeMetaRows);
 
-                    await bulkPut(STORES.settings, [
+                    const settingsRows = [
                         { key: "last_master_sync", value: data.server_time || frappe.datetime.now_datetime() },
                         { key: "pos_profile", value: posProfile.pos_profile || posProfile.name || args.pos_profile || "" },
                         { key: "price_list", value: posProfile.selling_price_list || args.price_list || data.price_list || "" },
                         { key: "warehouse", value: posProfile.warehouse || args.warehouse || data.warehouse || "" },
                         { key: "full_settings", value: posProfile },
-                    ]);
+                    ];
+
+                    if (wmnPrintFormat && wmnPrintFormat.name) {
+                        settingsRows.push({ key: "wmn_print_format", value: wmnPrintFormat });
+                        settingsRows.push({ key: "wmn_print_format::" + wmnPrintFormat.name, value: wmnPrintFormat });
+                    }
+
+                    if (printFormatDoc && printFormatDoc.name) {
+                        settingsRows.push({ key: "print_format_doc", value: printFormatDoc });
+                        settingsRows.push({ key: "print_format_doc::" + printFormatDoc.name, value: printFormatDoc });
+                    }
+
+                    await bulkPut(STORES.settings, settingsRows);
 
                     lastPreloadKey = preloadKey;
                     preloadLoaded = true;
@@ -3491,6 +3569,179 @@ function wmn_user_lang() {
         function wmn_raw_receipt_line() {
             return "------------------------------------------";
         }
+function wmn_render_raw_print_temp(template, doc) {
+
+    doc = doc || {};
+    const currency = doc.currency || doc.company_currency || "YER";
+
+    function rawValue(value) {
+        if (value === undefined || value === null) return "";
+        if (typeof value === "number") return String(value);
+        if (typeof value === "boolean") return value ? "1" : "";
+        if (typeof value === "object") return JSON.stringify(value);
+        return String(value);
+    }
+
+    function moneyValue(value) {
+        return flt(value || 0).toFixed(2) + (currency ? " " + currency : "");
+    }
+
+    function numberValue(value, digits) {
+        return flt(value || 0).toFixed(digits == null ? 2 : cint(digits));
+    }
+
+    function padLeft(value, width) {
+        value = rawValue(value);
+        width = cint(width || 0);
+        if (!width || value.length >= width) return value;
+        return " ".repeat(width - value.length) + value;
+    }
+
+    function padRight(value, width) {
+        value = rawValue(value);
+        width = cint(width || 0);
+        if (!width || value.length >= width) return value;
+        return value + " ".repeat(width - value.length);
+    }
+
+    function padCenter(value, width) {
+        value = rawValue(value);
+        width = cint(width || 0);
+        if (!width || value.length >= width) return value;
+        const total = width - value.length;
+        const left = Math.floor(total / 2);
+        const right = total - left;
+        return " ".repeat(left) + value + " ".repeat(right);
+    }
+
+    function getPath(scope, path) {
+        path = String(path || "").trim();
+        if (!path) return "";
+
+        if ((path.startsWith('"') && path.endsWith('"')) || (path.startsWith("'") && path.endsWith("'"))) {
+            return path.slice(1, -1);
+        }
+
+        if (/^-?\d+(\.\d+)?$/.test(path)) return flt(path);
+
+        const parts = path.split(".").map(x => x.trim()).filter(Boolean);
+        let cur = scope;
+        for (const part of parts) {
+            if (cur == null) return "";
+            cur = cur[part];
+        }
+        return cur == null ? "" : cur;
+    }
+
+    function applyFilters(value, filters) {
+        let out = value;
+        (filters || []).forEach(function(filterRaw) {
+            const filter = String(filterRaw || "").trim();
+            if (!filter) return;
+
+            let m = filter.match(/^(l|left)(\d+)$/i);
+            if (m) { out = padRight(out, m[2]); return; }
+
+            m = filter.match(/^(r|right)(\d+)$/i);
+            if (m) { out = padLeft(out, m[2]); return; }
+
+            m = filter.match(/^(c|center)(\d+)$/i);
+            if (m) { out = padCenter(out, m[2]); return; }
+
+            if (/^(money|currency)$/i.test(filter)) { out = moneyValue(out); return; }
+            if (/^(number|f2)$/i.test(filter)) { out = numberValue(out, 2); return; }
+            if (/^(qty|f1)$/i.test(filter)) { out = numberValue(out, 1); return; }
+            if (/^int$/i.test(filter)) { out = String(cint(out || 0)); return; }
+            if (/^hm$/i.test(filter)) { out = rawValue(out).substring(0, 5); return; }
+            if (/^hms$/i.test(filter)) { out = rawValue(out).substring(0, 8); return; }
+            if (/^upper$/i.test(filter)) { out = rawValue(out).toUpperCase(); return; }
+            if (/^lower$/i.test(filter)) { out = rawValue(out).toLowerCase(); return; }
+        });
+        return rawValue(out);
+    }
+
+    function renderExpression(expr, scope) {
+        expr = String(expr || "").trim();
+        if (!expr) return "";
+
+        if (/^_\(['"]([^'"]+)['"]\)$/.test(expr)) {
+            return __(expr.match(/^_\(['"]([^'"]+)['"]\)$/)[1]);
+        }
+
+        const parts = expr.split("|").map(x => x.trim());
+        const base = parts.shift();
+        const value = getPath(scope, base);
+        return applyFilters(value, parts);
+    }
+
+    function evalCondition(condition, scope) {
+        condition = String(condition || "").trim();
+        if (!condition) return false;
+        if (condition.startsWith("not ")) return !evalCondition(condition.slice(4), scope);
+        if (condition.indexOf(" and ") !== -1) return condition.split(/\s+and\s+/).every(x => evalCondition(x, scope));
+        if (condition.indexOf(" or ") !== -1) return condition.split(/\s+or\s+/).some(x => evalCondition(x, scope));
+
+        let m = condition.match(/^(.*?)\s*!=\s*(.*?)$/);
+        if (m) return rawValue(getPath(scope, m[1])) !== rawValue(getPath(scope, m[2]));
+
+        m = condition.match(/^(.*?)\s*==\s*(.*?)$/);
+        if (m) return rawValue(getPath(scope, m[1])) === rawValue(getPath(scope, m[2]));
+
+        return !!getPath(scope, condition);
+    }
+
+    function renderBlock(text, scope) {
+        text = String(text || "");
+
+        text = text.replace(
+            /\{%-?\s*for\s+(\w+)\s+in\s+([^%]+?)\s*-?%\}([\s\S]*?)\{%-?\s*endfor\s*-?%\}/g,
+            function (_m, varName, collectionExpr, body) {
+                const rows = getPath(scope, collectionExpr.trim()) || [];
+                if (!Array.isArray(rows)) return "";
+                return rows.map(function(row) {
+                    const childScope = Object.assign({}, scope);
+                    childScope[varName] = row || {};
+                    return renderBlock(body, childScope);
+                }).join("");
+            }
+        );
+
+        text = text.replace(
+            /\{%-?\s*if\s+([^%]+?)\s*-?%\}([\s\S]*?)\{%-?\s*endif\s*-?%\}/g,
+            function (_m, condition, body) {
+                return evalCondition(condition, scope) ? renderBlock(body, scope) : "";
+            }
+        );
+
+        text = text.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, function (_m, expr) {
+            return renderExpression(expr, scope);
+        });
+
+        return text;
+    }
+
+    doc.__wmn_receipt_no = doc.__wmn_receipt_no || doc.wmn_receipt_no || doc.name || "";
+    doc.wmn_receipt_no = doc.wmn_receipt_no || doc.__wmn_receipt_no || "";
+    doc.posting_time_hm = String(doc.posting_time || "").substring(0, 5);
+    doc.posting_time_hms = String(doc.posting_time || "").substring(0, 8);
+
+    let html = renderBlock(template || "", { doc: doc });
+    html = html.replace(/\{%-?[\s\S]*?-?%\}/g, "");
+    html = html.replace(/<[^>]*>/g, "");
+
+    const cleanedLines = [];
+    let lastWasEmpty = false;
+    String(html || "").replace(/\r/g, "").split("\n").forEach(function(line) {
+        line = line.replace(/[\t ]+$/g, "");
+        const isEmpty = line.trim() === "";
+        if (isEmpty && lastWasEmpty) return;
+        cleanedLines.push(line);
+        lastWasEmpty = isEmpty;
+    });
+
+    return cleanedLines.join("\n").trim();
+
+}
 
         function wmn_build_offline_raw_receipt_text(doc) {
             doc = doc || {};
@@ -3607,32 +3858,1531 @@ function wmn_user_lang() {
             }).join("\n");
         }
 
-        function wmn_try_silent_print_offline_html(fullHtml, doc) {
+        function wmn_truthy_setting(value) {
+            if (value === true || value === 1) return true;
+            const s = String(value == null ? "" : value).trim().toLowerCase();
+            return ["1", "true", "yes", "y", "on", "enabled", "enable"].includes(s);
+        }
+
+        function wmn_pick_first_setting(source, names) {
+            source = source || {};
+            for (const name of names || []) {
+                if (Object.prototype.hasOwnProperty.call(source, name)) {
+                    return source[name];
+                }
+            }
+            return undefined;
+        }
+
+        async function wmn_get_cached_wmn_print_format(formatName) {
             try {
-                if (!window.wmn || !wmn.utils || !wmn.utils.WebSocketPrinter) {
-                    return false;
+                if (!window.wmnPOSOffline || !window.wmnPOSOffline.getSetting) return null;
+
+                let cached = null;
+                if (formatName) {
+                    cached = await window.wmnPOSOffline.getSetting("wmn_print_format::" + formatName);
+                }
+                if (!cached) {
+                    cached = await window.wmnPOSOffline.getSetting("wmn_print_format");
+                }
+                return cached || null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function wmn_get_raw_value(scope, path) {
+            path = String(path || "").trim();
+            if (!path) return "";
+
+            const parts = path.split(".");
+            let cur = scope;
+
+            for (const part of parts) {
+                const key = String(part || "").trim();
+                if (!key) continue;
+                if (cur == null) return "";
+                cur = cur[key];
+            }
+
+            return cur == null ? "" : cur;
+        }
+
+        function wmn_split_raw_args(argsText) {
+            const args = [];
+            let cur = "";
+            let quote = "";
+            let depth = 0;
+            const text = String(argsText || "");
+
+            for (let i = 0; i < text.length; i++) {
+                const ch = text[i];
+
+                if (quote) {
+                    cur += ch;
+                    if (ch === quote && text[i - 1] !== "\\") quote = "";
+                    continue;
                 }
 
-                const rawText = wmn_build_offline_raw_receipt_text(doc);
-                if (!rawText || !rawText.trim()) {
-                    return false;
+                if (ch === "'" || ch === '"') {
+                    quote = ch;
+                    cur += ch;
+                    continue;
                 }
 
-                const printService = new wmn.utils.WebSocketPrinter({
-                    onConnect: function () {
-                        printService.submit({
-                            type: "RECEIPT",
-                            raw_content: wmn_base64_utf8(rawText)
-                        });
+                if (ch === "(") depth += 1;
+                if (ch === ")") depth = Math.max(0, depth - 1);
+
+                if (ch === "," && depth === 0) {
+                    args.push(cur.trim());
+                    cur = "";
+                    continue;
+                }
+
+                cur += ch;
+            }
+
+            if (cur.trim() || text.trim()) args.push(cur.trim());
+            return args;
+        }
+
+        function wmn_raw_width(value) {
+            return Array.from(String(value || "")).length;
+        }
+
+        function wmn_raw_clip(value, width) {
+            return Array.from(String(value || "")).slice(0, Math.max(0, width)).join("");
+        }
+
+        async function wmn_get_raw_print_template(doc) {
+            const settings = (window.cur_pos && window.cur_pos.settings) || {};
+            const formatName = settings.print_format || (doc && doc.print_format) || "";
+            const printFormat = await wmn_get_cached_wmn_print_format(formatName) || {};
+
+            let printFormatDoc = null;
+            const printFormatName =
+                printFormat.print_format_name ||
+                printFormat.wmn_print_format ||
+                printFormat.print_format ||
+                formatName ||
+                "";
+
+            try {
+                if (window.wmnPOSOffline && window.wmnPOSOffline.getSetting) {
+                    if (printFormatName) {
+                        printFormatDoc = await window.wmnPOSOffline.getSetting("print_format_doc::" + printFormatName);
+                    }
+                    if (!printFormatDoc) {
+                        printFormatDoc = await window.wmnPOSOffline.getSetting("print_format_doc");
+                    }
+                }
+            } catch (e) {
+                printFormatDoc = null;
+            }
+
+            if (!printFormat.print_format_doc && printFormatDoc) {
+                printFormat.print_format_doc = printFormatDoc;
+            }
+
+
+            const template =
+                printFormat.raw_template_code ||
+                printFormat.raw_template ||
+                printFormat.print_format_html ||
+                printFormat.html ||
+                printFormat.custom_html ||
+                printFormat.html_template_code ||
+                printFormat.html_receipt_template ||
+                printFormat.offline_html_template ||
+                printFormat.receipt_html_template ||
+                (printFormat.print_format_doc && (
+                    printFormat.print_format_doc.raw_template_code ||
+                    printFormat.print_format_doc.raw_template ||
+                    printFormat.print_format_doc.html ||
+                    printFormat.print_format_doc.custom_html ||
+                    printFormat.print_format_doc.print_format ||
+                    printFormat.print_format_doc.format_data
+                )) ||
+                (printFormatDoc && (
+                    printFormatDoc.raw_template_code ||
+                    printFormatDoc.raw_template ||
+                    printFormatDoc.html ||
+                    printFormatDoc.custom_html ||
+                    printFormatDoc.print_format ||
+                    printFormatDoc.format_data
+                )) ||
+                "";
+
+            return {
+                printFormat,
+                printFormatDoc,
+                template,
+                printType: (
+                    printFormat.default_print_type ||
+                    printFormat.print_type ||
+                    "RECEIPT"
+                )
+            };
+        }
+
+        function wmn_is_js_print_format(printFormat) {
+            printFormat = printFormat || {};
+
+            const doc = printFormat.print_format_doc || {};
+            const type = String(
+                printFormat.print_format_type ||
+                printFormat.format_type ||
+                doc.print_format_type ||
+                doc.format_type ||
+                ""
+            ).toLowerCase();
+
+            return type === "js" || type === "javascript";
+        }
+
+        function wmn_render_raw_print_template(template, doc, printFormat) {
+            template = String(template || "");
+            doc = doc || {};
+            printFormat = printFormat || {};
+
+            function wmn_format_print_value(value, fieldname, parentDoc) {
+                const currency = (parentDoc && parentDoc.currency) || doc.currency || "";
+                if (value === undefined || value === null) return "";
+                try {
+                    const meta = parentDoc && parentDoc.doctype && frappe.meta
+                        ? frappe.meta.get_field(parentDoc.doctype, fieldname)
+                        : null;
+                    if (meta && meta.fieldtype === "Currency") {
+                        return format_currency(flt(value || 0), currency);
+                    }
+                    if (meta && meta.fieldtype === "Date") {
+                        return frappe.datetime.str_to_user(value);
+                    }
+                } catch (e) {}
+                if (typeof value === "number") return money(value);
+                return String(value);
+            }
+
+            function attachGetFormatted(obj, parentDoc) {
+                if (!obj || typeof obj !== "object" || obj.get_formatted) return obj;
+                Object.defineProperty(obj, "get_formatted", {
+                    enumerable: false,
+                    configurable: true,
+                    value: function(fieldname) {
+                        return wmn_format_print_value(this[fieldname], fieldname, parentDoc || doc);
                     }
                 });
+                return obj;
+            }
 
+            attachGetFormatted(doc, doc);
+            (doc.items || []).forEach(function(row){ attachGetFormatted(row, doc); });
+            (doc.taxes || []).forEach(function(row){ attachGetFormatted(row, doc); });
+            (doc.payments || []).forEach(function(row){ attachGetFormatted(row, doc); });
+            doc.flags = doc.flags || {};
+
+            /*
+             * Prefer Frappe's real print-format renderer when available.
+             * This keeps the HTML/CSS/Jinja print format as the source of truth.
+             * The lightweight renderer below remains only as a fallback for offline edge cases.
+             */
+            try {
+                if (window.frappe && typeof frappe.render_template === "function") {
+                    const rendered = frappe.render_template(template, {
+                        doc: doc,
+                        letter_head: "",
+                        no_letterhead: 1,
+                        _: window.__ || function(v) { return v; },
+                        frappe: window.frappe,
+                        cur_pos: window.cur_pos
+                    });
+
+                    if (rendered && String(rendered).trim()) {
+                        return String(rendered).trim();
+                    }
+                }
+            } catch (e) {
+                console.warn("WMN print format render_template fallback", e);
+            }
+
+            function money(value) {
+                const n = parseFloat(value);
+                return isNaN(n) ? "0.00" : n.toFixed(2);
+            }
+
+            function raw(value) {
+                return value == null ? "" : String(value);
+            }
+
+            function getValue(obj, path) {
+                path = String(path || "").trim();
+                if (!path) return "";
+
+                const parts = path.split(".");
+                let current = obj;
+
+                for (const part of parts) {
+                    const key = String(part || "").trim();
+                    if (!key) continue;
+                    if (current == null) return "";
+                    current = current[key];
+                }
+
+                return current == null ? "" : current;
+            }
+
+            function formatValue(value) {
+                if (value == null) return "";
+                if (typeof value === "number") return String(value);
+                if (typeof value === "boolean") return value ? "1" : "";
+                if (typeof value === "object") return JSON.stringify(value);
+                return String(value);
+            }
+
+            const helpers = { money, raw };
+
+            function evalSafeJS(expr, scope) {
+                try {
+                    return Function(
+                        "doc",
+                        "money",
+                        "raw",
+                        "__",
+                        "format_currency",
+                        "flt",
+                        "return (" + expr + ");"
+                    )(scope.doc, money, raw, __, format_currency, flt);
+                } catch (e) {
+                    return undefined;
+                }
+            }
+
+            function evalExpr(expr, scope) {
+                expr = String(expr || "").trim();
+                if (!expr) return "";
+
+                expr = expr.replace(/\s*\|\s*replace\("\\n"\s*,\s*",\s*"\)\s*$/, ".__replace_newline_comma");
+
+                let replaceNewline = false;
+                if (expr.endsWith(".__replace_newline_comma")) {
+                    replaceNewline = true;
+                    expr = expr.replace(".__replace_newline_comma", "");
+                }
+
+                if (expr === '_("Invoice")') return __("Invoice");
+                if (expr === '_("Thank you, please visit again.")') return __("Thank you, please visit again.");
+
+                if ((expr.startsWith('"') && expr.endsWith('"')) || (expr.startsWith("'") && expr.endsWith("'"))) {
+                    return expr.slice(1, -1);
+                }
+
+                if (/^-?\d+(\.\d+)?$/.test(expr)) return flt(expr);
+
+                if (expr.indexOf(".get_formatted(") !== -1 || expr.indexOf("?") !== -1) {
+                    const jsValue = evalSafeJS(expr, scope);
+                    if (jsValue !== undefined) return jsValue;
+                }
+
+                if (expr.indexOf("||") !== -1) {
+                    const options = expr.split(/\s*\|\|\s*/);
+                    for (const opt of options) {
+                        const v = evalExpr(opt.trim(), scope);
+                        if (v) return v;
+                    }
+                    return "";
+                }
+
+                if (expr.indexOf(" or ") !== -1) {
+                    const options = expr.split(/\s+or\s+/);
+                    for (const opt of options) {
+                        const v = evalExpr(opt.trim(), scope);
+                        if (v) return v;
+                    }
+                    return "";
+                }
+
+                if (expr.indexOf("~") !== -1) {
+                    return expr.split("~").map(part => formatValue(evalExpr(part.trim(), scope))).join("");
+                }
+
+                const fnMatch = expr.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\((.*)\)$/);
+                if (fnMatch && helpers[fnMatch[1]]) {
+                    const args = wmn_split_raw_args(fnMatch[2]).map(arg => evalExpr(arg, scope));
+                    return helpers[fnMatch[1]].apply(null, args);
+                }
+
+                let value = getValue(scope, expr);
+                if (replaceNewline) value = String(value || "").replace(/\n/g, ", ");
+                return value;
+            }
+
+            function evalCondition(expr, scope) {
+                expr = String(expr || "").trim();
+                if (!expr) return false;
+
+                if (expr.indexOf(".get_formatted(") !== -1 || expr.indexOf("?") !== -1) {
+                    const jsValue = evalSafeJS(expr, scope);
+                    if (jsValue !== undefined) return !!jsValue;
+                }
+
+                if (expr.startsWith("not ")) return !evalCondition(expr.slice(4), scope);
+                if (expr.indexOf(" and ") !== -1) return expr.split(/\s+and\s+/).every(part => evalCondition(part, scope));
+                if (expr.indexOf(" or ") !== -1) return expr.split(/\s+or\s+/).some(part => evalCondition(part, scope));
+                if (expr.indexOf("||") !== -1) return expr.split(/\s*\|\|\s*/).some(part => evalCondition(part, scope));
+
+                let m = expr.match(/^(.*?)\s+not\s+in\s+(.*?)$/);
+                if (m) return String(evalExpr(m[2], scope)).indexOf(String(evalExpr(m[1], scope))) === -1;
+
+                m = expr.match(/^(.*?)\s+in\s+(.*?)$/);
+                if (m) return String(evalExpr(m[2], scope)).indexOf(String(evalExpr(m[1], scope))) !== -1;
+
+                m = expr.match(/^(.*?)\s*!=\s*(.*?)$/);
+                if (m) return String(evalExpr(m[1], scope)) !== String(evalExpr(m[2], scope));
+
+                m = expr.match(/^(.*?)\s*==\s*(.*?)$/);
+                if (m) return String(evalExpr(m[1], scope)) === String(evalExpr(m[2], scope));
+
+                return !!evalExpr(expr, scope);
+            }
+
+            function renderBlock(text, scope) {
+                text = String(text || "");
+
+                text = text.replace(
+                    /\{%-?\s*for\s+(\w+)\s+in\s+([^%]+?)\s*-?%\}([\s\S]*?)\{%-?\s*endfor\s*-?%\}/g,
+                    function (_m, varName, collectionExpr, body) {
+                        const rows = evalExpr(collectionExpr.trim(), scope) || [];
+                        if (!Array.isArray(rows)) return "";
+
+                        return rows.map(function (rowObj) {
+                            const childScope = Object.assign({}, scope);
+                            childScope[varName] = rowObj;
+                            return renderBlock(body, childScope);
+                        }).join("");
+                    }
+                );
+
+                text = text.replace(
+                    /\{%-?\s*if\s+([^%]+?)\s*-?%\}([\s\S]*?)\{%-?\s*endif\s*-?%\}/g,
+                    function (_m, condition, body) {
+                        return evalCondition(condition, scope) ? renderBlock(body, scope) : "";
+                    }
+                );
+
+                text = text.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, function (_m, expr) {
+                    return formatValue(evalExpr(expr, scope));
+                });
+
+                return text;
+            }
+
+            // HTML receipt renderer: keep HTML/CSS/images as-is. Avoid remote images in offline mode.
+            let output = renderBlock(template, { doc });
+            output = output.replace(/\{%-?[\s\S]*?-?%\}/g, "");
+            return output.trim();
+        }
+
+        function wmn_mm_to_pt(mm) {
+            return flt(mm || 0) * 72 / 25.4;
+        }
+
+        function wmn_pdf_money(value) {
+            const n = parseFloat(value);
+            return isNaN(n) ? "0.00" : n.toFixed(2);
+        }
+
+        function wmn_pdf_text(value) {
+            if (value === undefined || value === null) return "";
+            return String(value);
+        }
+
+        function wmn_pdf_strip_html(value) {
+            const div = document.createElement("div");
+            div.innerHTML = String(value || "");
+            return (div.innerText || div.textContent || "").trim();
+        }
+
+        function wmn_pdf_get_currency(doc) {
+            return doc.currency || doc.company_currency || "";
+        }
+
+        function wmn_pdf_build_items_table(doc) {
+            const body = [[
+                { text: "Item", bold: true },
+                { text: "Qty", bold: true, alignment: "right" },
+                { text: "Amount", bold: true, alignment: "right" }
+            ]];
+
+            (doc.items || []).forEach(function (item) {
+                const itemTitle =
+                    item.item_name ||
+                    item.item_code ||
+                    "";
+
+                const rateLine = "@ " + wmn_pdf_money(item.rate || 0) + (wmn_pdf_get_currency(doc) ? " " + wmn_pdf_get_currency(doc) : "");
+
+                body.push([
+                    {
+                        stack: [
+                            { text: wmn_pdf_text(itemTitle), margin: [0, 0, 0, 1] },
+                            { text: rateLine, fontSize: 8, color: "#444" },
+                            item.serial_no ? { text: "SR.No: " + String(item.serial_no).replace(/\n/g, ", "), fontSize: 8 } : { text: "" }
+                        ]
+                    },
+                    { text: wmn_pdf_text(item.qty || 0), alignment: "right" },
+                    { text: wmn_pdf_money(item.amount || 0), alignment: "right" }
+                ]);
+            });
+
+            return {
+                table: {
+                    headerRows: 1,
+                    widths: ["*", 35, 55],
+                    body: body
+                },
+                layout: {
+                    hLineWidth: function () { return 0.5; },
+                    vLineWidth: function () { return 0; },
+                    hLineColor: function () { return "#999"; },
+                    paddingLeft: function () { return 0; },
+                    paddingRight: function () { return 0; },
+                    paddingTop: function () { return 3; },
+                    paddingBottom: function () { return 3; }
+                },
+                margin: [0, 6, 0, 6]
+            };
+        }
+
+        function wmn_pdf_detail_row(label, value, opts) {
+            opts = opts || {};
+            return [
+                { text: wmn_pdf_text(label), bold: !!opts.bold },
+                { text: wmn_pdf_text(value), alignment: "right", bold: !!opts.bold }
+            ];
+        }
+
+        function wmn_pdf_build_totals_table(doc) {
+            const currency = wmn_pdf_get_currency(doc);
+            const withCur = function (v) {
+                return wmn_pdf_money(v || 0) + (currency ? " " + currency : "");
+            };
+
+            const body = [];
+
+            body.push(wmn_pdf_detail_row("Total", withCur(doc.total || doc.net_total || 0)));
+
+            (doc.taxes || []).forEach(function (tax) {
+                const amount = flt(tax.tax_amount || 0);
+                if (!amount) return;
+
+                let label = tax.description || tax.account_head || "Tax";
+                if (tax.rate && String(label).indexOf("%") === -1 && String(label).indexOf("@") === -1) {
+                    label += " @" + wmn_pdf_money(tax.rate) + "%";
+                }
+
+                body.push(wmn_pdf_detail_row(label, withCur(amount)));
+            });
+
+            if (flt(doc.discount_amount || 0)) {
+                body.push(wmn_pdf_detail_row("Discount", withCur(doc.discount_amount)));
+            }
+
+            body.push(wmn_pdf_detail_row("Grand Total", withCur(doc.grand_total || doc.rounded_total || 0), { bold: true }));
+
+            if (flt(doc.rounded_total || 0)) {
+                body.push(wmn_pdf_detail_row("Rounded Total", withCur(doc.rounded_total), { bold: true }));
+            }
+
+            (doc.payments || []).forEach(function (p) {
+                if (!flt(p.amount || 0)) return;
+                body.push(wmn_pdf_detail_row(p.mode_of_payment || "Payment", withCur(p.amount)));
+            });
+
+            body.push(wmn_pdf_detail_row("Paid Amount", withCur(doc.paid_amount || doc.grand_total || 0), { bold: true }));
+
+            if (flt(doc.change_amount || 0)) {
+                body.push(wmn_pdf_detail_row("Change Amount", withCur(doc.change_amount), { bold: true }));
+            }
+
+            return {
+                table: {
+                    widths: ["*", 75],
+                    body: body
+                },
+                layout: "noBorders",
+                margin: [0, 4, 0, 4]
+            };
+        }
+
+        function wmn_build_pdfmake_receipt_definition(doc, printFormat) {
+            doc = doc || {};
+            printFormat = printFormat || {};
+
+            const pageWidth = wmn_mm_to_pt(wmn_get_pdf_paper_width_mm(printFormat));
+            const pageMargins = [8, 8, 8, 8];
+            const receiptNo = doc.wmn_receipt_no || doc.__wmn_receipt_no || doc.name || "";
+            const heading = doc.select_print_heading || "Invoice";
+
+            const content = [
+                { text: wmn_pdf_text(doc.company || ""), alignment: "center", bold: true, fontSize: 12, margin: [0, 0, 0, 2] },
+                { text: wmn_pdf_text(heading), alignment: "center", bold: true, fontSize: 10, margin: [0, 0, 0, 8] },
+                {
+                    table: {
+                        widths: [55, "*"],
+                        body: [
+                            ["Receipt No", wmn_pdf_text(receiptNo)],
+                            ["Cashier", wmn_pdf_text(doc.owner || "")],
+                            ["Customer", wmn_pdf_text(doc.customer_name || doc.customer || "")],
+                            ["Date", wmn_pdf_text(doc.posting_date || "")],
+                            ["Time", wmn_pdf_text(doc.posting_time || "")]
+                        ]
+                    },
+                    layout: "noBorders",
+                    fontSize: 8,
+                    margin: [0, 0, 0, 6]
+                },
+                wmn_pdf_build_items_table(doc),
+                wmn_pdf_build_totals_table(doc)
+            ];
+
+            const terms = wmn_pdf_strip_html(doc.terms || "");
+            if (terms) {
+                content.push({ canvas: [{ type: "line", x1: 0, y1: 0, x2: pageWidth - pageMargins[0] - pageMargins[2], y2: 0, lineWidth: 0.5 }], margin: [0, 4, 0, 4] });
+                content.push({ text: terms, fontSize: 8, margin: [0, 2, 0, 6] });
+            }
+
+            content.push({ canvas: [{ type: "line", x1: 0, y1: 0, x2: pageWidth - pageMargins[0] - pageMargins[2], y2: 0, lineWidth: 0.5 }], margin: [0, 4, 0, 6] });
+            content.push({ text: "Thank you, please visit again.", alignment: "center", fontSize: 9, margin: [0, 2, 0, 0] });
+
+            return {
+                pageSize: {
+                    width: pageWidth,
+                    height: "auto"
+                },
+                pageMargins: pageMargins,
+                content: content,
+                defaultStyle: {
+                    font: (printFormat.pdf_font || printFormat.font || "Roboto"),
+                    fontSize: cint(printFormat.pdf_font_size || printFormat.font_size || 9) || 9
+                }
+            };
+        }
+
+        function wmn_pdfmake_to_base64(docDefinition) {
+            return new Promise(function (resolve, reject) {
+                try {
+                    if (!window.pdfMake) {
+                        reject(new Error("pdfMake is not loaded. Add /assets/wmn/js/pdfmake.min.js and /assets/wmn/js/vfs_fonts.js before custom_pos_offline.js"));
+                        return;
+                    }
+
+                    window.pdfMake.createPdf(docDefinition).getBase64(function (base64) {
+                        resolve(base64);
+                    });
+                } catch (e) {
+                    reject(e);
+                }
+            });
+        }
+
+        function wmn_clean_base64_for_printer(value) {
+            value = String(value || "");
+
+            if (value.indexOf(",") !== -1) {
+                value = value.split(",").pop();
+            }
+
+            value = value.replace(/\s/g, "");
+
+            while (value.length % 4 !== 0) {
+                value += "=";
+            }
+
+            return value;
+        }
+
+        const WMN_SILENT_PRINT_MODE_FIELD = "wmn_silent_print_mode";
+        const WMN_SILENT_PRINT_MODE_VALUES = ["raw_text", "html2canvas", "pdfmake"];
+
+        function wmn_get_silent_print_mode(printFormat) {
+            const settings = (window.cur_pos && window.cur_pos.settings) || {};
+            printFormat = printFormat || {};
+
+            const rawMode =
+                wmn_pick_first_setting(settings, [
+                    WMN_SILENT_PRINT_MODE_FIELD,
+                    "silent_print_mode",
+                    "wmn_print_mode",
+                    "print_output_mode",
+                    "wmn_auto_print_mode",
+                    "auto_silent_print_mode"
+                ]) ||
+                wmn_pick_first_setting(printFormat, [
+                    "wmn_silent_print_mode",
+                    "silent_print_mode",
+                    "wmn_print_mode",
+                    "print_output_mode"
+                ]) ||
+                "html2canvas";
+
+            let mode = String(rawMode || "html2canvas").trim().toLowerCase();
+            mode = mode.replace(/[-\s]+/g, "_");
+
+            if (["raw", "raw_text", "text", "escpos", "esc_pos"].includes(mode)) return "raw_text";
+            if (["html", "html2canvas", "canvas", "image", "png", "html_png"].includes(mode)) return "html2canvas";
+            if (["pdf", "pdfmake", "pdf_make", "js_pdf", "doc_definition"].includes(mode)) return "pdfmake";
+
+            return "html2canvas";
+        }
+
+        window.wmn_get_silent_print_mode = wmn_get_silent_print_mode;
+        window.WMN_SILENT_PRINT_MODE_FIELD = WMN_SILENT_PRINT_MODE_FIELD;
+        window.WMN_SILENT_PRINT_MODE_VALUES = WMN_SILENT_PRINT_MODE_VALUES;
+
+        function wmn_get_print_type(printFormat) {
+            const settings = (window.cur_pos && window.cur_pos.settings) || {};
+            printFormat = printFormat || {};
+            return (
+                settings.wmn_silent_print_type ||
+                settings.default_print_type ||
+                settings.print_type ||
+                printFormat.default_print_type ||
+                printFormat.print_type ||
+                "RECEIPT"
+            );
+        }
+function wmn_send_to_printer(payload, printType, wsUrl = null) {
+    payload = payload || {};
+    
+
+    let finalWsUrl = wsUrl;
+    if (!finalWsUrl) {
+        finalWsUrl = localStorage.getItem('whb_websocket_url');
+    }
+    
+
+    if (!finalWsUrl) {
+ 
+        const userInput = prompt(
+            "Please enter WebSocket URL for WebApp Hardware Bridge:\n\n" +
+            "Example: ws://192.168.43.72:12212/printer\n\n" +
+            "Or press OK to use default:",
+            "ws://127.0.0.1:12212/printer"
+        );
+        
+        if (userInput && userInput.trim() !== "") {
+            finalWsUrl = userInput.trim();
+ 
+            localStorage.setItem('whb_websocket_url', finalWsUrl);
+        } else if (userInput === "") {
+
+            finalWsUrl = "ws://127.0.0.1:12212/printer";
+            localStorage.setItem('whb_websocket_url', finalWsUrl);
+        } else {
+
+            return Promise.reject(new Error("WebSocket URL not provided"));
+        }
+    }
+    
+    return new Promise(function (resolve, reject) {
+        if (!window.wmn || !wmn.utils || !wmn.utils.WebSocketPrinter) {
+            reject(new Error("WebSocketPrinter not available"));
+            return;
+        }
+
+        const printer = new wmn.utils.WebSocketPrinter({
+            url: finalWsUrl,
+            onConnect: function () {
+                try {
+                    const submitPayload = Object.assign({
+                        type: printType || "RECEIPT"
+                    }, payload);
+
+                    printer.submit(submitPayload);
+                    resolve(true);
+                } catch (e) {
+                    reject(e);
+                }
+            }
+        });
+    });
+}
+        function wmn_send_to_printer11(payload, printType) {
+            payload = payload || {};
+            return new Promise(function (resolve, reject) {
+                if (!window.wmn || !wmn.utils || !wmn.utils.WebSocketPrinter) {
+                    reject(new Error("WebSocketPrinter not available"));
+                    return;
+                }
+
+                const printer = new wmn.utils.WebSocketPrinter({
+                    onConnect: function () {
+                        try {
+                            const submitPayload = Object.assign({
+                                type: printType || "RECEIPT"
+                            }, payload);
+
+                            printer.submit(submitPayload);
+                            resolve(true);
+                        } catch (e) {
+                            reject(e);
+                        }
+                    }
+                });
+            });
+        }
+
+        function wmn_send_pdf_to_printer(pdfBase64, printType) {
+            return wmn_send_to_printer({
+                url: "receipt.pdf",
+                file_content: wmn_clean_base64_for_printer(pdfBase64)
+            }, printType);
+        }
+
+        function wmn_send_png_to_printer(pngBase64, printType) {
+            return wmn_send_to_printer({
+                url: "receipt.png",
+                file_content: wmn_clean_base64_for_printer(pngBase64)
+            }, printType);
+        }
+
+        function wmn_send_raw_text_to_printer(rawText, printType) {
+            return wmn_send_to_printer({
+                raw_content: btoa(unescape(encodeURIComponent(String(rawText || ""))))
+            }, printType);
+        }
+
+        // Backward-compatible name used by older hooks. It sends raw text only.
+        function wmn_send_raw_to_printer(rawText, printType) {
+            return wmn_send_raw_text_to_printer(rawText, printType);
+        }
+
+        function wmn_is_offline_invoice_doc(doc) {
+            doc = doc || {};
+            const name = String(doc.name || "");
+            return (
+                (typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline()) ||
+                name.indexOf("OFFLINE-") === 0 ||
+                name.indexOf("new-") === 0
+            );
+        }
+
+        function wmn_extract_print_format_from_printview(fullHtml) {
+            fullHtml = String(fullHtml || "");
+            const parser = new DOMParser();
+            const parsed = parser.parseFromString(fullHtml, "text/html");
+
+            const styles = Array.from(
+                parsed.querySelectorAll("style, link[rel='stylesheet']")
+            ).map(function(node) {
+                return node.outerHTML || "";
+            }).join("\n");
+
+            const printFormats = parsed.querySelectorAll(".print-format");
+            if (printFormats && printFormats.length) {
+                return styles + "\n" + printFormats[0].outerHTML;
+            }
+
+            const pageBreaks = parsed.querySelectorAll(".page-break");
+            if (pageBreaks && pageBreaks.length) {
+                const firstPrint = pageBreaks[0].querySelector(".print-format") || pageBreaks[0];
+                return styles + "\n" + firstPrint.outerHTML;
+            }
+
+            const builder = parsed.querySelector(".print-format-builder");
+            if (builder) {
+                return styles + "\n" + builder.outerHTML;
+            }
+
+            const bodyHtml = parsed.body ? parsed.body.innerHTML : fullHtml;
+            return bodyHtml || fullHtml;
+        }
+
+        async function wmn_get_online_printview_html(doc, printFormat) {
+            doc = doc || {};
+            printFormat = printFormat || {};
+
+            if (!doc.doctype || !doc.name) {
+                throw new Error("Cannot load printview without doc.doctype and doc.name");
+            }
+
+            const settings = (window.cur_pos && window.cur_pos.settings) || {};
+            const formatName =
+                settings.print_format ||
+                printFormat.print_format_name ||
+                printFormat.wmn_print_format ||
+                printFormat.print_format ||
+                doc.print_format ||
+                "";
+
+            if (!formatName) {
+                throw new Error("POS Profile print_format is empty");
+            }
+
+            const noLetterhead = (
+                settings.no_letterhead !== undefined
+                    ? settings.no_letterhead
+                    : (printFormat.no_letterhead !== undefined ? printFormat.no_letterhead : 1)
+            );
+
+            const lang =
+                settings.language ||
+                printFormat.language ||
+                (frappe && frappe.boot && frappe.boot.lang) ||
+                "en";
+
+            const params = new URLSearchParams({
+                doctype: doc.doctype,
+                name: doc.name,
+                trigger_print: "0",
+                format: formatName,
+                no_letterhead: String(noLetterhead ? 1 : 0),
+                _lang: lang
+            });
+
+            if (settings.letter_head || printFormat.letter_head) {
+                params.set("letterhead", settings.letter_head || printFormat.letter_head);
+            }
+
+            const res = await fetch("/printview?" + params.toString(), {
+                credentials: "include",
+                cache: "no-store"
+            });
+
+            if (!res.ok) {
+                throw new Error("Failed to load printview: HTTP " + res.status);
+            }
+
+            const fullHtml = await res.text();
+            const rendered = wmn_extract_print_format_from_printview(fullHtml);
+
+            if (!String(rendered || "").trim()) {
+                throw new Error("printview returned empty HTML");
+            }
+
+            return rendered;
+        }
+
+        function wmn_extract_print_width_css_from_html(html, printFormat) {
+            html = String(html || "");
+            printFormat = printFormat || {};
+
+            const directCss =
+                printFormat.paper_width_css ||
+                printFormat.width_css ||
+                printFormat.print_width_css;
+
+            if (directCss) return String(directCss);
+
+            const directMm =
+                printFormat.paper_width_mm ||
+                printFormat.width_mm ||
+                printFormat.print_width_mm;
+
+            if (directMm) return flt(directMm) + "mm";
+
+            const directInch =
+                printFormat.paper_width_in ||
+                printFormat.width_in ||
+                printFormat.print_width_in;
+
+            if (directInch) return flt(directInch) + "in";
+
+            const m = html.match(/\.print-format[\s\S]*?width\s*:\s*([0-9.]+)\s*(mm|in|px)/i) ||
+                      html.match(/width\s*:\s*([0-9.]+)\s*(mm|in|px)/i);
+
+            if (m) return String(m[1]) + String(m[2]);
+
+            return "80mm";
+        }
+
+        function wmn_extract_print_width_pt_from_html(html, printFormat) {
+            const cssWidth = wmn_extract_print_width_css_from_html(html, printFormat);
+
+            function mmToPt(mm) { return flt(mm || 0) * 2.8346456693; }
+            function inchToPt(inch) { return flt(inch || 0) * 72; }
+            function pxToPt(px) { return flt(px || 0) * 0.75; }
+
+            const m = String(cssWidth || "").match(/^([0-9.]+)\s*(mm|in|px)$/i);
+            if (!m) return null;
+
+            const value = flt(m[1]);
+            const unit = String(m[2] || "").toLowerCase();
+
+            if (unit === "mm") return mmToPt(value);
+            if (unit === "in") return inchToPt(value);
+            if (unit === "px") return pxToPt(value);
+            return null;
+        }
+
+        function wmn_clean_print_html_for_pdfmake(html) {
+            html = String(html || "");
+            html = html.replace(/<script[\s\S]*?<\/script>/gi, "");
+            return html;
+        }
+
+        function wmn_normalize_rendered_print_html(renderedHtml) {
+            renderedHtml = String(renderedHtml || "").trim();
+
+            if (!renderedHtml) {
+                return "";
+            }
+
+            /*
+             * The offline renderer can return the inner HTML of the Print Format
+             * without the ERPNext wrapper. Most receipt CSS is written as:
+             *   .print-format table { ... }
+             *   .print-format td { ... }
+             * If the wrapper is missing, CSS does not apply and html2canvas may
+             * capture a blank/unstyled page. Always guarantee one visible wrapper.
+             */
+            if (
+                renderedHtml.indexOf('class="print-format"') !== -1 ||
+                renderedHtml.indexOf("class='print-format'") !== -1 ||
+                /class\s*=\s*["'][^"']*\bprint-format\b/i.test(renderedHtml)
+            ) {
+                return renderedHtml;
+            }
+
+            return '<div class="print-format">' + renderedHtml + '</div>';
+        }
+
+        function wmn_normalize_page_size_name(value) {
+            return String(value || "")
+                .trim()
+                .toUpperCase()
+                .replace(/\s+/g, "")
+                .replace(/-/g, "");
+        }
+
+        function wmn_get_wmn_print_page_size(printFormat) {
+            const settings = (window.cur_pos && window.cur_pos.settings) || {};
+            printFormat = printFormat || {};
+
+            return (
+                printFormat.page_size ||
+                printFormat.paper_size ||
+                printFormat.print_page_size ||
+                printFormat.pageSize ||
+                settings.wmn_page_size ||
+                settings.page_size ||
+                "A5"
+            );
+        }
+
+        function wmn_get_wmn_print_orientation(printFormat) {
+            const settings = (window.cur_pos && window.cur_pos.settings) || {};
+            printFormat = printFormat || {};
+
+            return (
+                printFormat.orientation ||
+                printFormat.print_orientation ||
+                settings.wmn_orientation ||
+                settings.orientation ||
+                "Portrait"
+            );
+        }
+
+        function wmn_get_page_size_mm(pageSize, orientation, printFormat) {
+            printFormat = printFormat || {};
+
+            const explicitWidth =
+                printFormat.page_width_mm ||
+                printFormat.paper_width_mm ||
+                printFormat.width_mm ||
+                printFormat.print_width_mm;
+
+            const explicitHeight =
+                printFormat.page_height_mm ||
+                printFormat.paper_height_mm ||
+                printFormat.height_mm ||
+                printFormat.print_height_mm;
+
+            if (explicitWidth) {
+                return {
+                    name: "CUSTOM",
+                    width_mm: flt(explicitWidth),
+                    height_mm: explicitHeight ? flt(explicitHeight) : null
+                };
+            }
+
+            let name = wmn_normalize_page_size_name(pageSize || "A5");
+
+            const standard = {
+                A0: [841, 1189],
+                A1: [594, 841],
+                A2: [420, 594],
+                A3: [297, 420],
+                A4: [210, 297],
+                A5: [148, 210],
+                A6: [105, 148],
+                A7: [74, 105],
+                A8: [52, 74],
+                LETTER: [216, 279],
+                LEGAL: [216, 356],
+                RECEIPT80: [80, null],
+                THERMAL80: [80, null],
+                "80MM": [80, null],
+                RECEIPT58: [58, null],
+                THERMAL58: [58, null],
+                "58MM": [58, null]
+            };
+
+            let size = standard[name];
+
+            if (!size) {
+                const custom = name.match(/^([0-9.]+)(MM|IN|PX)$/);
+                if (custom) {
+                    const value = flt(custom[1]);
+                    const unit = custom[2];
+                    if (unit === "MM") size = [value, null];
+                    if (unit === "IN") size = [value * 25.4, null];
+                    if (unit === "PX") size = [value * 25.4 / 96, null];
+                }
+            }
+
+            if (!size) {
+                size = standard.A5;
+                name = "A5";
+            }
+
+            let width = flt(size[0]);
+            let height = size[1] === null ? null : flt(size[1]);
+
+            const o = String(orientation || "Portrait").trim().toLowerCase();
+            if ((o === "landscape" || o === "horizontal") && height) {
+                const tmp = width;
+                width = height;
+                height = tmp;
+            }
+
+            return {
+                name: name,
+                width_mm: width,
+                height_mm: height
+            };
+        }
+
+        function wmn_mm_to_px(mm) {
+            return Math.round(flt(mm || 0) * 96 / 25.4);
+        }
+
+        function wmn_get_html2canvas_page(printFormat) {
+            return wmn_get_page_size_mm(
+                wmn_get_wmn_print_page_size(printFormat),
+                wmn_get_wmn_print_orientation(printFormat),
+                printFormat
+            );
+        }
+
+        function wmn_get_html2canvas_options(printFormat) {
+            const settings = (window.cur_pos && window.cur_pos.settings) || {};
+            printFormat = printFormat || {};
+
+            const page = wmn_get_html2canvas_page(printFormat);
+            const widthPx = wmn_mm_to_px(page.width_mm);
+            const heightPx = page.height_mm ? wmn_mm_to_px(page.height_mm) : null;
+
+            const scaleSetting =
+                settings.wmn_html2canvas_scale ||
+                printFormat.html2canvas_scale ||
+                printFormat.canvas_scale ||
+                1;
+
+            let scale = flt(scaleSetting || 1);
+            if (!scale || scale < 0.5) scale = 1;
+            if (scale > 4) scale = 4;
+
+            const options = {
+                scale: scale,
+                backgroundColor: "#ffffff",
+                useCORS: false,
+                foreignObjectRendering: true,
+                allowTaint: true,
+                logging: false,
+                removeContainer: true,
+                imageTimeout: 0,
+                scrollX: 0,
+                scrollY: 0,
+                windowWidth: widthPx,
+                windowHeight: heightPx || document.documentElement.clientHeight,
+                width: widthPx
+            };
+
+            if (heightPx) {
+                options.height = heightPx;
+            }
+
+            return options;
+        }
+
+        async function wmn_print_format_html_to_png_base64(renderedHtml, printFormat) {
+            renderedHtml = wmn_normalize_rendered_print_html(renderedHtml);
+            printFormat = printFormat || {};
+
+            if (!String(renderedHtml || "").trim()) {
+                throw new Error("Rendered Print Format HTML is empty before html2canvas capture");
+            }
+
+            if (!window.html2canvas) {
+                throw new Error("html2canvas is not loaded. Add /assets/wmn/js/html2canvas.min.js before custom_pos_offline.js");
+            }
+
+            const holder = document.createElement("div");
+            holder.className = "wmn-print-capture-holder";
+
+            /*
+             * Important:
+             * Do not use opacity:0 / visibility:hidden / display:none.
+             * Do not put the holder at -100000px because some browsers/html2canvas
+             * versions return a white canvas for very far offscreen nodes.
+             * We render it visibly at 0,0 for a few frames, capture it, then remove it.
+             */
+            holder.style.position = "fixed";
+            holder.style.left = "0";
+            holder.style.top = "0";
+            holder.style.background = "#ffffff";
+            holder.style.overflow = "visible";
+            holder.style.zIndex = "2147483647";
+            holder.style.pointerEvents = "none";
+            holder.style.opacity = "1";
+            holder.style.visibility = "visible";
+            holder.style.display = "block";
+
+            holder.innerHTML = renderedHtml;
+            document.body.appendChild(holder);
+
+            try {
+                const target =
+                    holder.querySelector(".print-format") ||
+                    holder.querySelector(".wmn-print-format") ||
+                    holder.querySelector(".receipt") ||
+                    holder.firstElementChild ||
+                    holder;
+
+                if (document.fonts && document.fonts.ready) {
+                    try { await document.fonts.ready; } catch (e) {}
+                }
+
+                const images = Array.from(target.querySelectorAll ? target.querySelectorAll("img") : []);
+                await Promise.all(images.map(function(img) {
+                    if (img.complete) return Promise.resolve();
+                    return new Promise(function(resolve) {
+                        img.onload = resolve;
+                        img.onerror = resolve;
+                    });
+                }));
+
+                await new Promise(function(resolve) {
+                    requestAnimationFrame(function() {
+                        requestAnimationFrame(resolve);
+                    });
+                });
+
+                await new Promise(function(resolve) {
+                    setTimeout(resolve, 300);
+                });
+
+                const rect = target.getBoundingClientRect();
+                const targetWidth = Math.max(
+                    1,
+                    Math.ceil(target.scrollWidth || rect.width || holder.scrollWidth || 576)
+                );
+                const targetHeight = Math.max(
+                    1,
+                    Math.ceil(target.scrollHeight || rect.height || holder.scrollHeight || 1)
+                );
+
+                if (targetWidth <= 1 || targetHeight <= 1) {
+                    throw new Error("html2canvas target size is empty: " + targetWidth + "x" + targetHeight);
+                }
+
+                const canvas = await window.html2canvas(target, {
+                    scale: flt((printFormat && printFormat.canvas_scale) || (printFormat && printFormat.html2canvas_scale) || 2) || 2,
+                    backgroundColor: "#ffffff",
+                    useCORS: false,
+                    foreignObjectRendering: true,
+                    allowTaint: true,
+                    logging: false,
+                    scrollX: 0,
+                    scrollY: 0,
+                    width: targetWidth,
+                    height: targetHeight,
+                    windowWidth: targetWidth,
+                    windowHeight: targetHeight
+                });
+
+                if (!canvas || !canvas.width || !canvas.height) {
+                    throw new Error("html2canvas returned an empty canvas");
+                }
+
+                return canvas.toDataURL("image/png").split(",").pop();
+            } finally {
+                if (holder && holder.parentNode) {
+                    holder.parentNode.removeChild(holder);
+                }
+            }
+        }
+
+        async function wmn_print_format_html_to_pdf_base64(renderedHtml, printFormat) {
+            renderedHtml = wmn_clean_print_html_for_pdfmake(renderedHtml);
+            printFormat = printFormat || {};
+
+            return new Promise(function(resolve, reject) {
+                try {
+                    if (!window.pdfMake) {
+                        reject(new Error("pdfMake is not loaded"));
+                        return;
+                    }
+
+                    if (typeof window.htmlToPdfmake !== "function") {
+                        reject(new Error("html-to-pdfmake is not loaded. Load html-to-pdfmake before custom_pos_offline.js, or use server PDF online."));
+                        return;
+                    }
+
+                    const wrapper = document.createElement("div");
+                    wrapper.innerHTML = renderedHtml;
+
+                    const printRoot =
+                        wrapper.querySelector(".print-format") ||
+                        wrapper.querySelector(".print-format-builder") ||
+                        wrapper;
+
+                    const pdfContent = window.htmlToPdfmake(printRoot.innerHTML || renderedHtml, {
+                        window: window
+                    });
+
+                    const docDefinition = {
+                        content: pdfContent
+                    };
+
+                    const pageWidth = wmn_extract_print_width_pt_from_html(renderedHtml, printFormat);
+                    if (pageWidth) {
+                        docDefinition.pageSize = {
+                            width: pageWidth,
+                            height: "auto"
+                        };
+                        docDefinition.pageMargins = [0, 0, 0, 0];
+                    }
+
+                    window.pdfMake.createPdf(docDefinition).getBase64(function(base64) {
+                        resolve(base64);
+                    });
+                } catch (e) {
+                    reject(e);
+                }
+            });
+        }
+
+        async function wmn_print_raw_receipt(doc) {
+            const cfg = await wmn_get_raw_print_template(doc);
+            const mode = wmn_get_silent_print_mode(cfg.printFormat);
+            const printType = wmn_get_print_type(cfg.printFormat) || cfg.printType;
+            const isOfflineDoc = wmn_is_offline_invoice_doc(doc);
+
+            try { console.info("WMN silent print mode:", mode, "offline:", isOfflineDoc); } catch(e) {}
+
+            if (mode === "raw_text") {
+                //const rawText = wmn_build_offline_raw_receipt_text(doc);
+                const rawText = wmn_render_raw_print_temp(cfg.template, doc);
+                
+                return await wmn_send_raw_text_to_printer(rawText, printType);
+            }
+
+            let renderedHtml = "";
+
+            /*
+             * Main fix:
+             * Use the cached Jinja/HTML renderer for BOTH online and offline first.
+             * This is the same path from the reference file where Arabic item names were clear.
+             * Online printview remains only a fallback, because it was the path that produced broken Arabic.
+             */
+            if (cfg.template && String(cfg.template || "").trim()) {
+                try {
+                    const rendered = wmn_render_raw_print_template(
+                        cfg.template,
+                        doc,
+                        cfg.printFormat
+                    );
+
+                    if (rendered && typeof rendered === "object") {
+                        const pdfBase64 = await wmn_pdfmake_to_base64(rendered);
+                        return await wmn_send_pdf_to_printer(pdfBase64, printType);
+                    }
+
+                    renderedHtml = String(rendered || "").trim();
+                } catch (e) {
+                    console.warn("WMN local Print Format render failed, will try fallback", e);
+                    renderedHtml = "";
+                }
+            }
+
+            /*
+             * If local render is empty or still contains unresolved Jinja, use printview online only.
+             */
+            if ((!renderedHtml || /\{[%{#]/.test(renderedHtml)) && !isOfflineDoc) {
+                try {
+                    renderedHtml = await wmn_get_online_printview_html(doc, cfg.printFormat);
+                } catch (e) {
+                    console.warn("WMN online printview fallback failed", e);
+                }
+            }
+
+            /*
+             * Offline must never send empty canvas. If cached Print Format is missing or not fully rendered,
+             * use the internal offline HTML receipt fallback instead of printing a blank page.
+             */
+            if (!renderedHtml || /\{[%{#]/.test(renderedHtml)) {
+                if (typeof wmn_build_offline_receipt_html === "function") {
+                    renderedHtml = wmn_build_offline_receipt_html(doc);
+                } else {
+                    renderedHtml = wmn_wrap_offline_receipt_html(
+                        "<div class='receipt'>" + wmn_escape_html(wmn_build_offline_raw_receipt_text(doc)).replace(/\n/g, "<br>") + "</div>",
+                        doc
+                    );
+                }
+            }
+
+            if (!renderedHtml || !String(renderedHtml).trim()) {
+                throw new Error("Rendered Print Format output is empty");
+            }
+
+            if (mode === "pdfmake") {
+                const pdfBase64 = await wmn_print_format_html_to_pdf_base64(renderedHtml, cfg.printFormat);
+                return await wmn_send_pdf_to_printer(pdfBase64, printType);
+            }
+
+            const pngBase64 = await wmn_print_format_html_to_png_base64(renderedHtml, cfg.printFormat);
+            return await wmn_send_png_to_printer(pngBase64, printType);
+        }
+
+        function wmn_get_current_receipt_shift_key(doc) {
+            doc = doc || {};
+            const settings = (window.cur_pos && window.cur_pos.settings) || {};
+            const opening =
+                doc.pos_opening_entry ||
+                doc.opening_entry ||
+                settings.pos_opening_entry ||
+                (window.cur_pos && window.cur_pos.opening_entry && window.cur_pos.opening_entry.name) ||
+                (window.cur_pos && window.cur_pos.pos_opening_entry && window.cur_pos.pos_opening_entry.name) ||
+                settings.pos_profile ||
+                doc.pos_profile ||
+                "DEFAULT_SHIFT";
+
+            return "wmn_receipt_counter::" + String(opening || "DEFAULT_SHIFT");
+        }
+
+        async function wmn_assign_receipt_number(doc) {
+            if (!doc) return "";
+
+            if (doc.__wmn_receipt_no || doc.wmn_receipt_no) {
+                doc.__wmn_receipt_no = doc.__wmn_receipt_no || doc.wmn_receipt_no;
+                doc.wmn_receipt_no = doc.wmn_receipt_no || doc.__wmn_receipt_no;
+                return doc.__wmn_receipt_no;
+            }
+
+            const key = wmn_get_current_receipt_shift_key(doc);
+            let counter = 0;
+
+            try {
+                if (window.wmnPOSOffline && window.wmnPOSOffline.getSetting && window.wmnPOSOffline.setSetting) {
+                    counter = cint(await window.wmnPOSOffline.getSetting(key) || 0);
+                    counter += 1;
+                    await window.wmnPOSOffline.setSetting(key, counter);
+                } else {
+                    counter = cint(localStorage.getItem(key) || 0) + 1;
+                    localStorage.setItem(key, String(counter));
+                }
+            } catch (e) {
+                counter = cint(localStorage.getItem(key) || 0) + 1;
+                localStorage.setItem(key, String(counter));
+            }
+
+            doc.__wmn_receipt_no = String(counter).padStart(5, "0");
+            doc.wmn_receipt_no = doc.__wmn_receipt_no;
+            return doc.__wmn_receipt_no;
+        }
+
+        async function wmn_auto_silent_print_enabled() {
+            const settings = (window.cur_pos && window.cur_pos.settings) || {};
+            return !!(settings.enable_auto_silent_print || settings.enable_auto_silent_print == 1);
+        }
+
+        async function wmn_try_auto_silent_print_after_order(doc) {
+            try {
+                if (!doc) return false;
+                if (doc.__wmn_auto_silent_print_done) return false;
+                if (!(await wmn_auto_silent_print_enabled())) return false;
+
+                doc.__wmn_auto_silent_print_done = 1;
+                await wmn_print_raw_receipt(doc);
                 return true;
             } catch (e) {
-                console.warn("WMN offline silent print skipped", e);
+                console.warn("WMN auto silent print failed", e);
                 return false;
             }
         }
+
+        async function wmn_try_silent_print_offline_doc(doc) {
+            try {
+                await wmn_print_raw_receipt(doc);
+                return true;
+            } catch (e) {
+                console.warn("WMN silent print skipped", e);
+                return false;
+            }
+        }
+
+        function wmn_try_silent_print_offline_html(fullHtml, doc) {
+            wmn_try_silent_print_offline_doc(doc).catch(function (e) {
+                console.warn("WMN silent print skipped", e);
+            });
+            return true;
+        }
+
+        async function wmn_try_silent_print_online_doc(doc) {
+            return await wmn_try_silent_print_offline_doc(doc);
+        }
+
+
+        window.wmn_debug_print_format_html = async function () {
+            const doc = window.cur_pos && window.cur_pos.frm && window.cur_pos.frm.doc ? window.cur_pos.frm.doc : null;
+            if (!doc) {
+                console.error("WMN DEBUG: no current POS doc");
+                if (window.frappe && frappe.msgprint) frappe.msgprint("No current POS doc");
+                return;
+            }
+
+            try {
+                const cfg = typeof wmn_get_raw_print_template === "function"
+                    ? await wmn_get_raw_print_template(doc)
+                    : null;
+
+                let html = "";
+                if (cfg && cfg.template && typeof wmn_render_raw_print_template === "function") {
+                    html = wmn_render_raw_print_template(cfg.template, doc, cfg.printFormat || {});
+                }
+
+                html = wmn_normalize_rendered_print_html(html);
+                console.log("WMN DEBUG cfg:", cfg);
+                console.log("WMN DEBUG normalized html length:", html.length);
+                console.log("WMN DEBUG normalized html:", html);
+
+                const win = window.open("", "_blank");
+                if (!win) {
+                    if (window.frappe && frappe.msgprint) frappe.msgprint("Popup blocked. Allow popups.");
+                    return;
+                }
+
+                win.document.open();
+                win.document.write("<!doctype html><html><head><meta charset='utf-8'><title>WMN Print Debug</title></head><body>" + (html || "<h3 style='color:red'>HTML IS EMPTY</h3>") + "</body></html>");
+                win.document.close();
+            } catch (e) {
+                console.error("WMN DEBUG ERROR:", e);
+                if (window.frappe && frappe.msgprint) frappe.msgprint("WMN DEBUG ERROR: " + (e.message || e));
+            }
+        };
+
 async function wmn_get_offline_print_template_from_pos_profile() {
     if (!window.wmnPOSOffline || !window.wmnPOSOffline.getFullSettings) {
         return "";
@@ -5583,6 +7333,7 @@ async make_new_invoice() {
                         //         amount: r.amount
                         //     }))
                         // );
+                        await wmn_assign_receipt_number(this.frm.doc);
                         const row = await window.wmnPOSOffline.saveInvoice(this.frm.doc, this);
                         frappe.dom.unfreeze();
 
@@ -5594,6 +7345,7 @@ async make_new_invoice() {
                         this.toggle_components(false);
                         this.order_summary.toggle_component(true);
                         this.order_summary.load_summary_of(this.frm.doc, true);
+                        wmn_try_auto_silent_print_after_order(this.frm.doc, "offline");
                         this.wmn_bind_offline_receipt_buttons();
 
                         if (this.recent_order_list && this.recent_order_list.refresh_list) {
@@ -5760,6 +7512,7 @@ set_pos_profile_data() {
                             await wmn_show_offline_payment_dialog(this);
 
                             frappe.dom.freeze(wmn_t("Saving offline invoice...", "\u062C\u0627\u0631\u064A \u062D\u0641\u0638 \u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0623\u0648\u0641\u0644\u0627\u064A\u0646..."));
+                            await wmn_assign_receipt_number(this.frm.doc);
                             const row = await window.wmnPOSOffline.saveInvoice(this.frm.doc, this);
                             frappe.dom.unfreeze();
 
@@ -5771,6 +7524,7 @@ set_pos_profile_data() {
                             this.toggle_components(false);
                             this.order_summary.toggle_component(true);
                             this.order_summary.load_summary_of(this.frm.doc, true);
+                            wmn_try_auto_silent_print_after_order(this.frm.doc, "offline");
 
                             if (this.recent_order_list && this.recent_order_list.refresh_list) {
                                 this.recent_order_list.refresh_list();
@@ -5794,10 +7548,12 @@ set_pos_profile_data() {
                         }
                     }
 
-                    this.frm.savesubmit().then((r) => {
+                    this.frm.savesubmit().then(async (r) => {
                         this.toggle_components(false);
                         this.order_summary.toggle_component(true);
+                        await wmn_assign_receipt_number(r.doc);
                         this.order_summary.load_summary_of(r.doc, true);
+                        wmn_try_auto_silent_print_after_order(r.doc, "online");
                         this.recent_order_list.refresh_list();
                         
 });
@@ -5915,6 +7671,7 @@ set_pos_profile_data() {
                                 () => frappe.dom.unfreeze(),
                                 
                                 async () => {
+                                    if (window.__wmn_pos_effective_offline === true) {
                                     const isOffline = await wmn_bootstrap_detect_effective_offline();
 
                                     this.__wmn_new_order_online = !isOffline;
@@ -5925,6 +7682,7 @@ set_pos_profile_data() {
                                         
                                         location.reload();
                                         
+                                    }
                                     }
                                 },
                                 
