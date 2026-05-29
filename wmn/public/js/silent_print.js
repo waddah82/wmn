@@ -1,6 +1,6 @@
-frappe.provide("restaurant.utils");
-restaurant.utils.whb_status = "";
-restaurant.utils.WebSocketPrinter = function (options) {
+frappe.provide("wmn.utils");
+wmn.utils.whb_status = "";
+wmn.utils.WebSocketPrinter = function (options) {
     var defaults = {
         url: "ws://127.0.0.1:12212/printer",
         onConnect: function () {
@@ -22,14 +22,14 @@ restaurant.utils.WebSocketPrinter = function (options) {
 
     var onConnect = function () {
         connected = true;
-        restaurant.utils.whb_status = "Connected";
+        wmn.utils.whb_status = "Connected";
         console.log("Printer Connected.")
         settings.onConnect();
     };
 
     var onDisconnect = function () {
         connected = false;
-        restaurant.utils.whb_status = "Disconnected";
+        wmn.utils.whb_status = "Disconnected";
         console.log("Printer Disconnected. Reconnecting...")
         settings.onDisconnect();
 
@@ -40,7 +40,7 @@ restaurant.utils.WebSocketPrinter = function (options) {
     };
     
     var onError = function () {
-        restaurant.utils.whb_status = "Disconnected";
+        wmn.utils.whb_status = "Disconnected";
         console.log("Printer Disconnected. Reconnecting...")
         if (frappe.whb == undefined){
             // frappe.msgprint(__("Could not establish a connection to the printer. Please verify that the <a href='https://github.com/imTigger/webapp-hardware-bridge' target='_blank'>WebApp Hardware Bridge</a> is running."))
