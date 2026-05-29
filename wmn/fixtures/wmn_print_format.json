@@ -1,0 +1,21 @@
+[
+ {
+  "canvas_scale": 1.0,
+  "custom_height": null,
+  "custom_width": null,
+  "default_print_type": "pos",
+  "docstatus": 0,
+  "doctype": "WMN Print Format",
+  "margin_bot": null,
+  "margin_left": "15",
+  "margin_right": "15",
+  "margin_top": null,
+  "modified": "2026-05-29 19:36:27.367378",
+  "name": "pos raw",
+  "orientation": "Portrait",
+  "page_size": "A5",
+  "print_format": "pos raw",
+  "raw_template_code": "No: {{ doc.wmn_receipt_no }}   {{ doc.posting_date }} {{ doc.posting_time|hm }}\r\n________________________________________\r\n{{ \"Qty\"|text|l8 }}{{ \"Rate\"|text|r12 }}{{ \"Amount\"|text|r15 }}\r\n----------------------------------------\r\n{% for item in doc.items %}{{item.item_name|text|r20 }}\r\n{{ item.qty|qty|l8 }}{{ item.rate|number|r12 }}{{ item.amount|money|r15 }}\r\n----------------------------------------\r\n{% endfor %}{{ \"Total\"|text|l10 }}{{ doc.total|number|r10 }}{{ \"Taxs\"|text|r10 }}: {{ doc.total_taxes_and_charges|number }}\r\n{{ \"Grand Total\"|text|l20 }}: {{ doc.grand_total|money }}\r\n----------------------------------------\r\nThank you, please visit again.",
+  "use_default_margin": 1
+ }
+]

@@ -3,8 +3,73 @@ from frappe import _
 import json
 
 
-from frappe.utils import flt, now_datetime
+from frappe.utils import flt, now_datetime, cint
 from erpnext.stock.doctype.batch.batch import get_batch_qty
+
+
+
+
+
+@frappe.whitelist()
+def get_pos_shift_receipt_counter(
+    pos_opening_entry=None,
+    pos_profile=None,
+    company=None
+):
+    if not pos_opening_entry:
+        return {"counter": 0}
+
+    counter = frappe.db.get_value(
+        "POS Opening Entry",
+        pos_opening_entry,
+        "wmn_last_receipt_counter"
+    )
+
+    return {
+        "counter": cint(counter or 0)
+    }
+
+
+
+@frappe.whitelist()
+def update_pos_shift_receipt_counter(
+    pos_opening_entry=None,
+    counter=None,
+    pos_profile=None,
+    company=None
+):
+    if not pos_opening_entry:
+        frappe.throw(_("POS Opening Entry is required"))
+
+    incoming_counter = cint(counter or 0)
+
+    current_counter = cint(
+        frappe.db.get_value(
+            "POS Opening Entry",
+            pos_opening_entry,
+            "wmn_last_receipt_counter"
+        ) or 0
+    )
+
+    final_counter = max(
+        current_counter,
+        incoming_counter
+    )
+
+    frappe.db.set_value(
+        "POS Opening Entry",
+        pos_opening_entry,
+        "wmn_last_receipt_counter",
+        final_counter,
+        update_modified=False
+    )
+
+    frappe.db.commit()
+
+    return {
+        "counter": final_counter,
+        "updated": True
+    }
 
 @frappe.whitelist(allow_guest=False)
 def pos_health_check(ts=None, source=None):
@@ -287,10 +352,6 @@ def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
             for r in rows:
                 it["offline_item_tax_map"][r.tax_type] = flt(r.tax_rate or 0)
         
-        
-        
-
-
     barcode_rows = frappe.get_all(
         "Item Barcode",
         fields=["parent", "barcode", "uom", "barcode_type"],
@@ -349,7 +410,16 @@ def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
         "Customer", "Item", "Mode of Payment", "Batch", "Serial No",
         "Item Group", "Warehouse", "Item Barcode",
     ]
+    wmn_print_format_doc = {}
 
+    if getattr(profile, "print_format", None):
+        try:
+            wmn_print_format_doc = frappe.get_doc(
+                "WMN Print Format",
+                profile.print_format
+            ).as_dict()
+        except Exception:
+            wmn_print_format_doc = {}
     doctype_meta = {}
     for dt in doctype_names:
         try:
@@ -387,6 +457,7 @@ def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
         "pos_opening_entry": opening_entries[0] if opening_entries else None,
         "doctype_meta": doctype_meta,
         "barcode_structures": get_barcode_structures(),
+        "wmn_print_format": wmn_print_format_doc,
     }
 
 def get_barcode_structures():
