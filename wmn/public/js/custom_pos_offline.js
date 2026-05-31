@@ -29,10 +29,10 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
          
          function registerWMNPOSServiceWorker() {
             try {
-                if (!document.querySelector('link[rel="manifest"][href="/pos-offline-manifest.webmanifest"]')) {
+                if (!document.querySelector('link[rel="manifest"][href="/assets/wmn/pos-offline-manifest.webmanifest"]')) {
                     const manifest = document.createElement("link");
                     manifest.rel = "manifest";
-                    manifest.href = "/pos-offline-manifest.webmanifest";
+                    manifest.href = "/assets/wmn/pos-offline-manifest.webmanifest";
                     document.head.appendChild(manifest);
                 }
 
@@ -1299,6 +1299,11 @@ wmn_install_pos_pwa_app_css();
 
             async function saveInvoice(invoice, ctrl) {
                 const doc = clone(invoice);
+                if (typeof wmn_assign_receipt_number === "function") {
+                    await wmn_assign_receipt_number(doc);
+                }
+                doc.wmn_receipt_no = doc.wmn_receipt_no || doc.__wmn_receipt_no || "";
+                doc.__wmn_receipt_no = doc.__wmn_receipt_no || doc.wmn_receipt_no || "";
                 await wmn_clean_doc_batch_serial_for_save(doc);
                 const offlineId = doc.custom_offline_id || `POS-OFF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
                 doc.custom_offline_id = offlineId;
@@ -1745,6 +1750,26 @@ wmn_install_pos_pwa_app_css();
             return !!(doc && (doc.__offline_pos || doc.offline_pos || String(doc.name || "").startsWith("OFFLINE-")));
         }
 
+        function wmn_is_offline_invoice_doc_object(doc) {
+            doc = doc || {};
+            return !!(
+                doc.__offline_pos ||
+                doc.offline_pos ||
+                doc.__is_offline_pos ||
+                String(doc.name || "").startsWith("OFFLINE-") ||
+                String(doc.custom_offline_id || "").startsWith("POS-OFF-")
+            );
+        }
+
+        function wmn_controller_uses_offline_flow(ctrl) {
+            const doc = ctrl && ctrl.frm && ctrl.frm.doc ? ctrl.frm.doc : (window.cur_pos && window.cur_pos.frm && window.cur_pos.frm.doc ? window.cur_pos.frm.doc : null);
+            return !!(
+                (typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline()) ||
+                wmn_is_offline_invoice_doc_object(doc) ||
+                (ctrl && ctrl.frm && ctrl.frm.__wmn_fake_offline_frm)
+            );
+        }
+
         function wmn_pos_runtime_state() {
             const in_pos_page = wmn_pos_is_page();
             const effective_offline = window.__wmn_pos_effective_offline === true;
@@ -2003,8 +2028,12 @@ wmn_install_pos_pwa_app_css();
         async function wmn_refresh_offline_tax_cache_from_online_doc(doc) {
             try {
                 if (!window.wmnPOSOffline || !window.wmnPOSOffline.setSetting || !window.wmnPOSOffline.getSetting) return false;
-                if (!doc || !Array.isArray(doc.taxes) || !doc.taxes.length) return false;
-
+                if (!doc || !Array.isArray(doc.taxes) ) return false;
+                if (!doc.taxes.length) {
+                    await window.wmnPOSOffline.setSetting("pos_tax_rows", []);
+                    await window.wmnPOSOffline.setSetting("pos_tax_signature", "[]");
+                    return true;
+                }
                 const rows = doc.taxes
                     .filter(t => t && (t.account_head || flt(t.rate || 0)))
                     .map((t, idx) => ({
@@ -2208,6 +2237,10 @@ wmn_install_pos_pwa_app_css();
                 mergeDuplicateOfflineItems(doc);
             }
 
+            if (typeof wmn_normalize_all_offline_cart_rows === "function") {
+                wmn_normalize_all_offline_cart_rows(doc, doc.set_warehouse || doc.warehouse || "");
+            }
+
             let total_qty = 0;
             let total = 0;
 
@@ -2227,7 +2260,13 @@ wmn_install_pos_pwa_app_css();
                 total += row.net_amount;
             });
 
-            return wmn_apply_offline_taxes_and_discount(doc, total_qty, total, false);
+            wmn_apply_offline_taxes_and_discount(doc, total_qty, total, false);
+
+            if (typeof wmn_normalize_all_offline_cart_rows === "function") {
+                wmn_normalize_all_offline_cart_rows(doc, doc.set_warehouse || doc.warehouse || "");
+            }
+
+            return doc;
         }
 
 
@@ -2463,7 +2502,7 @@ async function wmn_make_offline_invoice_doc(ctrl) {
 
             frappe.model.set_value = function (doctype, name, fieldname, value) {
                 try {
-                    if (typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline()) {
+                    if ((typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline()) || wmn_current_doc_is_offline_pos()) {
                         const frm = window.cur_pos && window.cur_pos.frm ? window.cur_pos.frm : null;
                         const doc = frm && frm.doc ? frm.doc : null;
                         const target = wmn_get_offline_child_doc(doc, doctype, name);
@@ -2521,7 +2560,7 @@ async function wmn_make_offline_invoice_doc(ctrl) {
 
             frappe.get_doc = function (doctype, name) {
                 try {
-                    if (typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline()) {
+                    if ((typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline()) || wmn_current_doc_is_offline_pos()) {
                         const frm = window.cur_pos && window.cur_pos.frm ? window.cur_pos.frm : null;
                         const doc = frm && frm.doc ? frm.doc : null;
 
@@ -2567,6 +2606,21 @@ async function wmn_make_offline_invoice_doc(ctrl) {
                 doc,
                 wrapper,
                 fields_dict: {},
+                cscript: {
+                    calculate_outstanding_amount: function () {
+                        wmn_recalculate_offline_doc(frm.doc);
+                        return Promise.resolve(frm.doc);
+                    },
+                    calculate_taxes_and_totals: function () {
+                        wmn_recalculate_offline_doc(frm.doc);
+                        return Promise.resolve(frm.doc);
+                    },
+                    apply_price_list: function () {
+                        wmn_recalculate_offline_doc(frm.doc);
+                        return Promise.resolve(frm.doc);
+                    }
+                },
+                __wmn_fake_offline_frm: true,
                 script_manager: {
                     trigger: (fieldname, doctype, name) => {
                         const target = wmn_get_offline_child_doc(frm.doc, doctype, name) || frm.doc;
@@ -2599,9 +2653,11 @@ async function wmn_make_offline_invoice_doc(ctrl) {
                     return Promise.resolve();
                 },
                 refresh_field: (fieldname) => {
-                    if (!fieldname || ["items", "payments", "taxes"].includes(fieldname)) {
+                    if (!fieldname || ["items", "payments", "taxes", "outstanding_amount", "paid_amount", "base_paid_amount"].includes(fieldname)) {
+                        wmn_recalculate_offline_doc(frm.doc);
                         wmn_emit_offline_refresh_fields(frm);
                     }
+                    return Promise.resolve();
                 },
                 refresh_fields: () => {
                     wmn_emit_offline_refresh_fields(frm);
@@ -3035,21 +3091,119 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                 }
             }
 
+            async function updateInvoiceQueueRow(row) {
+                if (!row || !row.offline_id) return row;
+                await window.wmnPOSOffline.bulkPut(window.wmnPOSOffline.STORES.invoice_queue, [row]);
+                return row;
+            }
+
             async function syncOne(row) {
                 if (!row) return;
 
-                if (window.wmnPOSOffline.syncInvoice && typeof window.wmnPOSOffline.syncInvoice === "function") {
-                    return await (window.wmnPOSOffline.syncInvoice ? window.wmnPOSOffline.syncInvoice(row) : window.wmnPOSOffline.syncInvoices());
+                const invoice = getInvoiceDoc(row);
+                if (!invoice) {
+                    throw new Error("Offline invoice data is missing");
                 }
 
-                // fallback: use bulk sync; it will pick all pending rows.
-                if (window.wmnPOSOffline.syncInvoices && typeof window.wmnPOSOffline.syncInvoices === "function") {
-                    return await (window.wmnPOSOffline.manualSyncInvoices
-                        ? window.wmnPOSOffline.manualSyncInvoices()
-                        : window.wmnPOSOffline.syncInvoices());
+                if (!window.wmnPOSOffline || !window.wmnPOSOffline.bulkPut) {
+                    throw new Error("Offline invoice store is not available");
                 }
 
-                throw new Error("syncInvoices \u063A\u064A\u0631 \u0645\u062A\u0627\u062D\u0629");
+                if (!frappe || !frappe.call) {
+                    throw new Error("Server call is not available");
+                }
+
+                try {
+                    if (typeof wmn_clean_doc_batch_serial_for_save === "function") {
+                        await wmn_clean_doc_batch_serial_for_save(invoice);
+                    }
+
+                    row.status = "syncing";
+                    row.last_try_at = new Date().toISOString();
+                    row.invoice = invoice;
+                    await updateInvoiceQueueRow(row);
+
+                    const r = await frappe.call({
+                        method: "wmn.api.sync_offline_pos_invoice",
+                        args: { invoice: invoice },
+                        freeze: false,
+                    });
+
+                    const result = (r && r.message) || {};
+                    row.status = "synced";
+                    row.synced_at = new Date().toISOString();
+                    row.erpnext_name = result.name || result.erpnext_name || row.erpnext_name || "";
+                    row.last_error = "";
+                    await updateInvoiceQueueRow(row);
+                    return row;
+                } catch (e) {
+                    row.status = "pending";
+                    row.last_error = e.message || String(e);
+                    row.last_try_at = new Date().toISOString();
+                    row.invoice = invoice;
+                    await updateInvoiceQueueRow(row);
+                    throw e;
+                }
+            }
+
+            async function editOfflineInvoice(row, dialog) {
+                if (!row || !pos) return;
+
+                const sourceDoc = getInvoiceDoc(row);
+                if (!sourceDoc) {
+                    frappe.msgprint({
+                        title: wmn_t("Edit Offline Invoice", "تعديل فاتورة أوفلاين"),
+                        indicator: "orange",
+                        message: wmn_t("Offline invoice data is missing", "بيانات الفاتورة الأوفلاين غير موجودة")
+                    });
+                    return;
+                }
+
+                const doc = JSON.parse(JSON.stringify(sourceDoc || {}));
+                doc.custom_offline_id = doc.custom_offline_id || row.offline_id || row.id || row.name || "";
+                doc.__islocal = 1;
+                doc.docstatus = 0;
+                doc.__offline_pos = 1;
+                doc.offline_pos = 1;
+
+                window.__wmn_pos_effective_offline = true;
+
+                if (pos.wmn_detach_current_frm_refresh_fields) {
+                    try { pos.wmn_detach_current_frm_refresh_fields(); } catch (e) {}
+                }
+
+                pos.frm = wmn_make_offline_frm(doc);
+                wmn_prepare_pos_frm_doc(pos);
+
+                window.cur_frm = pos.frm;
+                window.cur_pos = pos;
+
+                if (dialog && dialog.hide) {
+                    dialog.hide();
+                }
+
+                try {
+                    if (pos.order_summary && pos.order_summary.toggle_component) {
+                        pos.order_summary.toggle_component(false);
+                    }
+                    if (pos.recent_order_list && pos.recent_order_list.toggle_component) {
+                        pos.recent_order_list.toggle_component(false);
+                    }
+                    if (pos.item_selector && pos.item_selector.toggle_component) {
+                        pos.item_selector.toggle_component(true);
+                    }
+                    if (pos.cart && pos.cart.toggle_component) {
+                        pos.cart.toggle_component(true);
+                    }
+                    wmn_safe_offline_cart_reload(pos);
+                } catch (e) {
+                    console.warn("WMN offline invoice edit UI reload skipped", e);
+                }
+
+                frappe.show_alert({
+                    message: wmn_t("Offline invoice loaded for editing", "تم فتح الفاتورة الأوفلاين للتعديل"),
+                    indicator: "orange"
+                });
             }
 
             async function syncAll() {
@@ -3089,6 +3243,9 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                             <td style="white-space:nowrap;text-align:left;">
                                 <button class="btn btn-xs btn-primary wmn-sync-one" data-idx="${idx}">
                                     ${wmn_t("Sync", "\u0645\u0632\u0627\u0645\u0646\u0629")}
+                                </button>
+                                <button class="btn btn-xs btn-default wmn-edit-one" data-idx="${idx}">
+                                    ${wmn_t("Edit", "تعديل")}
                                 </button>
                                 <button class="btn btn-xs btn-danger wmn-delete-one" data-idx="${idx}">
                                     ${wmn_t("Delete", "\u0645\u0633\u062D")}
@@ -3213,6 +3370,14 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                     );
                 });
 
+                d.$wrapper.on("click", ".wmn-edit-one", async function () {
+                    const idx = cint($(this).attr("data-idx"));
+                    const row = (d.__wmn_rows || [])[idx];
+                    if (!row) return;
+
+                    await editOfflineInvoice(row, d);
+                });
+
                 d.$wrapper.on("click", ".wmn-sync-one", async function () {
                     const idx = cint($(this).attr("data-idx"));
                     const row = (d.__wmn_rows || [])[idx];
@@ -3273,6 +3438,7 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                     if (pos.page && pos.page.add_inner_button) {
                         try {
                             pos.page.add_inner_button(wmn_t("Offline Invoices", "\u0641\u0648\u0627\u062A\u064A\u0631 \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646"), () => openManagerDialog(), __("Offline"));
+                            pos.page.add_inner_button(wmn_t("Printer", "الطابعة"), () => wmn_show_printer_settings_dialog(), __("Offline"));
                             pos.__wmn_invoice_manager_button_v5 = true;
                             return true;
                         } catch (e) {}
@@ -3296,7 +3462,17 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                     `);
 
                     $btn.on("click", () => openManagerDialog());
+
+                    const $printerBtn = $(`
+                        <button class="btn btn-sm btn-default wmn-printer-settings-btn" style="margin-inline-start:6px;">
+                            ${wmn_t("Printer", "الطابعة")}
+                        </button>
+                    `);
+
+                    $printerBtn.on("click", () => wmn_show_printer_settings_dialog());
+
                     $target.append($btn);
+                    $target.append($printerBtn);
                     pos.__wmn_invoice_manager_button_v5 = true;
                     return true;
                 };
@@ -3569,6 +3745,57 @@ function wmn_user_lang() {
         function wmn_raw_receipt_line() {
             return "------------------------------------------";
         }
+
+function wmn_raw_template_get_value(source, path) {
+    source = source || {};
+    path = String(path || "").trim();
+    if (!path) return "";
+
+    const parts = path.split(".");
+    let cur = source;
+
+    for (const part of parts) {
+        const key = String(part || "").trim();
+        if (!key) continue;
+        if (cur === undefined || cur === null) return "";
+        cur = cur[key];
+    }
+
+    if (cur === undefined || cur === null) return "";
+    if (typeof cur === "number") return String(cur);
+    if (typeof cur === "boolean") return cur ? "1" : "";
+    if (typeof cur === "object") return JSON.stringify(cur);
+    return String(cur);
+}
+
+function wmn_prepare_raw_template_doc(doc) {
+    doc = doc || {};
+
+    const postingTime = String(doc.posting_time || "");
+    const postingDate = String(doc.posting_date || "");
+
+    doc._wmn_date = doc._wmn_date || postingDate;
+    doc._wmn_time_hm = doc._wmn_time_hm || postingTime.substring(0, 5);
+    doc._wmn_time_hms = doc._wmn_time_hms || postingTime.substring(0, 8);
+    doc._wmn_cashier = doc._wmn_cashier || doc.owner || (frappe.session && frappe.session.user) || "";
+    doc._wmn_customer = doc._wmn_customer || doc.customer_name || doc.customer || "";
+    doc._wmn_grand_total = doc._wmn_grand_total || doc.grand_total || doc.rounded_total || 0;
+    doc._wmn_paid_amount = doc._wmn_paid_amount || doc.paid_amount || 0;
+
+    return doc;
+}
+
+function wmn_replace_raw_object_fields(html, alias, row) {
+    const re = new RegExp("{{\\\\s*" + alias + "\\\\.([a-zA-Z0-9_]+(?:\\\\.[a-zA-Z0-9_]+)*)\\\\s*}}", "g");
+    return String(html || "").replace(re, function (_match, path) {
+        return wmn_raw_template_get_value(row, path);
+    });
+}
+
+function wmn_replace_raw_doc_fields(html, doc) {
+    return wmn_replace_raw_object_fields(html, "doc", doc || {});
+}
+
 function wmn_render_raw_print_temp(template, doc) {
 
     doc = doc || {};
@@ -3988,6 +4215,9 @@ function wmn_render_raw_print_temp(template, doc) {
             const template =
                 printFormat.raw_template_code ||
                 printFormat.raw_template ||
+                printFormat.raw_receipt_template ||
+                (printFormat.print_format_doc && printFormat.print_format_doc.raw_template_code) ||
+                (printFormatDoc && printFormatDoc.raw_template_code) ||
                 printFormat.print_format_html ||
                 printFormat.html ||
                 printFormat.custom_html ||
@@ -3996,16 +4226,12 @@ function wmn_render_raw_print_temp(template, doc) {
                 printFormat.offline_html_template ||
                 printFormat.receipt_html_template ||
                 (printFormat.print_format_doc && (
-                    printFormat.print_format_doc.raw_template_code ||
-                    printFormat.print_format_doc.raw_template ||
                     printFormat.print_format_doc.html ||
                     printFormat.print_format_doc.custom_html ||
                     printFormat.print_format_doc.print_format ||
                     printFormat.print_format_doc.format_data
                 )) ||
                 (printFormatDoc && (
-                    printFormatDoc.raw_template_code ||
-                    printFormatDoc.raw_template ||
                     printFormatDoc.html ||
                     printFormatDoc.custom_html ||
                     printFormatDoc.print_format ||
@@ -4551,39 +4777,43 @@ function wmn_render_raw_print_temp(template, doc) {
                 "RECEIPT"
             );
         }
+function wmn_get_printer_ws_url() {
+    let savedUrl = String(localStorage.getItem("whb_websocket_url") || "").trim();
+
+    if (savedUrl === "ws://127.0.0.1:12212" || savedUrl === "ws://localhost:12212") {
+        savedUrl = savedUrl + "/printer";
+        localStorage.setItem("whb_websocket_url", savedUrl);
+    }
+
+    return savedUrl || "ws://127.0.0.1:12212/printer";
+}
+
+function wmn_show_printer_settings_dialog() {
+    frappe.prompt(
+        [{
+            fieldname: "ws_url",
+            label: "Printer WebSocket URL",
+            fieldtype: "Data",
+            reqd: 1,
+            default: wmn_get_printer_ws_url()
+        }],
+        function(values) {
+            const url = String((values && values.ws_url) || "").trim() || "ws://127.0.0.1:12212/printer";
+            localStorage.setItem("whb_websocket_url", url);
+            frappe.show_alert({
+                message: wmn_t("Printer URL saved", "تم حفظ رابط الطابعة"),
+                indicator: "green"
+            });
+        },
+        wmn_t("Printer Settings", "إعدادات الطابعة"),
+        wmn_t("Save", "حفظ")
+    );
+}
+
 function wmn_send_to_printer(payload, printType, wsUrl = null) {
     payload = payload || {};
-    
+    const finalWsUrl = (wsUrl && String(wsUrl).trim()) || wmn_get_printer_ws_url();
 
-    let finalWsUrl = wsUrl;
-    if (!finalWsUrl) {
-        finalWsUrl = localStorage.getItem('whb_websocket_url');
-    }
-    
-
-    if (!finalWsUrl) {
- 
-        const userInput = prompt(
-            "Please enter WebSocket URL for WebApp Hardware Bridge:\n\n" +
-            "Example: ws://192.168.43.72:12212/printer\n\n" +
-            "Or press OK to use default:",
-            "ws://127.0.0.1:12212/printer"
-        );
-        
-        if (userInput && userInput.trim() !== "") {
-            finalWsUrl = userInput.trim();
- 
-            localStorage.setItem('whb_websocket_url', finalWsUrl);
-        } else if (userInput === "") {
-
-            finalWsUrl = "ws://127.0.0.1:12212/printer";
-            localStorage.setItem('whb_websocket_url', finalWsUrl);
-        } else {
-
-            return Promise.reject(new Error("WebSocket URL not provided"));
-        }
-    }
-    
     return new Promise(function (resolve, reject) {
         if (!window.wmn || !wmn.utils || !wmn.utils.WebSocketPrinter) {
             reject(new Error("WebSocketPrinter not available"));
@@ -4607,31 +4837,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         });
     });
 }
-        function wmn_send_to_printer11(payload, printType) {
-            payload = payload || {};
-            return new Promise(function (resolve, reject) {
-                if (!window.wmn || !wmn.utils || !wmn.utils.WebSocketPrinter) {
-                    reject(new Error("WebSocketPrinter not available"));
-                    return;
-                }
-
-                const printer = new wmn.utils.WebSocketPrinter({
-                    onConnect: function () {
-                        try {
-                            const submitPayload = Object.assign({
-                                type: printType || "RECEIPT"
-                            }, payload);
-
-                            printer.submit(submitPayload);
-                            resolve(true);
-                        } catch (e) {
-                            reject(e);
-                        }
-                    }
-                });
-            });
-        }
-
+        
         function wmn_send_pdf_to_printer(pdfBase64, printType) {
             return wmn_send_to_printer({
                 url: "receipt.pdf",
@@ -5175,6 +5381,12 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         }
 
         async function wmn_print_raw_receipt(doc) {
+            if (typeof wmn_assign_receipt_number === "function") {
+                await wmn_assign_receipt_number(doc);
+            }
+            doc.wmn_receipt_no = doc.wmn_receipt_no || doc.__wmn_receipt_no || doc.name || "";
+            doc.__wmn_receipt_no = doc.__wmn_receipt_no || doc.wmn_receipt_no || doc.name || "";
+
             const cfg = await wmn_get_raw_print_template(doc);
             const mode = wmn_get_silent_print_mode(cfg.printFormat);
             const printType = wmn_get_print_type(cfg.printFormat) || cfg.printType;
@@ -5256,15 +5468,29 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             return await wmn_send_png_to_printer(pngBase64, printType);
         }
 
+        function wmn_get_current_pos_opening_name(doc) {
+            doc = doc || {};
+            const settings = (window.cur_pos && window.cur_pos.settings) || {};
+            const pos = window.cur_pos || {};
+
+            return String(
+                doc.pos_opening ||
+                doc.pos_opening_entry ||
+                doc.opening_entry ||
+                settings.pos_opening ||
+                settings.pos_opening_entry ||
+                pos.pos_opening ||
+                (pos.opening_entry && pos.opening_entry.name) ||
+                (pos.pos_opening_entry && pos.pos_opening_entry.name) ||
+                ""
+            ).trim();
+        }
+
         function wmn_get_current_receipt_shift_key(doc) {
             doc = doc || {};
             const settings = (window.cur_pos && window.cur_pos.settings) || {};
             const opening =
-                doc.pos_opening_entry ||
-                doc.opening_entry ||
-                settings.pos_opening_entry ||
-                (window.cur_pos && window.cur_pos.opening_entry && window.cur_pos.opening_entry.name) ||
-                (window.cur_pos && window.cur_pos.pos_opening_entry && window.cur_pos.pos_opening_entry.name) ||
+                wmn_get_current_pos_opening_name(doc) ||
                 settings.pos_profile ||
                 doc.pos_profile ||
                 "DEFAULT_SHIFT";
@@ -5275,32 +5501,139 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         async function wmn_assign_receipt_number(doc) {
             if (!doc) return "";
 
-            if (doc.__wmn_receipt_no || doc.wmn_receipt_no) {
-                doc.__wmn_receipt_no = doc.__wmn_receipt_no || doc.wmn_receipt_no;
+            if (doc.wmn_receipt_no || doc.__wmn_receipt_no) {
                 doc.wmn_receipt_no = doc.wmn_receipt_no || doc.__wmn_receipt_no;
-                return doc.__wmn_receipt_no;
+                doc.__wmn_receipt_no = doc.__wmn_receipt_no || doc.wmn_receipt_no;
+                return doc.wmn_receipt_no;
             }
 
             const key = wmn_get_current_receipt_shift_key(doc);
-            let counter = 0;
+            let localCounter = 0;
+            let serverCounter = 0;
 
             try {
-                if (window.wmnPOSOffline && window.wmnPOSOffline.getSetting && window.wmnPOSOffline.setSetting) {
-                    counter = cint(await window.wmnPOSOffline.getSetting(key) || 0);
-                    counter += 1;
-                    await window.wmnPOSOffline.setSetting(key, counter);
+                if (window.wmnPOSOffline && window.wmnPOSOffline.getSetting) {
+                    localCounter = cint(await window.wmnPOSOffline.getSetting(key) || 0);
                 } else {
-                    counter = cint(localStorage.getItem(key) || 0) + 1;
-                    localStorage.setItem(key, String(counter));
+                    localCounter = cint(localStorage.getItem(key) || 0);
                 }
             } catch (e) {
-                counter = cint(localStorage.getItem(key) || 0) + 1;
-                localStorage.setItem(key, String(counter));
+                localCounter = cint(localStorage.getItem(key) || 0);
             }
 
-            doc.__wmn_receipt_no = String(counter).padStart(5, "0");
-            doc.wmn_receipt_no = doc.__wmn_receipt_no;
-            return doc.__wmn_receipt_no;
+            const shiftName = wmn_get_current_pos_opening_name(doc);
+
+            try {
+                if (!wmn_is_pos_offline() && shiftName) {
+                    const r = await frappe.call({
+                        method: "wmn.api.get_pos_shift_receipt_counter",
+                        args: {
+                            pos_opening_entry: shiftName,
+                            pos_profile: doc.pos_profile || "",
+                            company: doc.company || ""
+                        },
+                        freeze: false
+                    });
+                    serverCounter = cint((r.message && r.message.counter) || r.message || 0);
+                }
+            } catch (e) {
+                console.warn("WMN receipt counter server read skipped", e);
+            }
+
+            const nextCounter = Math.max(localCounter, serverCounter) + 1;
+
+            try {
+                if (window.wmnPOSOffline && window.wmnPOSOffline.setSetting) {
+                    await window.wmnPOSOffline.setSetting(key, nextCounter);
+                } else {
+                    localStorage.setItem(key, String(nextCounter));
+                }
+            } catch (e) {
+                localStorage.setItem(key, String(nextCounter));
+            }
+
+            try {
+                if (!wmn_is_pos_offline() && shiftName) {
+                    await frappe.call({
+                        method: "wmn.api.update_pos_shift_receipt_counter",
+                        args: {
+                            pos_opening_entry: shiftName,
+                            pos_profile: doc.pos_profile || "",
+                            company: doc.company || "",
+                            counter: nextCounter
+                        },
+                        freeze: false
+                    });
+                }
+            } catch (e) {
+                console.warn("WMN receipt counter server update skipped", e);
+            }
+
+            const receiptNo = String(nextCounter).padStart(5, "0");
+            doc.wmn_receipt_no = receiptNo;
+            doc.__wmn_receipt_no = receiptNo;
+            return receiptNo;
+        }
+
+
+        async function wmn_sync_receipt_counter_on_page_load() {
+            try {
+                const doc = (window.cur_pos && window.cur_pos.frm && window.cur_pos.frm.doc) || {};
+                const key = wmn_get_current_receipt_shift_key(doc);
+                const shiftName = wmn_get_current_pos_opening_name(doc);
+
+                let localCounter = 0;
+                try {
+                    if (window.wmnPOSOffline && window.wmnPOSOffline.getSetting) {
+                        localCounter = cint(await window.wmnPOSOffline.getSetting(key) || 0);
+                    } else {
+                        localCounter = cint(localStorage.getItem(key) || 0);
+                    }
+                } catch (e) {
+                    localCounter = cint(localStorage.getItem(key) || 0);
+                }
+
+                let serverCounter = 0;
+                if (!wmn_is_pos_offline() && shiftName) {
+                    const r = await frappe.call({
+                        method: "wmn.api.get_pos_shift_receipt_counter",
+                        args: {
+                            pos_opening_entry: shiftName,
+                            pos_profile: doc.pos_profile || "",
+                            company: doc.company || ""
+                        },
+                        freeze: false
+                    });
+                    serverCounter = cint((r.message && r.message.counter) || r.message || 0);
+                }
+
+                const finalCounter = Math.max(localCounter, serverCounter);
+
+                if (window.wmnPOSOffline && window.wmnPOSOffline.setSetting) {
+                    await window.wmnPOSOffline.setSetting(key, finalCounter);
+                } else {
+                    localStorage.setItem(key, String(finalCounter));
+                }
+
+                if (!wmn_is_pos_offline() && shiftName && finalCounter > serverCounter) {
+                    await frappe.call({
+                        method: "wmn.api.update_pos_shift_receipt_counter",
+                        args: {
+                            pos_opening_entry: shiftName,
+                            pos_profile: doc.pos_profile || "",
+                            company: doc.company || "",
+                            counter: finalCounter
+                        },
+                        freeze: false
+                    });
+                }
+
+                console.log("WMN receipt counter synced", { localCounter, serverCounter, finalCounter });
+                return finalCounter;
+            } catch (e) {
+                console.warn("WMN receipt counter page-load sync skipped", e);
+                return 0;
+            }
         }
 
         async function wmn_auto_silent_print_enabled() {
@@ -6040,6 +6373,43 @@ function wmn_render_offline_print_template(template, doc) {
             return settings;
         }
 
+
+
+        function wmn_ensure_pos_cart_item_data(row) {
+            if (!row || typeof row !== "object") return row;
+
+            const itemCode = row.item_code || (row.item_data && (row.item_data.item_code || row.item_data.name)) || row.name || "";
+            const itemName = row.item_name || row.description || itemCode || "";
+
+            if (!row.item_data || typeof row.item_data !== "object") {
+                row.item_data = {};
+            }
+
+            row.item_data.name = row.item_data.name || itemCode;
+            row.item_data.item_code = row.item_data.item_code || itemCode;
+            row.item_data.item_name = row.item_data.item_name || itemName;
+            row.item_data.description = row.item_data.description || row.description || itemName;
+            row.item_data.image = row.item_data.image || row.image || "";
+            row.item_data.stock_uom = row.item_data.stock_uom || row.stock_uom || row.uom || "Nos";
+            row.item_data.uom = row.item_data.uom || row.uom || row.stock_uom || "Nos";
+            row.item_data.has_batch_no = row.item_data.has_batch_no || row.has_batch_no || 0;
+            row.item_data.has_serial_no = row.item_data.has_serial_no || row.has_serial_no || 0;
+
+            if (!row.item_code && itemCode) row.item_code = itemCode;
+            if (!row.item_name && itemName) row.item_name = itemName;
+            if (!row.name) row.name = "WMN-CART-ROW-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+
+            return row;
+        }
+
+        function wmn_ensure_pos_cart_items_data(doc) {
+            if (!doc || !Array.isArray(doc.items)) return doc;
+            doc.items = doc.items.filter(row => row && (row.item_code || (row.item_data && row.item_data.name)));
+            doc.items.forEach(wmn_ensure_pos_cart_item_data);
+            return doc;
+        }
+
+        
         function wmn_prepare_pos_frm_doc(ctrl) {
             if (!ctrl || !ctrl.frm || !ctrl.frm.doc) return;
 
@@ -6057,12 +6427,14 @@ function wmn_render_offline_print_template(template, doc) {
             doc.doctype = doc.doctype || invoiceDoctype;
 
             const itemDoctype = wmn_pos_item_doctype(doc.doctype);
+            wmn_ensure_pos_cart_items_data(doc);
             doc.items.forEach((row) => {
                 if (!row) return;
                 row.doctype = row.doctype || itemDoctype;
                 row.parenttype = doc.doctype;
                 row.parentfield = "items";
                 row.parent = doc.name;
+                wmn_ensure_pos_cart_item_data(row);
             });
 
             window.cur_pos = ctrl;
@@ -6299,20 +6671,44 @@ function wmn_render_offline_print_template(template, doc) {
 
 
 
-        function wmn_decode_item_data_value(value) {
+        /*
+         * Online POS is intentionally left native.
+         * No item click interception, no online batch dialog, no online cart mutation here.
+         * Offline item handling is done only inside MyPOSController.wmn_offline_on_cart_update().
+         */
+
+        function wmn_safe_offline_cart_reload(pos) {
+            if (!pos || !pos.cart || !pos.cart.load_invoice) {
+                return;
+            }
+
             try {
-                return wmn_clean_link_value(unescape(value || ""));
+                window.__wmn_loading_offline_cart_ui = true;
+
+                pos.cart.load_invoice();
+
+                if (pos.cart.$numpad_section) {
+                    pos.cart.$numpad_section.css("display", "");
+                }
+
+                if (pos.cart.$totals_section) {
+                    pos.cart.$totals_section.css("display", "flex");
+                }
+
+                if (pos.cart.$component) {
+                    pos.cart.$component.find(".numpad-section").css("display", "");
+                    pos.cart.$component.find(".number-pad").css("display", "");
+                    pos.cart.$component.find(".cart-item").css("pointer-events", "auto");
+                    pos.cart.$component.find(".cart-items, .cart-item-wrapper").css("pointer-events", "auto");
+                }
             } catch (e) {
-                return wmn_clean_link_value(value || "");
+                console.warn("WMN offline cart UI reload skipped", e);
+            } finally {
+                window.__wmn_loading_offline_cart_ui = false;
             }
         }
-
-        function wmn_can_use_online_batch_dialog() {
-            return navigator.onLine !== false && !wmn_is_pos_offline();
-        }
-
         async function wmn_show_online_batch_selection_dialog(item, warehouse = "", price_list = "") {
-            if (!wmn_can_use_online_batch_dialog()) return null;
+            //if (!wmn_can_use_online_batch_dialog()) return null;
 
             const r = await frappe.call({
                 method: "wmn.api.get_pos_item_batches",
@@ -6427,222 +6823,6 @@ function wmn_render_offline_print_template(template, doc) {
                 });
             });
         }
-
-        function wmn_install_online_batch_click_interceptor() {
-            if (window.__wmn_online_batch_click_interceptor_installed) return;
-
-            document.addEventListener("click", async function (event) {
-                const itemEl = event.target.closest(".item-wrapper");
-
-                if (!itemEl) return;
-                if (!wmn_can_use_online_batch_dialog()) return;
-                if (!window.cur_pos || !window.cur_pos.item_selector) return;
-
-                const pos = window.cur_pos;
-                const selector = pos.item_selector;
-
-                if (!pos.frm || !pos.frm.doc) return;
-
-                const item_code = wmn_decode_item_data_value(
-                    itemEl.getAttribute("data-item-code")
-                );
-
-                if (!item_code) return;
-
-                /*
-                 * ??? ????:
-                 * ???? ???? ERPNext ?????? ????? ??? ?? await ?? API.
-                 * ??? ??????? ERPNext ???? ????? ??? ???? Dialog ??????.
-                 */
-                event.preventDefault();
-                event.stopPropagation();
-                event.stopImmediatePropagation();
-
-                if (itemEl.__wmn_online_batch_click_busy) {
-                    return;
-                }
-
-                itemEl.__wmn_online_batch_click_busy = true;
-
-                setTimeout(function () {
-                    itemEl.__wmn_online_batch_click_busy = false;
-                }, 1200);
-
-                const doc = pos.frm.doc;
-
-                const warehouse =
-                    doc.set_warehouse ||
-                    doc.warehouse ||
-                    (pos.settings && pos.settings.warehouse) ||
-                    "";
-
-                const price_list =
-                    doc.selling_price_list ||
-                    selector.price_list ||
-                    "";
-
-                const uom = wmn_decode_item_data_value(
-                    itemEl.getAttribute("data-uom")
-                );
-
-                const stock_uom =
-                    wmn_decode_item_data_value(itemEl.getAttribute("data-stock-uom")) ||
-                    uom;
-
-                const rate = flt(itemEl.getAttribute("data-rate") || 0);
-
-                const item_name =
-                    wmn_decode_item_data_value(itemEl.getAttribute("data-item-name")) ||
-                    item_code;
-
-                const item_for_cart = {
-                    item_code: item_code,
-                    item_name: item_name,
-                    uom: uom,
-                    stock_uom: stock_uom,
-                    rate: rate,
-                    price_list_rate: rate,
-                };
-
-                let selectedBatch = null;
-
-                try {
-                    selectedBatch = await wmn_show_online_batch_selection_dialog(
-                        item_for_cart,
-                        warehouse,
-                        price_list
-                    );
-                } catch (e) {
-                    console.error("WMN online batch dialog failed", e);
-                    selectedBatch = null;
-                }
-
-                /*
-                 * ??? ?? ???? ?????? ?????:
-                 * ??? ???? ?????? ???? ERPNext ??????? ???? ????? ?????? ??? ????? ???.
-                 */
-                if (!selectedBatch) {
-                    selector.events.item_selected({
-                        field: "qty",
-                        value: "+1",
-                        item: item_for_cart,
-                    });
-
-                    return;
-                }
-
-                const batchRate = flt(
-                    selectedBatch.price_list_rate ||
-                    selectedBatch.rate ||
-                    item_for_cart.price_list_rate ||
-                    item_for_cart.rate ||
-                    0
-                );
-
-                item_for_cart.batch_no = selectedBatch.batch_no;
-                item_for_cart.warehouse = selectedBatch.warehouse || warehouse;
-                item_for_cart.uom = selectedBatch.uom || item_for_cart.uom;
-                item_for_cart.stock_uom = item_for_cart.stock_uom || item_for_cart.uom;
-                item_for_cart.rate = batchRate;
-                item_for_cart.price_list_rate = batchRate;
-
-                selector.events.item_selected({
-                    field: "qty",
-                    value: selectedBatch.__selected_qty || 1,
-                    item: item_for_cart,
-                });
-
-                setTimeout(async function () {
-                    try {
-                        const doc = pos.frm && pos.frm.doc ? pos.frm.doc : null;
-                        if (!doc || !doc.items) return;
-
-                        const row = doc.items.find(r =>
-                            String(r.item_code || "").trim() === String(item_for_cart.item_code || "").trim() &&
-                            String(r.batch_no || "").trim() === String(item_for_cart.batch_no || "").trim()
-                        );
-
-                        if (!row) return;
-
-                        const qty = flt(selectedBatch.__selected_qty || row.qty || 1);
-                        const rate = flt(
-                            batchRate ||
-                            selectedBatch.price_list_rate ||
-                            selectedBatch.rate ||
-                            0
-                        );
-
-                        if (rate > 0) {
-                            await frappe.model.set_value(row.doctype, row.name, "price_list_rate", rate);
-                            await frappe.model.set_value(row.doctype, row.name, "rate", rate);
-                            await frappe.model.set_value(row.doctype, row.name, "net_rate", rate);
-                            await frappe.model.set_value(row.doctype, row.name, "base_rate", rate);
-                            await frappe.model.set_value(row.doctype, row.name, "base_net_rate", rate);
-                        }
-
-                        await frappe.model.set_value(row.doctype, row.name, "qty", qty);
-
-                        row.amount = flt(row.qty || qty) * flt(row.rate || rate);
-                        row.net_amount = row.amount;
-                        row.base_amount = row.amount;
-                        row.base_net_amount = row.amount;
-
-                        if (pos.update_cart_html) {
-                            pos.update_cart_html(row);
-                        }
-
-                        if (pos.cart && pos.cart.update_totals_section) {
-                            pos.cart.update_totals_section(pos.frm);
-                        }
-
-                        if (pos.frm && pos.frm.refresh_field) {
-                            pos.frm.refresh_field("items");
-                        }
-                    } catch (e) {
-                        console.error("WMN failed to apply online batch price", e);
-                    }
-                }, 300);
-            }, true);
-
-            window.__wmn_online_batch_click_interceptor_installed = true;
-        }
-
-
-        wmn_install_online_batch_click_interceptor();
-        
-        
-        
-        function wmn_safe_offline_cart_reload(pos) {
-            if (!pos || !pos.cart || !pos.cart.load_invoice) {
-                return;
-            }
-
-            try {
-                window.__wmn_loading_offline_cart_ui = true;
-
-                pos.cart.load_invoice();
-
-                if (pos.cart.$numpad_section) {
-                    pos.cart.$numpad_section.css("display", "");
-                }
-
-                if (pos.cart.$totals_section) {
-                    pos.cart.$totals_section.css("display", "flex");
-                }
-
-                if (pos.cart.$component) {
-                    pos.cart.$component.find(".numpad-section").css("display", "");
-                    pos.cart.$component.find(".number-pad").css("display", "");
-                    pos.cart.$component.find(".cart-item").css("pointer-events", "auto");
-                    pos.cart.$component.find(".cart-items, .cart-item-wrapper").css("pointer-events", "auto");
-                }
-            } catch (e) {
-                console.warn("WMN offline cart UI reload skipped", e);
-            } finally {
-                window.__wmn_loading_offline_cart_ui = false;
-            }
-        }
-
 class MyPOSController extends erpnext.PointOfSale.Controller {
             constructor(wrapper) {
                 super(wrapper);
@@ -6674,7 +6854,69 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                 };
                 setTimeout(retry, 1000);
             }
-async make_new_invoice() {
+            wmn_detach_current_frm_refresh_fields() {
+                try {
+                    if (this.frm && this.frm.wrapper && window.jQuery) {
+                        $(this.frm.wrapper).off("refresh-fields");
+                    }
+                } catch (e) {}
+            }
+
+            get_item_from_frm(item) {
+                if (!wmn_controller_uses_offline_flow(this)) {
+                    return super.get_item_from_frm(item);
+                }
+
+                const doc = this.frm && this.frm.doc ? this.frm.doc : null;
+                const rows = doc && Array.isArray(doc.items) ? doc.items : [];
+                if (!item || !rows.length) return null;
+
+                if (item.name) {
+                    const byName = rows.find(row => row && row.name == item.name);
+                    if (byName) return byName;
+                }
+
+                if (item.item_code) {
+                    const itemCode = String(item.item_code || "");
+                    const batchNo = String(item.batch_no || "");
+                    const serialNo = String(item.serial_no || "");
+                    const uom = String(item.uom || item.stock_uom || "");
+                    const warehouse = String(item.warehouse || "");
+
+                    return rows.find(row => {
+                        if (!row || String(row.item_code || "") !== itemCode) return false;
+                        if (batchNo && String(row.batch_no || "") !== batchNo) return false;
+                        if (serialNo && String(row.serial_no || "") !== serialNo) return false;
+                        if (uom && String(row.uom || row.stock_uom || "") !== uom) return false;
+                        if (warehouse && String(row.warehouse || "") !== warehouse) return false;
+                        return true;
+                    }) || null;
+                }
+
+                return null;
+            }
+
+            update_cart_html(item, remove_item) {
+                if (wmn_controller_uses_offline_flow(this) && this.frm && this.frm.doc) {
+                    const warehouse = this.frm.doc.set_warehouse || (this.settings && this.settings.warehouse) || "";
+                    wmn_normalize_all_offline_cart_rows(this.frm.doc, warehouse);
+
+                    if (item && item.item_code) {
+                        item = wmn_normalize_offline_cart_row(
+                            item,
+                            this.frm.doc,
+                            (this.frm.doc.items || []).indexOf(item),
+                            warehouse
+                        );
+                        this.wmn_register_offline_row_in_frappe_model(item);
+                    }
+                }
+
+                return super.update_cart_html(item, remove_item);
+            }
+
+            async make_new_invoice() {
+                this.wmn_detach_current_frm_refresh_fields();
                 await wmn_bootstrap_detect_effective_offline();
 
                 const force_online_new_order =
@@ -7048,8 +7290,15 @@ async make_new_invoice() {
                 if (wmn_is_pos_offline()) {
                     return this.wmn_offline_on_cart_update(args);
                 }
-                return super.on_cart_update(args);
+                console.log(args);
+
+                args = await this.wmn_prepare_online_batch_args_before_super(args);
+
+                return await super.on_cart_update(args);
             }
+
+    
+
 
             wmn_get_child_doctype() {
                 if (this.frm && this.frm.doc && this.frm.doc.doctype === "Sales Invoice") {
@@ -7097,6 +7346,150 @@ async make_new_invoice() {
                 const offlineItem = await window.wmnPOSOffline.findItem(item_code, price_list);
                 return Object.assign({}, offlineItem || {}, item || {});
             }
+
+async wmn_prepare_online_batch_args_before_super(args) {
+    try {
+        if (!args || !args.item) return args;
+
+        const batchValue = args.item.batch_no;
+
+        const needsBatchDialog =
+            batchValue !== undefined &&
+            batchValue !== null &&
+            String(batchValue) !== "" &&
+            String(batchValue).toLowerCase() !== "null" &&
+            !args.item.__wmn_batch_dialog_done;
+
+        if (!needsBatchDialog) return args;
+
+        const warehouse =
+            args.item.warehouse ||
+            this.frm?.doc?.set_warehouse ||
+            this.settings?.warehouse ||
+            "";
+
+        const priceList =
+            this.frm?.doc?.selling_price_list ||
+            this.settings?.selling_price_list ||
+            "";
+
+        const selected = await wmn_show_online_batch_selection_dialog(
+            args.item,
+            warehouse,
+            priceList
+        );
+
+        args.item.__wmn_batch_dialog_done = 1;
+
+        if (!selected) {
+            return args;
+        }
+
+        args.item.batch_no = selected.batch_no;
+
+        const selectedQty = flt(selected.__selected_qty || 0);
+        if (selectedQty > 0) {
+            args.field = "qty";
+            args.value = selectedQty;
+            args.item.qty = selectedQty;
+        }
+
+        const selectedRate = flt(selected.price_list_rate || selected.rate || 0);
+        if (selectedRate > 0) {
+            args.item.rate = selectedRate;
+            args.item.price_list_rate = selectedRate;
+        }
+
+        if (selected.uom && !args.item.uom) {
+            args.item.uom = selected.uom;
+        }
+
+        if (selected.warehouse) {
+            args.item.warehouse = selected.warehouse;
+        }
+
+        return args;
+
+    } catch (e) {
+        console.warn("WMN online batch args preparation skipped", e);
+        return args;
+    }
+}
+
+async wmn_apply_online_batch_after_cart_update(args, item_row) {
+    try {
+        //if (!item_row || !item_row.item_code) return;
+        if (item_row.batch_no == null) return;
+        console.log("DIALOGING");
+
+        const item = (args && args.item) || {};
+        
+
+
+        
+
+        const warehouse =
+            item_row.warehouse ||
+            this.frm.doc.set_warehouse ||
+            this.settings.warehouse ||
+            "";
+
+        const priceList =
+            this.frm.doc.selling_price_list ||
+            this.settings.selling_price_list ||
+            "";
+
+        const selected = await wmn_show_online_batch_selection_dialog(
+            {
+                item_code: item_row.item_code,
+                item_name: item_row.item_name,
+                qty: item_row.qty || 1,
+                uom: item_row.uom || item_row.stock_uom || item.uom || item.stock_uom || "",
+                stock_uom: item_row.stock_uom || item.stock_uom || "",
+                rate: item_row.rate || item.rate || 0,
+                price_list_rate: item_row.price_list_rate || item.price_list_rate || item_row.rate || 0,
+                currency: this.frm.doc.currency || this.settings.currency || ""
+            },
+            warehouse,
+            priceList
+        );
+
+        if (!selected) return;
+
+        await frappe.model.set_value(
+            item_row.doctype,
+            item_row.name,
+            "batch_no",
+            selected.batch_no
+        );
+
+        if (selected.__selected_qty) {
+            await frappe.model.set_value(
+                item_row.doctype,
+                item_row.name,
+                "qty",
+                selected.__selected_qty
+            );
+        }
+
+        const selectedRate = flt(selected.price_list_rate || selected.rate || 0);
+        if (selectedRate > 0) {
+            await frappe.model.set_value(
+                item_row.doctype,
+                item_row.name,
+                "rate",
+                selectedRate
+            );
+        }
+
+        this.update_cart_html(item_row);
+    } catch (e) {
+        console.warn("WMN online batch dialog skipped", e);
+    }
+}
+
+
+
 
             async wmn_offline_on_cart_update(args) {
                 let item_row;
@@ -7314,7 +7707,7 @@ async make_new_invoice() {
             }
 
             async save_and_checkout() {
-                if (wmn_is_pos_offline()) {
+                if (wmn_controller_uses_offline_flow(this)) {
                     try {
                     
                     
@@ -7377,7 +7770,7 @@ async make_new_invoice() {
 
                 // ERPNext 15.27 fix:
                 // Offline must use the lightweight fake frm only.
-                if (wmn_is_pos_offline()) {
+                if (wmn_controller_uses_offline_flow(this)) {
                     const doc = await wmn_make_offline_invoice_doc(this);
                     this.frm = wmn_make_offline_frm(doc);
                     wmn_prepare_pos_frm_doc(this);
@@ -7422,7 +7815,7 @@ async make_new_invoice() {
                 const target_doctype = doctype || wmn_pos_invoice_doctype(this);
 
                 // Never create real ERPNext Form while effective offline.
-                if (wmn_is_pos_offline()) {
+                if (wmn_controller_uses_offline_flow(this)) {
                     const doc = {
                         doctype: target_doctype,
                         name: (target_doctype === "Sales Invoice" ? "OFFLINE-SINV-" : "OFFLINE-PINV-") + Date.now(),
@@ -7474,7 +7867,7 @@ async make_new_invoice() {
                 return frm;
             }
 set_pos_profile_data() {
-                if (wmn_is_pos_offline()) {
+                if (wmn_controller_uses_offline_flow(this)) {
 
                     const doc = this.frm && this.frm.doc;
                     const settings = this.settings || {};
@@ -7506,57 +7899,45 @@ set_pos_profile_data() {
             init_payments() {
                 super.init_payments();
 
+                if (!this.payment || !this.payment.events) {
+                    return;
+                }
+
                 this.payment.events.submit_invoice = async () => {
-                    if (wmn_is_pos_offline()) {
-                        try {
-                            await wmn_show_offline_payment_dialog(this);
-
-                            frappe.dom.freeze(wmn_t("Saving offline invoice...", "\u062C\u0627\u0631\u064A \u062D\u0641\u0638 \u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0623\u0648\u0641\u0644\u0627\u064A\u0646..."));
-                            await wmn_assign_receipt_number(this.frm.doc);
-                            const row = await window.wmnPOSOffline.saveInvoice(this.frm.doc, this);
-                            frappe.dom.unfreeze();
-
-                            frappe.show_alert({
-                                message: wmn_msg("Invoice added offline successfully: {0}", "\u062A\u0645\u062A \u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0623\u0648\u0641\u0644\u0627\u064A\u0646 \u0628\u0646\u062C\u0627\u062D: {0}", [row.offline_id || row.name || this.frm.doc.name]),
-                                indicator: "orange"
-                            });
-
-                            this.toggle_components(false);
-                            this.order_summary.toggle_component(true);
-                            this.order_summary.load_summary_of(this.frm.doc, true);
-                            wmn_try_auto_silent_print_after_order(this.frm.doc, "offline");
-
-                            if (this.recent_order_list && this.recent_order_list.refresh_list) {
-                                this.recent_order_list.refresh_list();
-                            }
-
-                            return row;
-                        } catch (e) {
-                            frappe.dom.unfreeze();
-
-                            if ((e.message || e) === "cancelled") {
-                                return;
-                            }
-
-                            console.error("Offline invoice payment/save failed", e);
-                            frappe.msgprint({
-                                title: wmn_t("Offline Save Failed", "\u0641\u0634\u0644 \u0627\u0644\u062D\u0641\u0638 \u0623\u0648\u0641\u0644\u0627\u064A\u0646"),
-                                indicator: "red",
-                                message: wmn_msg("Failed to save invoice offline: {0}", "\u062A\u0639\u0630\u0631 \u062D\u0641\u0638 \u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0623\u0648\u0641\u0644\u0627\u064A\u0646: {0}", [e.message || e])
-                            });
-                            return;
-                        }
+                    if (wmn_controller_uses_offline_flow(this)) {
+                        return this.save_and_checkout();
                     }
 
-                    this.frm.savesubmit().then(async (r) => {
+                    try {
+                        if (this.frm && this.frm.doc) {
+                            await wmn_assign_receipt_number(this.frm.doc);
+                        }
+
+                        const r = await this.frm.savesubmit();
+                        const submittedDoc = (r && r.doc) || (this.frm && this.frm.doc) || {};
+
+                        submittedDoc.wmn_receipt_no = submittedDoc.wmn_receipt_no || (this.frm.doc && this.frm.doc.wmn_receipt_no) || (this.frm.doc && this.frm.doc.__wmn_receipt_no) || "";
+                        submittedDoc.__wmn_receipt_no = submittedDoc.__wmn_receipt_no || submittedDoc.wmn_receipt_no || "";
+
                         this.toggle_components(false);
                         this.order_summary.toggle_component(true);
-                        await wmn_assign_receipt_number(r.doc);
-                        this.order_summary.load_summary_of(r.doc, true);
-                        wmn_try_auto_silent_print_after_order(r.doc, "online");
-                        this.recent_order_list.refresh_list();
-                        
-});
+                        this.order_summary.load_summary_of(submittedDoc, true);
+                        wmn_try_auto_silent_print_after_order(submittedDoc, "online");
+
+                        if (this.recent_order_list && this.recent_order_list.refresh_list) {
+                            this.recent_order_list.refresh_list();
+                        }
+
+                        frappe.show_alert({
+                            indicator: "green",
+                            message: __("POS invoice {0} created successfully", [submittedDoc.name])
+                        });
+
+                        return r;
+                    } catch (e) {
+                        console.error("WMN online submit invoice failed", e);
+                        throw e;
+                    }
                 };
             }
             
@@ -7700,7 +8081,6 @@ set_pos_profile_data() {
                     },
                 });
             }
-        
 
         }
 
@@ -7755,7 +8135,7 @@ set_pos_profile_data() {
         }
 
         erpnext.PointOfSale.PastOrderSummary = MyPastOrderSummary;
-
+        
         const OriginalPastOrderList = erpnext.PointOfSale.PastOrderList;
         
         
@@ -7830,6 +8210,8 @@ set_pos_profile_data() {
         }
 
         erpnext.PointOfSale.PastOrderList = MyPastOrderList;
+
+
 
 
         const OriginalItemSelector = erpnext.PointOfSale.ItemSelector;
@@ -8314,6 +8696,11 @@ wmn_install_offline_doctype_script_guard();
 wrapper.pos = new MyPOSController(wrapper);
 wmn_init_offline_invoice_manager_dialog(wrapper.pos);
 window.cur_pos = wrapper.pos;
+setTimeout(function () {
+    if (typeof wmn_sync_receipt_counter_on_page_load === "function") {
+        wmn_sync_receipt_counter_on_page_load();
+    }
+}, 3000);
 
 
 
