@@ -3444,6 +3444,7 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                         } catch (e) {}
                     }
 
+
                     if (pos.$components_wrapper && pos.$components_wrapper.length) {
                         $target = pos.$components_wrapper.closest(".page-container").find(".page-actions .standard-actions").first();
                     }
@@ -8528,6 +8529,9 @@ set_pos_profile_data() {
                             <button class="btn wmn-list-offline-btn">
                                 ${wmn_t("Offline Sync", "\u0645\u0632\u0627\u0645\u0646\u0629")}
                             </button>
+                            <button class="btn wmn-printer-btn">
+                                ${wmn_t("Printer", "الطابعة")}
+                            </button>
                             
                         </div>
                     </div>
@@ -8555,14 +8559,14 @@ set_pos_profile_data() {
                         </div>
                     </div>
                 `);
-                
+             
                 this.$component.prepend($toggleContainer);
                 this.$offlineBtn = $toggleContainer.find('.wmn-list-offline-btn');
                 this.$gridBtn = $toggleContainer.find('.wmn-grid-view-btn');
                 this.$listBtn = $toggleContainer.find('.wmn-list-view-btn');
-                
+                this.$printerBtn = $toggleContainer.find('.wmn-printer-btn');
                 this.updateActiveButton();
-                
+                this.$printerBtn.on('click', () => wmn_show_printer_settings_dialog());
                 this.$offlineBtn.on('click', () => window.wmnPOSOffline.openInvoiceManagerDialog());
                 this.$gridBtn.on('click', () => this.setCardMode());
                 this.$listBtn.on('click', () => this.setButtonMode());
