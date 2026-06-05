@@ -3,7 +3,24 @@
             constructor(wrapper, args) {
                 super(wrapper, args);
             }
-            
+          get_item_html(item) {
+        item = item || {};
+
+        if (!item.item_image && item.image) {
+            item.item_image = item.image;
+        }
+
+        if (!item.item_image && item.thumbnail) {
+            item.item_image = item.thumbnail;
+        }
+
+        if (!item.item_image && item.website_image) {
+            item.item_image = item.website_image;
+        }
+
+        return super.get_item_html(item);
+    }
+  
             make_search_bar() {
     super.make_search_bar();
 
