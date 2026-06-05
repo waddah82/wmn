@@ -45,11 +45,14 @@ app_include_js = [
 
 # include js in page
 # page_js = {"page" : "public/js/file.js"}
+# page_js = {"page" : "public/js/file.js"}
+#   "point-of-sale": "public/js/custom_pos_offline.js"
+#}
+
+
 page_js = {
-    "point-of-sale": "public/js/custom_pos_offline.js"
+    "point-of-sale": "public/js/pos_offline/wmn_pos_loader.js"
 }
-
-
 
 override_whitelisted_methods = {
     "erpnext.stock.utils.scan_barcode": "wmn.barcode_handler.custom_scan_barcode",
