@@ -9,10 +9,10 @@
          
          function registerWMNPOSServiceWorker() {
             try {
-                if (!document.querySelector('link[rel="manifest"][href="/assets/wmn/pos-offline-manifest.webmanifest"]')) {
+                if (!document.querySelector('link[rel="manifest"][href="/pos-offline-manifest.json"]')) {
                     const manifest = document.createElement("link");
                     manifest.rel = "manifest";
-                    manifest.href = "/assets/wmn/pos-offline-manifest.webmanifest";
+                    manifest.href = "/pos-offline-manifest.json";
                     document.head.appendChild(manifest);
                 }
 
