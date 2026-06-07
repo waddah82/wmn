@@ -3,7 +3,7 @@
             constructor(wrapper, args) {
                 super(wrapper, args);
             }
-          get_item_html(item) {
+            get_item_html(item) {
         item = item || {};
 
         if (!item.item_image && item.image) {
@@ -20,7 +20,7 @@
 
         return super.get_item_html(item);
     }
-  
+
             make_search_bar() {
     super.make_search_bar();
 
