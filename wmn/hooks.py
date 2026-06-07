@@ -17,6 +17,7 @@ app_include_js = [
     "/assets/wmn/js/pos_barcode_override.js",
     "assets/wmn/js/workspace_header_unified.js",
     "/assets/wmn/js/silent_print.js",
+    "/assets/wmn/js/global_new_override.js",
     #"assets/wmn/js/html2canvas.js",
     #"assets/wmn/js/pdfmake.min.js",
     #"assets/wmn/js/vfs_fonts.js",
