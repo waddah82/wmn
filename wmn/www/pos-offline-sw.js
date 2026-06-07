@@ -13,7 +13,7 @@ const WMN_POS_API_CACHE = "wmn-pos-api-v15";
 const SHELL_URLS = [
   "/app",
   "/app/point-of-sale",
-  "/assets/wmn/pos-offline-manifest.webmanifest"
+  "/pos-offline-manifest.json"
 ];
 
 function sameOrigin(url) {
@@ -385,7 +385,7 @@ self.addEventListener("fetch", (event) => {
       return;
     }
 
-    if (isAsset(url) || url.pathname === "/assets/wmn/pos-offline-manifest.webmanifest") {
+    if (isAsset(url) || url.pathname === "/pos-offline-manifest.json") {
       event.respondWith(
         caches.match(request).then((cached) => {
           return cached || fetch(request)
