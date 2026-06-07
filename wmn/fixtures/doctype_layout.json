@@ -1,0 +1,1340 @@
+[
+ {
+  "client_script": "// ======================================================\r\n// Payment Entry - سند قبض باستخدام الحقول الحقيقية\r\n// Client Script على Doctype: Payment Entry\r\n// ======================================================\r\n\r\nconst PAYMENT_VOUCHER_FIELDS = [\r\n  \"company\",\r\n  \"posting_date\",\r\n  \"mode_of_payment\",\r\n  \"reference_no\",\r\n  \"reference_date\",\r\n  \"party_type\",\r\n  \"party\",\r\n  \"paid_from\",\r\n  \"paid_to\",\r\n  \"paid_amount\",\r\n  \"received_amount\",\r\n  \"custom_remarks\",\r\n  \"remarks\"\r\n];\r\n\r\nfunction get_current_layout_route() {\r\n  return (frappe.router.current_sub_path || \"\").split(\"/\")[0] || \"sanad-qabd\";\r\n}\r\n\r\nfunction is_new_voucher(frm) {\r\n  return frm.is_new();\r\n}\r\n\r\nfunction is_submitted_voucher(frm) {\r\n  return frm.doc.docstatus === 1;\r\n}\r\n\r\nfunction hide_all_payment_entry_original_fields(frm) {\r\n  frm.disable_save();\r\n\r\n  (frm.meta.fields || []).forEach(df => {\r\n    if (!df.fieldname) return;\r\n\r\n    const keep = PAYMENT_VOUCHER_FIELDS.includes(df.fieldname);\r\n    frm.set_df_property(df.fieldname, \"hidden\", keep ? 0 : 1);\r\n  });\r\n\r\n  setTimeout(() => {\r\n    const $wrapper = $(frm.wrapper);\r\n\r\n    $wrapper.find(\".standard-actions\").hide();\r\n    $wrapper.find(\".primary-action\").hide();\r\n    $wrapper.find(\".custom-actions\").hide();\r\n\r\n    $wrapper.find(\".form-section\").each(function () {\r\n      if (!$(this).find(\"#payment-entry-custom-voucher\").length) {\r\n        $(this).hide();\r\n      }\r\n    });\r\n  }, 300);\r\n}\r\n\r\nfunction clear_payment_voucher_dashboard(frm) {\r\n  const dashboard = $(frm.wrapper).find(\".form-dashboard\");\r\n  if (!dashboard.length) return;\r\n\r\n  dashboard.find(\".frappe-comment\").each(function () {\r\n    const $comment = $(this);\r\n\r\n    if (\r\n      $comment.find(\"#payment-entry-custom-voucher\").length ||\r\n      ($comment.find(\".comment-content\").text() || \"\").includes(\"Receipt Voucher\")\r\n    ) {\r\n      $comment.remove();\r\n    }\r\n  });\r\n}\r\n\r\nfunction get_or_create_payment_voucher_dashboard(frm) {\r\n  let dashboard = $(frm.wrapper).find(\".form-dashboard\");\r\n\r\n  if (!dashboard.length) {\r\n    dashboard = $(`\r\n      <div class=\"form-dashboard\" style=\"margin-top:20px;\">\r\n        <div class=\"comments-wrapper\"></div>\r\n      </div>\r\n    `);\r\n\r\n    $(frm.wrapper).find(\".form-page\").append(dashboard);\r\n  }\r\n\r\n  let commentsWrapper = dashboard.find(\".comments-wrapper\");\r\n\r\n  if (!commentsWrapper.length) {\r\n    dashboard.append('<div class=\"comments-wrapper\"></div>');\r\n    commentsWrapper = dashboard.find(\".comments-wrapper\");\r\n  }\r\n\r\n  return commentsWrapper;\r\n}\r\n\r\nfunction render_payment_entry_voucher_layout(frm) {\r\n  if ($(frm.wrapper).find(\"#payment-entry-custom-voucher\").length) return;\r\n\r\n  clear_payment_voucher_dashboard(frm);\r\n\r\n  const commentsWrapper = get_or_create_payment_voucher_dashboard(frm);\r\n\r\n  commentsWrapper.prepend(`\r\n    <div class=\"frappe-comment payment-voucher-comment\" style=\"margin-bottom:15px;\">\r\n      <div class=\"comment-content\">\r\n\r\n<style>\r\n  #payment-entry-custom-voucher {\r\n    direction: rtl;\r\n    max-width: 1120px;\r\n    margin: 8px auto;\r\n    background: #fff;\r\n    border-radius: 16px;\r\n    border: 1px solid #e5e7eb;\r\n    overflow: hidden;\r\n    font-family: Tahoma, Arial, sans-serif;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-header {\r\n    background: linear-gradient(135deg, #064e3b, #047857);\r\n    padding: 14px 22px;\r\n    text-align: center;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-header h2 {\r\n    margin: 0;\r\n    color: #fff;\r\n    font-size: 24px;\r\n    font-weight: 900;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-header p {\r\n    margin: 2px 0 0;\r\n    color: #d1d5db;\r\n    font-size: 13px;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-body {\r\n    padding: 10px 16px;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-summary {\r\n    display: grid;\r\n    grid-template-columns: repeat(3, 1fr);\r\n    gap: 8px;\r\n    margin-bottom: 8px;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-summary-card {\r\n    background: #f9fafb;\r\n    border: 1px solid #e5e7eb;\r\n    border-radius: 12px;\r\n    padding: 8px 12px;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-summary-card .label {\r\n    font-size: 13px;\r\n    color: #6b7280;\r\n    margin-bottom: 2px;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-summary-card .value {\r\n    font-size: 14px;\r\n    font-weight: 900;\r\n    color: #111827;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-section {\r\n    background: #f9fafb;\r\n    border: 1px solid #e5e7eb;\r\n    border-radius: 14px;\r\n    padding: 10px 12px;\r\n    margin-bottom: 8px;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-section-title {\r\n    font-size: 15px;\r\n    font-weight: 900;\r\n    color: #111827;\r\n    margin-bottom: 8px;\r\n    padding-bottom: 5px;\r\n    border-bottom: 1px solid #e5e7eb;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-grid-3 {\r\n    display: grid;\r\n    grid-template-columns: repeat(2, 1fr);\r\n    gap: 8px 12px;\r\n  }\r\n    textarea.form-control {\r\n    height: auto;\r\n   }\r\n\r\n  #payment-entry-custom-voucher .pv-field-box {\r\n    background: #fff;\r\n    border: 1px solid #eef2f7;\r\n    border-radius: 10px;\r\n    padding: 5px 10px;\r\n    min-height: unset !important;\r\n    height: auto !important;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .form-group {\r\n    margin-bottom: 0 !important;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .clearfix {\r\n    margin-bottom: 0 !important;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .control-label {\r\n    margin-bottom: 2px !important;\r\n    font-size: 13px !important;\r\n    font-weight: 800 !important;\r\n    line-height: 1.2 !important;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .control-input-wrapper {\r\n    margin: 0 !important;\r\n    padding: 0 !important;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .control-input {\r\n    margin: 0 !important;\r\n    min-height: 30px !important;\r\n  }\r\n\r\n  #payment-entry-custom-voucher input,\r\n  #payment-entry-custom-voucher select {\r\n    height: 30px !important;\r\n    min-height: 30px !important;\r\n    padding-top: 4px !important;\r\n    padding-bottom: 4px !important;\r\n    font-size: 12px !important;\r\n  }\r\n\r\n  #payment-entry-custom-voucher textarea {\r\n    min-height: 38px !important;\r\n    height: 38px !important;\r\n    font-size: 13px !important;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-actions {\r\n    display: flex;\r\n    justify-content: center;\r\n    gap: 8px;\r\n    margin-top: 10px;\r\n    flex-wrap: wrap;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-actions .btn {\r\n    min-width: 140px;\r\n    padding: 7px 18px;\r\n    border-radius: 9px;\r\n    font-weight: 900;\r\n  }\r\n\r\n  .pv-table-wrap {\r\n    overflow-x: auto;\r\n    background: #fff;\r\n    border: 1px solid #e5e7eb;\r\n    border-radius: 12px;\r\n  }\r\n\r\n  .pv-table {\r\n    width: 100%;\r\n    border-collapse: collapse;\r\n    min-width: 760px;\r\n  }\r\n\r\n  .pv-table th,\r\n  .pv-table td {\r\n    padding: 7px 9px;\r\n    border-bottom: 1px solid #eef2f7;\r\n    text-align: right;\r\n    font-size: 12px;\r\n  }\r\n\r\n  .pv-table th {\r\n    background: #f3f4f6;\r\n    color: #111827;\r\n    font-weight: 900;\r\n  }\r\n\r\n  .pv-badge {\r\n    display: inline-block;\r\n    padding: 3px 8px;\r\n    border-radius: 999px;\r\n    font-size: 11px;\r\n    font-weight: 800;\r\n  }\r\n\r\n  .pv-badge-draft {\r\n    background: #fff7ed;\r\n    color: #c2410c;\r\n  }\r\n\r\n  .pv-badge-submit {\r\n    background: #ecfdf5;\r\n    color: #047857;\r\n  }\r\n\r\n  .pv-empty {\r\n    text-align: center;\r\n    color: #6b7280;\r\n    padding: 10px;\r\n    font-size: 13px;\r\n  }\r\n#payment-entry-custom-voucher .pv-grid-3 {\r\n  display: grid;\r\n  grid-template-columns: repeat(3, 1fr);\r\n  gap: 8px 12px;\r\n}\r\n#payment-entry-custom-voucher .pv-grid-4 {\r\n  display: grid;\r\n  grid-template-columns: repeat(4, 1fr);\r\n  gap: 8px 12px;\r\n}\r\n  @media (max-width: 768px) {\r\n    #payment-entry-custom-voucher .pv-summary,\r\n    #payment-entry-custom-voucher .pv-grid-3 {\r\n      grid-template-columns: 1fr;\r\n    }\r\n  }\r\n</style>\r\n\r\n        <div id=\"payment-entry-custom-voucher\">\r\n          <div class=\"pv-header\">\r\n            <h2>سند قبض</h2>\r\n            <p>Receipt Voucher</p>\r\n          </div>\r\n\r\n          <div class=\"pv-body\">\r\n\r\n            <div class=\"pv-section\">\r\n              <div class=\"pv-section-title\">بيانات السند</div>\r\n              <div class=\"pv-grid-3\">\r\n                <div class=\"pv-field-box\" id=\"pv_company\"></div>\r\n                <div class=\"pv-field-box\" id=\"pv_posting_date\"></div>\r\n                <div class=\"pv-field-box\" id=\"pv_mode_of_payment\"></div>\r\n                <div class=\"pv-field-box\" id=\"pv_reference_no\"></div>\r\n                <div class=\"pv-field-box\" id=\"pv_reference_date\"></div>\r\n              </div>\r\n            </div>\r\n\r\n            <div class=\"pv-section\">\r\n              <div class=\"pv-section-title\">بيانات الدافع</div>\r\n              <div class=\"pv-grid-3\">\r\n                <div class=\"pv-field-box\" id=\"pv_party_type\"></div>\r\n                <div class=\"pv-field-box\" id=\"pv_party\"></div>\r\n              </div>\r\n            </div>\r\n\r\n            <div class=\"pv-section\">\r\n              <div class=\"pv-section-title\">بيانات الحسابات والمبلغ</div>\r\n              <div class=\"pv-grid-4\">\r\n                <div class=\"pv-field-box\" id=\"pv_paid_from\"></div>\r\n                <div class=\"pv-field-box\" id=\"pv_paid_to\"></div>\r\n                <div class=\"pv-field-box\" id=\"pv_paid_amount\"></div>\r\n                <div class=\"pv-field-box\" id=\"pv_received_amount\"></div>\r\n              </div>\r\n            </div>\r\n\r\n            <div class=\"pv-section\">\r\n              <div class=\"pv-section-title\">البيان</div>\r\n              <div class=\"pv-grid-1\">\r\n                <div class=\"pv-field-box\" id=\"pv_remarks\"></div>\r\n              </div>\r\n            </div>\r\n\r\n            <div class=\"pv-actions\">\r\n              <button class=\"btn btn-primary\" id=\"pv_save_btn\">حفظ السند</button>\r\n              <button class=\"btn btn-warning\" id=\"pv_edit_btn\" style=\"display:none;\">تعديل</button>\r\n              <button class=\"btn btn-success\" id=\"pv_update_btn\" style=\"display:none;\">حفظ التعديل</button>\r\n            </div>\r\n\r\n            <div class=\"pv-section\" id=\"pv_my_vouchers_section\">\r\n              <div class=\"pv-section-title\">سندات القبض الخاصة بي</div>\r\n              <div id=\"pv_my_vouchers_table\" class=\"pv-table-wrap\">\r\n                <div class=\"pv-empty\">جاري تحميل السندات...</div>\r\n              </div>\r\n            </div>\r\n\r\n          </div>\r\n        </div>\r\n\r\n      </div>\r\n    </div>\r\n  `);\r\n\r\n  setTimeout(() => {\r\n    mount_payment_entry_real_fields(frm);\r\n\r\n    if (frm.is_new()) {\r\n      load_my_payment_vouchers();\r\n    }\r\n  }, 600);\r\n}\r\n\r\nfunction move_real_payment_field(frm, fieldname, target_id) {\r\n  const field = frm.fields_dict[fieldname];\r\n  const $target = $(\"#\" + target_id);\r\n\r\n  if (!field || !field.$wrapper || !$target.length) return;\r\n\r\n  field.$wrapper.detach().appendTo($target);\r\n  field.$wrapper.show();\r\n\r\n  field.df.hidden = 0;\r\n  field.refresh();\r\n\r\n  frm.set_df_property(fieldname, \"hidden\", 0);\r\n}\r\n\r\nfunction set_payment_voucher_readonly(frm, readonly) {\r\n  PAYMENT_VOUCHER_FIELDS.forEach(fieldname => {\r\n    if (!frm.fields_dict[fieldname]) return;\r\n\r\n    frm.set_df_property(fieldname, \"read_only\", readonly ? 1 : 0);\r\n    frm.fields_dict[fieldname].refresh();\r\n  });\r\n}\r\n\r\nfunction mount_payment_entry_real_fields(frm) {\r\n  if (!$(\"#payment-entry-custom-voucher\").length) return;\r\n\r\n  move_real_payment_field(frm, \"company\", \"pv_company\");\r\n  move_real_payment_field(frm, \"posting_date\", \"pv_posting_date\");\r\n  move_real_payment_field(frm, \"mode_of_payment\", \"pv_mode_of_payment\");\r\n  move_real_payment_field(frm, \"reference_no\", \"pv_reference_no\");\r\n  move_real_payment_field(frm, \"reference_date\", \"pv_reference_date\");\r\n\r\n  move_real_payment_field(frm, \"party_type\", \"pv_party_type\");\r\n  move_real_payment_field(frm, \"party\", \"pv_party\");\r\n\r\n  move_real_payment_field(frm, \"paid_from\", \"pv_paid_from\");\r\n  move_real_payment_field(frm, \"paid_to\", \"pv_paid_to\");\r\n  move_real_payment_field(frm, \"paid_amount\", \"pv_paid_amount\");\r\n  move_real_payment_field(frm, \"received_amount\", \"pv_received_amount\");\r\n\r\n  move_real_payment_field(frm, \"remarks\", \"pv_remarks\");\r\n\r\n  set_default_payment_voucher_values(frm);\r\n  bind_payment_voucher_buttons(frm);\r\n  update_payment_voucher_buttons(frm);\r\n}\r\n\r\nfunction set_default_payment_voucher_values(frm) {\r\n  if (frm.doc.docstatus === 1) return;\r\n\r\n  if (frm.doc.payment_type !== \"Receive\") {\r\n    frm.set_value(\"payment_type\", \"Receive\");\r\n  }\r\n\r\n  if (frm.doc.mode_of_payment !== \"Cash\") {\r\n    frm.set_value(\"mode_of_payment\", \"Cash\");\r\n  }\r\n\r\n  if (!frm.doc.custom_remarks) {\r\n    frm.set_value(\"custom_remarks\", 1);\r\n  }\r\n\r\n  if (!frm.doc.posting_date) {\r\n    frm.set_value(\"posting_date\", frappe.datetime.get_today());\r\n  }\r\n\r\n  if (!frm.doc.reference_date) {\r\n    frm.set_value(\"reference_date\", frappe.datetime.get_today());\r\n  }\r\n\r\n  if (!frm.doc.remarks) {\r\n    frm.set_value(\"remarks\", \"سند قبض\");\r\n  }\r\n}\r\n\r\nfunction update_payment_voucher_buttons(frm) {\r\n  const is_new = frm.is_new();\r\n  const is_submitted = frm.doc.docstatus === 1;\r\n\r\n  $(\"#pv_save_btn\").hide();\r\n  $(\"#pv_edit_btn\").hide();\r\n  $(\"#pv_update_btn\").hide();\r\n  $(\"#pv_my_vouchers_section\").hide();\r\n\r\n  if (is_new) {\r\n    $(\"#pv_save_btn\").show();\r\n    $(\"#pv_my_vouchers_section\").show();\r\n    set_payment_voucher_readonly(frm, false);\r\n    return;\r\n  }\r\n\r\n  if (is_submitted) {\r\n    set_payment_voucher_readonly(frm, true);\r\n    return;\r\n  }\r\n\r\n  $(\"#pv_edit_btn\").show();\r\n  set_payment_voucher_readonly(frm, true);\r\n}\r\n\r\nfunction bind_payment_voucher_buttons(frm) {\r\n  $(\"#pv_save_btn\").off(\"click\").on(\"click\", function () {\r\n    frappe.confirm(\"هل تريد حفظ سند القبض؟\", async function () {\r\n      await save_real_payment_voucher(frm);\r\n    });\r\n  });\r\n\r\n  $(\"#pv_edit_btn\").off(\"click\").on(\"click\", function () {\r\n    set_payment_voucher_readonly(frm, false);\r\n\r\n    $(\"#pv_edit_btn\").hide();\r\n    $(\"#pv_update_btn\").show();\r\n\r\n    frappe.show_alert({\r\n      message: \"يمكنك الآن تعديل سند القبض\",\r\n      indicator: \"blue\"\r\n    });\r\n  });\r\n\r\n  $(\"#pv_update_btn\").off(\"click\").on(\"click\", function () {\r\n    frappe.confirm(\"هل تريد حفظ التعديل؟\", async function () {\r\n      await update_real_payment_voucher(frm);\r\n    });\r\n  });\r\n}\r\n\r\nasync function validate_payment_voucher(frm) {\r\n  if (!frm.doc.company) frappe.throw(\"يرجى اختيار الشركة\");\r\n  if (!frm.doc.posting_date) frappe.throw(\"يرجى اختيار تاريخ السند\");\r\n  if (!frm.doc.party_type) frappe.throw(\"يرجى اختيار نوع الدافع\");\r\n  if (!frm.doc.party) frappe.throw(\"يرجى اختيار الدافع\");\r\n  if (!frm.doc.paid_from) frappe.throw(\"يرجى اختيار حساب الدافع\");\r\n  if (!frm.doc.paid_to) frappe.throw(\"يرجى اختيار حساب الصندوق / البنك\");\r\n\r\n  if (!flt(frm.doc.received_amount || 0) && !flt(frm.doc.paid_amount || 0)) {\r\n    frappe.throw(\"يرجى إدخال مبلغ صحيح\");\r\n  }\r\n\r\n  if (!flt(frm.doc.received_amount || 0) && flt(frm.doc.paid_amount || 0)) {\r\n    await frm.set_value(\"received_amount\", frm.doc.paid_amount);\r\n  }\r\n\r\n  if (!flt(frm.doc.paid_amount || 0) && flt(frm.doc.received_amount || 0)) {\r\n    await frm.set_value(\"paid_amount\", frm.doc.received_amount);\r\n  }\r\n\r\n  if (!frm.doc.reference_no) {\r\n    await frm.set_value(\"reference_no\", `RV-${Date.now()}`);\r\n  }\r\n\r\n  if (!frm.doc.reference_date) {\r\n    await frm.set_value(\"reference_date\", frm.doc.posting_date || frappe.datetime.get_today());\r\n  }\r\n\r\n  await frm.set_value(\"payment_type\", \"Receive\");\r\n  await frm.set_value(\"mode_of_payment\", \"Cash\");\r\n  await frm.set_value(\"custom_remarks\", 1);\r\n}\r\n\r\nasync function save_real_payment_voucher(frm) {\r\n  try {\r\n    $(\"#pv_save_btn\").prop(\"disabled\", true);\r\n\r\n    const current_sub_path = frappe.router.current_sub_path;\r\n\r\n    await validate_payment_voucher(frm);\r\n    await frm.save();\r\n\r\n    frappe.show_alert({\r\n      message: \"تم حفظ سند القبض\",\r\n      indicator: \"green\"\r\n    });\r\n\r\n    await load_my_payment_vouchers();\r\n\r\n    setTimeout(() => {\r\n      if (current_sub_path) {\r\n        window.location.href = `/app/${current_sub_path}`;\r\n      }\r\n    }, 500);\r\n\r\n  } catch (e) {\r\n    console.error(e);\r\n\r\n    frappe.msgprint({\r\n      title: \"خطأ\",\r\n      message: e.message || e,\r\n      indicator: \"red\"\r\n    });\r\n\r\n  } finally {\r\n    $(\"#pv_save_btn\").prop(\"disabled\", false);\r\n  }\r\n}\r\n\r\nasync function update_real_payment_voucher(frm) {\r\n  try {\r\n    $(\"#pv_update_btn\").prop(\"disabled\", true);\r\n\r\n    await validate_payment_voucher(frm);\r\n    await frm.save();\r\n\r\n    frappe.show_alert({\r\n      message: \"تم حفظ التعديل\",\r\n      indicator: \"green\"\r\n    });\r\n\r\n    set_payment_voucher_readonly(frm, true);\r\n    $(\"#pv_update_btn\").hide();\r\n    $(\"#pv_edit_btn\").show();\r\n\r\n  } catch (e) {\r\n    console.error(e);\r\n\r\n    frappe.msgprint({\r\n      title: \"خطأ\",\r\n      message: e.message || e,\r\n      indicator: \"red\"\r\n    });\r\n\r\n  } finally {\r\n    $(\"#pv_update_btn\").prop(\"disabled\", false);\r\n  }\r\n}\r\n\r\nasync function load_my_payment_vouchers() {\r\n  const $box = $(\"#pv_my_vouchers_table\");\r\n  if (!$box.length) return;\r\n\r\n  $box.html(`<div class=\"pv-empty\">جاري تحميل السندات...</div>`);\r\n\r\n  try {\r\n    const layout_route = get_current_layout_route();\r\n\r\n    const rows = await frappe.db.get_list(\"Payment Entry\", {\r\n      fields: [\r\n        \"name\",\r\n        \"posting_date\",\r\n        \"party_type\",\r\n        \"party\",\r\n        \"received_amount\",\r\n        \"mode_of_payment\",\r\n        \"docstatus\",\r\n        \"owner\",\r\n        \"creation\"\r\n      ],\r\n      filters: {\r\n        owner: frappe.session.user,\r\n        payment_type: \"Receive\",\r\n        custom_remarks: 1\r\n      },\r\n      order_by: \"creation desc\",\r\n      limit: 10\r\n    });\r\n\r\n    if (!rows || !rows.length) {\r\n      $box.html(`<div class=\"pv-empty\">لا توجد سندات قبض خاصة بك</div>`);\r\n      return;\r\n    }\r\n\r\n    const htmlRows = rows.map(r => {\r\n      const statusText = r.docstatus === 1 ? \"معتمد\" : \"مسودة\";\r\n      const statusClass = r.docstatus === 1 ? \"pv-badge-submit\" : \"pv-badge-draft\";\r\n\r\n      return `\r\n        <tr>\r\n          <td>\r\n            <a href=\"/app/${layout_route}/${encodeURIComponent(r.name)}\" target=\"_blank\">\r\n              ${frappe.utils.escape_html(r.name)}\r\n            </a>\r\n          </td>\r\n          <td>${frappe.utils.escape_html(r.posting_date || \"\")}</td>\r\n          <td>${frappe.utils.escape_html(r.party_type || \"\")}</td>\r\n          <td>${frappe.utils.escape_html(r.party || \"\")}</td>\r\n          <td>${format_currency(r.received_amount || 0)}</td>\r\n          <td>${frappe.utils.escape_html(r.mode_of_payment || \"\")}</td>\r\n          <td><span class=\"pv-badge ${statusClass}\">${statusText}</span></td>\r\n        </tr>\r\n      `;\r\n    }).join(\"\");\r\n\r\n    $box.html(`\r\n      <table class=\"pv-table\">\r\n        <thead>\r\n          <tr>\r\n            <th>رقم السند</th>\r\n            <th>التاريخ</th>\r\n            <th>نوع الدافع</th>\r\n            <th>الدافع</th>\r\n            <th>المبلغ</th>\r\n            <th>طريقة الدفع</th>\r\n            <th>الحالة</th>\r\n          </tr>\r\n        </thead>\r\n        <tbody>\r\n          ${htmlRows}\r\n        </tbody>\r\n      </table>\r\n    `);\r\n\r\n  } catch (e) {\r\n    console.error(e);\r\n    $box.html(`<div class=\"pv-empty\">تعذر تحميل سندات القبض</div>`);\r\n  }\r\n}\r\n\r\nfunction update_received_amount(frm) {\r\n  const rate = frm.doc.source_exchange_rate || 0;\r\n  const trate = frm.doc.target_exchange_rate || 0;\r\n  const paid = frm.doc.paid_amount || 0;\r\n\r\n  let received = rate * paid;\r\n\r\n  if (trate !== 0) {\r\n    received = received / trate;\r\n  }\r\n\r\n  if (frm.doc.payment_type === \"Pay\") {\r\n    if (frm.doc.received_amount !== received) {\r\n      frm.set_value(\"received_amount\", received);\r\n    }\r\n  }\r\n}\r\n\r\nfunction update_paid_amount(frm) {\r\n  const rate = frm.doc.target_exchange_rate || 0;\r\n  const srate = frm.doc.source_exchange_rate || 0;\r\n  const received = frm.doc.received_amount || 0;\r\n\r\n  let paid = rate * received;\r\n\r\n  if (srate !== 0) {\r\n    paid = paid / srate;\r\n  }\r\n\r\n  if (frm.doc.payment_type === \"Receive\") {\r\n    if (frm.doc.paid_amount !== paid) {\r\n      frm.set_value(\"paid_amount\", paid);\r\n    }\r\n  }\r\n}\r\n\r\nfrappe.ui.form.on(\"Payment Entry\", {\r\n  before_load(frm) {\r\n    hide_all_payment_entry_original_fields(frm);\r\n  },\r\n\r\n  refresh(frm) {\r\n    hide_all_payment_entry_original_fields(frm);\r\n\r\n    setTimeout(() => {\r\n      render_payment_entry_voucher_layout(frm);\r\n    }, 800);\r\n  },\r\n  party_type: function(frm) {\r\n    let mop=frm.doc.mode_of_payment;\r\n    frm.set_value('mode_of_payment', '');\r\n    //frm.refresh_field('mode_of_payment');\r\n    frm.set_value('mode_of_payment', mop);\r\n    //frm.refresh_field('mode_of_payment');\r\n  },\r\n\r\n  party(frm) {\r\n    if ((frm.doc.party_type === \"Receivable\") && frm.doc.party) {\r\n      frappe.db.get_value(\"Receivable\", frm.doc.party, \"account\", (r) => {\r\n        if (r && r.account) {\r\n          if (frm.doc.payment_type === \"Receive\") {\r\n            frm.set_value(\"paid_from\", r.account);\r\n          } else if (frm.doc.payment_type === \"Pay\") {\r\n            frm.set_value(\"paid_to\", r.account);\r\n          }\r\n        }\r\n      });\r\n    }\r\n\r\n    if ((frm.doc.party_type === \"Payable\") && frm.doc.party) {\r\n      frappe.db.get_value(\"Payable\", frm.doc.party, \"account\", (r) => {\r\n        if (r && r.account) {\r\n          if (frm.doc.payment_type === \"Receive\") {\r\n            frm.set_value(\"paid_from\", r.account);\r\n          } else if (frm.doc.payment_type === \"Pay\") {\r\n            frm.set_value(\"paid_to\", r.account);\r\n          }\r\n        }\r\n      });\r\n    }\r\n  },\r\n\r\n  paid_amount(frm) {\r\n    update_received_amount(frm);\r\n  },\r\n\r\n  received_amount(frm) {\r\n    update_paid_amount(frm);\r\n  }\r\n});",
+  "docstatus": 0,
+  "doctype": "DocType Layout",
+  "document_type": "Payment Entry",
+  "fields": [
+   {
+    "fieldname": "type_of_payment",
+    "label": "Type of Payment",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "naming_series",
+    "label": "Series",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "payment_type",
+    "label": "Payment Type",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "payment_order_status",
+    "label": "Payment Order Status",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "column_break_5",
+    "label": null,
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "posting_date",
+    "label": "Posting Date",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "company",
+    "label": "Company",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "mode_of_payment",
+    "label": "Mode of Payment",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "party_section",
+    "label": "Payment From / To",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "party_type",
+    "label": "Party Type",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "party",
+    "label": "Party",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "party_name",
+    "label": "Party Name",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "book_advance_payments_in_separate_party_account",
+    "label": "Book Advance Payments in Separate Party Account",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "reconcile_on_advance_payment_date",
+    "label": "Reconcile on Advance Payment Date",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "column_break_11",
+    "label": null,
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "bank_account",
+    "label": "Company Bank Account",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "party_bank_account",
+    "label": "Party Bank Account",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "contact_person",
+    "label": "Contact",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "contact_email",
+    "label": "Email",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "payment_accounts_section",
+    "label": "Accounts",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "party_balance",
+    "label": "Party Balance",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "paid_from",
+    "label": "Account Paid From",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "paid_from_account_type",
+    "label": "Paid From Account Type",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "paid_from_account_currency",
+    "label": "Account Currency (From)",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "paid_from_account_balance",
+    "label": "Account Balance (From)",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "column_break_18",
+    "label": null,
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "paid_to",
+    "label": "Account Paid To",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "paid_to_account_type",
+    "label": "Paid To Account Type",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "paid_to_account_currency",
+    "label": "Account Currency (To)",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "paid_to_account_balance",
+    "label": "Account Balance (To)",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "payment_amounts_section",
+    "label": "Amount",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "paid_amount",
+    "label": "Paid Amount",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "paid_amount_after_tax",
+    "label": "Paid Amount After Tax",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "source_exchange_rate",
+    "label": "Source Exchange Rate",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "base_paid_amount",
+    "label": "Paid Amount (Company Currency)",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "base_paid_amount_after_tax",
+    "label": "Paid Amount After Tax (Company Currency)",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "column_break_21",
+    "label": null,
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "received_amount",
+    "label": "Received Amount",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "received_amount_after_tax",
+    "label": "Received Amount After Tax",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "target_exchange_rate",
+    "label": "Target Exchange Rate",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "base_received_amount",
+    "label": "Received Amount (Company Currency)",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "base_received_amount_after_tax",
+    "label": "Received Amount After Tax (Company Currency)",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "section_break_14",
+    "label": "Reference",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "get_outstanding_invoices",
+    "label": "Get Outstanding Invoices",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "get_outstanding_orders",
+    "label": "Get Outstanding Orders",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "references",
+    "label": "Payment References",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "section_break_34",
+    "label": "Writeoff",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "total_allocated_amount",
+    "label": "Total Allocated Amount",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "base_total_allocated_amount",
+    "label": "Total Allocated Amount (Company Currency)",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "set_exchange_gain_loss",
+    "label": "Set Exchange Gain / Loss",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "column_break_36",
+    "label": null,
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "unallocated_amount",
+    "label": "Unallocated Amount",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "difference_amount",
+    "label": "Difference Amount (Company Currency)",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "write_off_difference_amount",
+    "label": "Write Off Difference Amount",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "taxes_and_charges_section",
+    "label": "Taxes and Charges",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "purchase_taxes_and_charges_template",
+    "label": "Purchase Taxes and Charges Template",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "sales_taxes_and_charges_template",
+    "label": "Sales Taxes and Charges Template",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "column_break_55",
+    "label": null,
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "apply_tax_withholding_amount",
+    "label": "Apply Tax Withholding Amount",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "tax_withholding_category",
+    "label": "Tax Withholding Category",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "section_break_56",
+    "label": null,
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "taxes",
+    "label": "Advance Taxes and Charges",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "section_break_60",
+    "label": null,
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "base_total_taxes_and_charges",
+    "label": "Total Taxes and Charges (Company Currency)",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "column_break_61",
+    "label": null,
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "total_taxes_and_charges",
+    "label": "Total Taxes and Charges",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "deductions_or_loss_section",
+    "label": "Deductions or Loss",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "deductions",
+    "label": "Payment Deductions or Loss",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "transaction_references",
+    "label": "Transaction ID",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "reference_no",
+    "label": "Cheque/Reference No",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "column_break_23",
+    "label": null,
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "reference_date",
+    "label": "Cheque/Reference Date",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "clearance_date",
+    "label": "Clearance Date",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "accounting_dimensions_section",
+    "label": "Accounting Dimensions",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "project",
+    "label": "Project",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "dimension_col_break",
+    "label": null,
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "task",
+    "label": "Task",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "cost_center",
+    "label": "Cost Center",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "section_break_12",
+    "label": "More Information",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "status",
+    "label": "Status",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "custom_remarks",
+    "label": "Custom Remarks",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "remarks",
+    "label": "Remarks",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "base_in_words",
+    "label": "In Words (Company Currency)",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "column_break_16",
+    "label": null,
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "letter_head",
+    "label": "Letter Head",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "print_heading",
+    "label": "Print Heading",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "bank",
+    "label": "Bank",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "bank_account_no",
+    "label": "Bank Account No",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "payment_order",
+    "label": "Payment Order",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "in_words",
+    "label": "In Words",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "subscription_section",
+    "label": "Subscription Section",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "auto_repeat",
+    "label": "Auto Repeat",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "amended_from",
+    "label": "Amended From",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "title",
+    "label": "Title",
+    "parent": "Payment Receipt",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   }
+  ],
+  "modified": "2026-06-07 22:22:12.528653",
+  "name": "Payment Receipt",
+  "route": "/payment_receipt"
+ },
+ {
+  "client_script": "// ======================================================\r\n// Payment Entry - سند صرف باستخدام الحقول الحقيقية\r\n// Client Script على Doctype: Payment Entry\r\n// ======================================================\r\n\r\nconst PAYMENT_VOUCHER_FIELDS = [\r\n  \"company\",\r\n  \"posting_date\",\r\n  \"mode_of_payment\",\r\n  \"reference_no\",\r\n  \"reference_date\",\r\n  \"party_type\",\r\n  \"party\",\r\n  \"paid_from\",\r\n  \"paid_to\",\r\n  \"paid_amount\",\r\n  \"received_amount\",\r\n  \"custom_remarks\",\r\n  \"remarks\"\r\n];\r\n\r\nfunction get_current_layout_route() {\r\n  return (frappe.router.current_sub_path || \"\").split(\"/\")[0] || \"sanad-sarf\";\r\n}\r\n\r\nfunction is_new_voucher(frm) {\r\n  return frm.is_new();\r\n}\r\n\r\nfunction is_submitted_voucher(frm) {\r\n  return frm.doc.docstatus === 1;\r\n}\r\n\r\nfunction hide_all_payment_entry_original_fields(frm) {\r\n  frm.disable_save();\r\n\r\n  (frm.meta.fields || []).forEach(df => {\r\n    if (!df.fieldname) return;\r\n\r\n    const keep = PAYMENT_VOUCHER_FIELDS.includes(df.fieldname);\r\n    frm.set_df_property(df.fieldname, \"hidden\", keep ? 0 : 1);\r\n  });\r\n\r\n  setTimeout(() => {\r\n    const $wrapper = $(frm.wrapper);\r\n\r\n    $wrapper.find(\".standard-actions\").hide();\r\n    $wrapper.find(\".primary-action\").hide();\r\n    $wrapper.find(\".custom-actions\").hide();\r\n\r\n    $wrapper.find(\".form-section\").each(function () {\r\n      if (!$(this).find(\"#payment-entry-custom-voucher\").length) {\r\n        $(this).hide();\r\n      }\r\n    });\r\n  }, 300);\r\n}\r\n\r\nfunction clear_payment_voucher_dashboard(frm) {\r\n  const dashboard = $(frm.wrapper).find(\".form-dashboard\");\r\n  if (!dashboard.length) return;\r\n\r\n  dashboard.find(\".frappe-comment\").each(function () {\r\n    const $comment = $(this);\r\n\r\n    if (\r\n      $comment.find(\"#payment-entry-custom-voucher\").length ||\r\n      ($comment.find(\".comment-content\").text() || \"\").includes(\"Payment Voucher\")\r\n    ) {\r\n      $comment.remove();\r\n    }\r\n  });\r\n}\r\n\r\nfunction get_or_create_payment_voucher_dashboard(frm) {\r\n  let dashboard = $(frm.wrapper).find(\".form-dashboard\");\r\n\r\n  if (!dashboard.length) {\r\n    dashboard = $(`\r\n      <div class=\"form-dashboard\" style=\"margin-top:20px;\">\r\n        <div class=\"comments-wrapper\"></div>\r\n      </div>\r\n    `);\r\n\r\n    $(frm.wrapper).find(\".form-page\").append(dashboard);\r\n  }\r\n\r\n  let commentsWrapper = dashboard.find(\".comments-wrapper\");\r\n\r\n  if (!commentsWrapper.length) {\r\n    dashboard.append('<div class=\"comments-wrapper\"></div>');\r\n    commentsWrapper = dashboard.find(\".comments-wrapper\");\r\n  }\r\n\r\n  return commentsWrapper;\r\n}\r\n\r\nfunction render_payment_entry_voucher_layout(frm) {\r\n  if ($(frm.wrapper).find(\"#payment-entry-custom-voucher\").length) return;\r\n\r\n  clear_payment_voucher_dashboard(frm);\r\n\r\n  const commentsWrapper = get_or_create_payment_voucher_dashboard(frm);\r\n\r\n  commentsWrapper.prepend(`\r\n    <div class=\"frappe-comment payment-voucher-comment\" style=\"margin-bottom:15px;\">\r\n      <div class=\"comment-content\">\r\n\r\n<style>\r\n  #payment-entry-custom-voucher {\r\n    direction: rtl;\r\n    max-width: 1120px;\r\n    margin: 8px auto;\r\n    background: #fff;\r\n    border-radius: 16px;\r\n    border: 1px solid #e5e7eb;\r\n    overflow: hidden;\r\n    font-family: Tahoma, Arial, sans-serif;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-header {\r\n    background: linear-gradient(135deg, #111827, #374151);\r\n    padding: 14px 22px;\r\n    text-align: center;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-header h2 {\r\n    margin: 0;\r\n    color: #fff;\r\n    font-size: 24px;\r\n    font-weight: 900;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-header p {\r\n    margin: 2px 0 0;\r\n    color: #d1d5db;\r\n    font-size: 13px;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-body {\r\n    padding: 10px 16px;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-summary {\r\n    display: grid;\r\n    grid-template-columns: repeat(3, 1fr);\r\n    gap: 8px;\r\n    margin-bottom: 8px;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-summary-card {\r\n    background: #f9fafb;\r\n    border: 1px solid #e5e7eb;\r\n    border-radius: 12px;\r\n    padding: 8px 12px;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-summary-card .label {\r\n    font-size: 13px;\r\n    color: #6b7280;\r\n    margin-bottom: 2px;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-summary-card .value {\r\n    font-size: 14px;\r\n    font-weight: 900;\r\n    color: #111827;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-section {\r\n    background: #f9fafb;\r\n    border: 1px solid #e5e7eb;\r\n    border-radius: 14px;\r\n    padding: 10px 12px;\r\n    margin-bottom: 8px;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-section-title {\r\n    font-size: 15px;\r\n    font-weight: 900;\r\n    color: #111827;\r\n    margin-bottom: 8px;\r\n    padding-bottom: 5px;\r\n    border-bottom: 1px solid #e5e7eb;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-grid-3 {\r\n    display: grid;\r\n    grid-template-columns: repeat(2, 1fr);\r\n    gap: 8px 12px;\r\n  }\r\n    textarea.form-control {\r\n    height: auto;\r\n   }\r\n\r\n  #payment-entry-custom-voucher .pv-field-box {\r\n    background: #fff;\r\n    border: 1px solid #eef2f7;\r\n    border-radius: 10px;\r\n    padding: 5px 10px;\r\n    min-height: unset !important;\r\n    height: auto !important;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .form-group {\r\n    margin-bottom: 0 !important;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .clearfix {\r\n    margin-bottom: 0 !important;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .control-label {\r\n    margin-bottom: 2px !important;\r\n    font-size: 13px !important;\r\n    font-weight: 800 !important;\r\n    line-height: 1.2 !important;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .control-input-wrapper {\r\n    margin: 0 !important;\r\n    padding: 0 !important;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .control-input {\r\n    margin: 0 !important;\r\n    min-height: 30px !important;\r\n  }\r\n\r\n  #payment-entry-custom-voucher input,\r\n  #payment-entry-custom-voucher select {\r\n    height: 30px !important;\r\n    min-height: 30px !important;\r\n    padding-top: 4px !important;\r\n    padding-bottom: 4px !important;\r\n    font-size: 12px !important;\r\n  }\r\n\r\n  #payment-entry-custom-voucher textarea {\r\n    min-height: 38px !important;\r\n    height: 38px !important;\r\n    font-size: 13px !important;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-actions {\r\n    display: flex;\r\n    justify-content: center;\r\n    gap: 8px;\r\n    margin-top: 10px;\r\n    flex-wrap: wrap;\r\n  }\r\n\r\n  #payment-entry-custom-voucher .pv-actions .btn {\r\n    min-width: 140px;\r\n    padding: 7px 18px;\r\n    border-radius: 9px;\r\n    font-weight: 900;\r\n  }\r\n\r\n  .pv-table-wrap {\r\n    overflow-x: auto;\r\n    background: #fff;\r\n    border: 1px solid #e5e7eb;\r\n    border-radius: 12px;\r\n  }\r\n\r\n  .pv-table {\r\n    width: 100%;\r\n    border-collapse: collapse;\r\n    min-width: 760px;\r\n  }\r\n\r\n  .pv-table th,\r\n  .pv-table td {\r\n    padding: 7px 9px;\r\n    border-bottom: 1px solid #eef2f7;\r\n    text-align: right;\r\n    font-size: 12px;\r\n  }\r\n\r\n  .pv-table th {\r\n    background: #f3f4f6;\r\n    color: #111827;\r\n    font-weight: 900;\r\n  }\r\n\r\n  .pv-badge {\r\n    display: inline-block;\r\n    padding: 3px 8px;\r\n    border-radius: 999px;\r\n    font-size: 11px;\r\n    font-weight: 800;\r\n  }\r\n\r\n  .pv-badge-draft {\r\n    background: #fff7ed;\r\n    color: #c2410c;\r\n  }\r\n\r\n  .pv-badge-submit {\r\n    background: #ecfdf5;\r\n    color: #047857;\r\n  }\r\n\r\n  .pv-empty {\r\n    text-align: center;\r\n    color: #6b7280;\r\n    padding: 10px;\r\n    font-size: 13px;\r\n  }\r\n#payment-entry-custom-voucher .pv-grid-3 {\r\n  display: grid;\r\n  grid-template-columns: repeat(3, 1fr);\r\n  gap: 8px 12px;\r\n}\r\n#payment-entry-custom-voucher .pv-grid-4 {\r\n  display: grid;\r\n  grid-template-columns: repeat(4, 1fr);\r\n  gap: 8px 12px;\r\n}\r\n  @media (max-width: 768px) {\r\n    #payment-entry-custom-voucher .pv-summary,\r\n    #payment-entry-custom-voucher .pv-grid-3 {\r\n      grid-template-columns: 1fr;\r\n    }\r\n  }\r\n</style>\r\n\r\n\r\n        <div id=\"payment-entry-custom-voucher\">\r\n          <div class=\"pv-header\">\r\n            <h2>سند صرف</h2>\r\n            <p>Payment Voucher</p>\r\n          </div>\r\n\r\n          <div class=\"pv-body\">\r\n\r\n          \r\n\r\n            <div class=\"pv-section\">\r\n              <div class=\"pv-section-title\">بيانات السند</div>\r\n              <div class=\"pv-grid-3\">\r\n                <div class=\"pv-field-box\" id=\"pv_company\"></div>\r\n                <div class=\"pv-field-box\" id=\"pv_posting_date\"></div>\r\n                <div class=\"pv-field-box\" id=\"pv_mode_of_payment\"></div>\r\n                <div class=\"pv-field-box\" id=\"pv_reference_no\"></div>\r\n                <div class=\"pv-field-box\" id=\"pv_reference_date\"></div>\r\n              </div>\r\n            </div>\r\n\r\n            <div class=\"pv-section\">\r\n              <div class=\"pv-section-title\">بيانات المستفيد</div>\r\n              <div class=\"pv-grid-3\">\r\n                <div class=\"pv-field-box\" id=\"pv_party_type\"></div>\r\n                <div class=\"pv-field-box\" id=\"pv_party\"></div>\r\n              </div>\r\n            </div>\r\n\r\n            <div class=\"pv-section\">\r\n              <div class=\"pv-section-title\">بيانات الحسابات والمبلغ</div>\r\n              <div class=\"pv-grid-4\">\r\n                <div class=\"pv-field-box\" id=\"pv_paid_from\"></div>\r\n                <div class=\"pv-field-box\" id=\"pv_paid_to\"></div>\r\n                <div class=\"pv-field-box\" id=\"pv_paid_amount\"></div>\r\n                <div class=\"pv-field-box\" id=\"pv_received_amount\"></div>\r\n              </div>\r\n            </div>\r\n\r\n            <div class=\"pv-section\">\r\n              <div class=\"pv-section-title\">البيان</div>\r\n              <div class=\"pv-grid-1\">\r\n                <div class=\"pv-field-box\" id=\"pv_remarks\"></div>\r\n              </div>\r\n            </div>\r\n\r\n            <div class=\"pv-actions\">\r\n              <button class=\"btn btn-primary\" id=\"pv_save_btn\">حفظ السند</button>\r\n              <button class=\"btn btn-warning\" id=\"pv_edit_btn\" style=\"display:none;\">تعديل</button>\r\n              <button class=\"btn btn-success\" id=\"pv_update_btn\" style=\"display:none;\">حفظ التعديل</button>\r\n            </div>\r\n\r\n            <div class=\"pv-section\" id=\"pv_my_vouchers_section\">\r\n              <div class=\"pv-section-title\">سندات الصرف الخاصة بي</div>\r\n              <div id=\"pv_my_vouchers_table\" class=\"pv-table-wrap\">\r\n                <div class=\"pv-empty\">جاري تحميل السندات...</div>\r\n              </div>\r\n            </div>\r\n\r\n          </div>\r\n        </div>\r\n\r\n      </div>\r\n    </div>\r\n  `);\r\n\r\n  setTimeout(() => {\r\n    mount_payment_entry_real_fields(frm);\r\n\r\n    if (frm.is_new()) {\r\n      load_my_payment_vouchers();\r\n    }\r\n  }, 600);\r\n}\r\n\r\nfunction move_real_payment_field(frm, fieldname, target_id) {\r\n  const field = frm.fields_dict[fieldname];\r\n  const $target = $(\"#\" + target_id);\r\n\r\n  if (!field || !field.$wrapper || !$target.length) return;\r\n\r\n  field.$wrapper.detach().appendTo($target);\r\n  field.$wrapper.show();\r\n\r\n  field.df.hidden = 0;\r\n  field.refresh();\r\n\r\n  frm.set_df_property(fieldname, \"hidden\", 0);\r\n}\r\n\r\nfunction set_payment_voucher_readonly(frm, readonly) {\r\n  PAYMENT_VOUCHER_FIELDS.forEach(fieldname => {\r\n    if (!frm.fields_dict[fieldname]) return;\r\n\r\n    frm.set_df_property(fieldname, \"read_only\", readonly ? 1 : 0);\r\n    frm.fields_dict[fieldname].refresh();\r\n  });\r\n}\r\n\r\nfunction mount_payment_entry_real_fields(frm) {\r\n  if (!$(\"#payment-entry-custom-voucher\").length) return;\r\n\r\n  move_real_payment_field(frm, \"company\", \"pv_company\");\r\n  move_real_payment_field(frm, \"posting_date\", \"pv_posting_date\");\r\n  move_real_payment_field(frm, \"mode_of_payment\", \"pv_mode_of_payment\");\r\n  move_real_payment_field(frm, \"reference_no\", \"pv_reference_no\");\r\n  move_real_payment_field(frm, \"reference_date\", \"pv_reference_date\");\r\n\r\n  move_real_payment_field(frm, \"party_type\", \"pv_party_type\");\r\n  move_real_payment_field(frm, \"party\", \"pv_party\");\r\n\r\n  move_real_payment_field(frm, \"paid_from\", \"pv_paid_from\");\r\n  move_real_payment_field(frm, \"paid_to\", \"pv_paid_to\");\r\n  move_real_payment_field(frm, \"paid_amount\", \"pv_paid_amount\");\r\n  move_real_payment_field(frm, \"received_amount\", \"pv_received_amount\");\r\n\r\n  //move_real_payment_field(frm, \"custom_remarks\", \"pv_custom_remarks\");\r\n  move_real_payment_field(frm, \"remarks\", \"pv_remarks\");\r\n\r\n  set_default_payment_voucher_values(frm);\r\n  bind_payment_voucher_buttons(frm);\r\n  update_payment_voucher_buttons(frm);\r\n}\r\n\r\nfunction set_default_payment_voucher_values(frm) {\r\n  if (frm.doc.docstatus === 1) return;\r\n\r\n  if (frm.doc.payment_type !== \"Pay\") {\r\n    frm.set_value(\"payment_type\", \"Pay\");\r\n  }\r\n\r\n  if (frm.doc.mode_of_payment !== \"Cash\") {\r\n    frm.set_value(\"mode_of_payment\", \"Cash\");\r\n  }\r\n\r\n  if (!frm.doc.custom_remarks) {\r\n    frm.set_value(\"custom_remarks\", 1);\r\n  }\r\n\r\n  if (!frm.doc.posting_date) {\r\n    frm.set_value(\"posting_date\", frappe.datetime.get_today());\r\n  }\r\n\r\n  if (!frm.doc.reference_date) {\r\n    frm.set_value(\"reference_date\", frappe.datetime.get_today());\r\n  }\r\n\r\n  if (!frm.doc.remarks) {\r\n    frm.set_value(\"remarks\", \"سند صرف\");\r\n  }\r\n}\r\n\r\nfunction update_payment_voucher_buttons(frm) {\r\n  const is_new = frm.is_new();\r\n  const is_submitted = frm.doc.docstatus === 1;\r\n\r\n  $(\"#pv_save_btn\").hide();\r\n  $(\"#pv_edit_btn\").hide();\r\n  $(\"#pv_update_btn\").hide();\r\n  $(\"#pv_my_vouchers_section\").hide();\r\n\r\n  if (is_new) {\r\n    $(\"#pv_save_btn\").show();\r\n    $(\"#pv_my_vouchers_section\").show();\r\n    $(\"#pv_status_label\").text(\"جديد\");\r\n    set_payment_voucher_readonly(frm, false);\r\n    return;\r\n  }\r\n\r\n  if (is_submitted) {\r\n    $(\"#pv_status_label\").text(\"معتمد\");\r\n    set_payment_voucher_readonly(frm, true);\r\n    return;\r\n  }\r\n\r\n  $(\"#pv_status_label\").text(\"محفوظ\");\r\n  $(\"#pv_edit_btn\").show();\r\n  set_payment_voucher_readonly(frm, true);\r\n}\r\n\r\nfunction bind_payment_voucher_buttons(frm) {\r\n  $(\"#pv_save_btn\").off(\"click\").on(\"click\", function () {\r\n    frappe.confirm(\"هل تريد حفظ سند الصرف؟\", async function () {\r\n      await save_real_payment_voucher(frm);\r\n    });\r\n  });\r\n\r\n  $(\"#pv_edit_btn\").off(\"click\").on(\"click\", function () {\r\n    set_payment_voucher_readonly(frm, false);\r\n\r\n    $(\"#pv_edit_btn\").hide();\r\n    $(\"#pv_update_btn\").show();\r\n\r\n    frappe.show_alert({\r\n      message: \"يمكنك الآن تعديل سند الصرف\",\r\n      indicator: \"blue\"\r\n    });\r\n  });\r\n\r\n  $(\"#pv_update_btn\").off(\"click\").on(\"click\", function () {\r\n    frappe.confirm(\"هل تريد حفظ التعديل؟\", async function () {\r\n      await update_real_payment_voucher(frm);\r\n    });\r\n  });\r\n}\r\n\r\nasync function validate_payment_voucher(frm) {\r\n  if (!frm.doc.company) frappe.throw(\"يرجى اختيار الشركة\");\r\n  if (!frm.doc.posting_date) frappe.throw(\"يرجى اختيار تاريخ السند\");\r\n  if (!frm.doc.party_type) frappe.throw(\"يرجى اختيار نوع المستفيد\");\r\n  if (!frm.doc.party) frappe.throw(\"يرجى اختيار المستفيد\");\r\n  if (!frm.doc.paid_from) frappe.throw(\"يرجى اختيار حساب الصندوق / البنك\");\r\n  if (!frm.doc.paid_to) frappe.throw(\"يرجى اختيار حساب المستفيد\");\r\n  if (!flt(frm.doc.paid_amount || 0)) frappe.throw(\"يرجى إدخال مبلغ صحيح\");\r\n\r\n  if (!frm.doc.reference_no) {\r\n    await frm.set_value(\"reference_no\", `PV-${Date.now()}`);\r\n  }\r\n\r\n  if (!frm.doc.reference_date) {\r\n    await frm.set_value(\"reference_date\", frm.doc.posting_date || frappe.datetime.get_today());\r\n  }\r\n\r\n  await frm.set_value(\"payment_type\", \"Pay\");\r\n  await frm.set_value(\"mode_of_payment\", \"Cash\");\r\n  await frm.set_value(\"custom_remarks\", 1);\r\n}\r\n\r\nasync function save_real_payment_voucher(frm) {\r\n  try {\r\n    $(\"#pv_save_btn\").prop(\"disabled\", true);\r\n\r\n    const current_sub_path = frappe.router.current_sub_path;\r\n\r\n    await validate_payment_voucher(frm);\r\n    await frm.save();\r\n\r\n    frappe.show_alert({\r\n      message: \"تم حفظ سند الصرف\",\r\n      indicator: \"green\"\r\n    });\r\n\r\n    await load_my_payment_vouchers();\r\n\r\n    setTimeout(() => {\r\n      if (current_sub_path) {\r\n        window.location.href = `/app/${current_sub_path}`;\r\n      }\r\n    }, 500);\r\n\r\n  } catch (e) {\r\n    console.error(e);\r\n\r\n    frappe.msgprint({\r\n      title: \"خطأ\",\r\n      message: e.message || e,\r\n      indicator: \"red\"\r\n    });\r\n\r\n  } finally {\r\n    $(\"#pv_save_btn\").prop(\"disabled\", false);\r\n  }\r\n}\r\n\r\nasync function update_real_payment_voucher(frm) {\r\n  try {\r\n    $(\"#pv_update_btn\").prop(\"disabled\", true);\r\n\r\n    await validate_payment_voucher(frm);\r\n    await frm.save();\r\n\r\n    frappe.show_alert({\r\n      message: \"تم حفظ التعديل\",\r\n      indicator: \"green\"\r\n    });\r\n\r\n    set_payment_voucher_readonly(frm, true);\r\n    $(\"#pv_update_btn\").hide();\r\n    $(\"#pv_edit_btn\").show();\r\n\r\n  } catch (e) {\r\n    console.error(e);\r\n\r\n    frappe.msgprint({\r\n      title: \"خطأ\",\r\n      message: e.message || e,\r\n      indicator: \"red\"\r\n    });\r\n\r\n  } finally {\r\n    $(\"#pv_update_btn\").prop(\"disabled\", false);\r\n  }\r\n}\r\n\r\nasync function load_my_payment_vouchers() {\r\n  const $box = $(\"#pv_my_vouchers_table\");\r\n  if (!$box.length) return;\r\n\r\n  $box.html(`<div class=\"pv-empty\">جاري تحميل السندات...</div>`);\r\n\r\n  try {\r\n    const layout_route = get_current_layout_route();\r\n\r\n    const rows = await frappe.db.get_list(\"Payment Entry\", {\r\n      fields: [\r\n        \"name\",\r\n        \"posting_date\",\r\n        \"party_type\",\r\n        \"party\",\r\n        \"paid_amount\",\r\n        \"mode_of_payment\",\r\n        \"docstatus\",\r\n        \"owner\",\r\n        \"creation\"\r\n      ],\r\n      filters: {\r\n        owner: frappe.session.user,\r\n        payment_type: \"Pay\",\r\n        custom_remarks: 1\r\n      },\r\n      order_by: \"creation desc\",\r\n      limit: 10\r\n    });\r\n\r\n    if (!rows || !rows.length) {\r\n      $box.html(`<div class=\"pv-empty\">لا توجد سندات صرف خاصة بك</div>`);\r\n      return;\r\n    }\r\n\r\n    const htmlRows = rows.map(r => {\r\n      const statusText = r.docstatus === 1 ? \"معتمد\" : \"مسودة\";\r\n      const statusClass = r.docstatus === 1 ? \"pv-badge-submit\" : \"pv-badge-draft\";\r\n\r\n      return `\r\n        <tr>\r\n          <td>\r\n            <a href=\"/app/${layout_route}/${encodeURIComponent(r.name)}\" target=\"_blank\">\r\n              ${frappe.utils.escape_html(r.name)}\r\n            </a>\r\n          </td>\r\n          <td>${frappe.utils.escape_html(r.posting_date || \"\")}</td>\r\n          <td>${frappe.utils.escape_html(r.party_type || \"\")}</td>\r\n          <td>${frappe.utils.escape_html(r.party || \"\")}</td>\r\n          <td>${format_currency(r.paid_amount || 0)}</td>\r\n          <td>${frappe.utils.escape_html(r.mode_of_payment || \"\")}</td>\r\n          <td><span class=\"pv-badge ${statusClass}\">${statusText}</span></td>\r\n        </tr>\r\n      `;\r\n    }).join(\"\");\r\n\r\n    $box.html(`\r\n      <table class=\"pv-table\">\r\n        <thead>\r\n          <tr>\r\n            <th>رقم السند</th>\r\n            <th>التاريخ</th>\r\n            <th>نوع المستفيد</th>\r\n            <th>المستفيد</th>\r\n            <th>المبلغ</th>\r\n            <th>طريقة الدفع</th>\r\n            <th>الحالة</th>\r\n          </tr>\r\n        </thead>\r\n        <tbody>\r\n          ${htmlRows}\r\n        </tbody>\r\n      </table>\r\n    `);\r\n\r\n  } catch (e) {\r\n    console.error(e);\r\n    $box.html(`<div class=\"pv-empty\">تعذر تحميل سندات الصرف</div>`);\r\n  }\r\n}\r\n\r\nfunction update_received_amount(frm) {\r\n  const rate = frm.doc.source_exchange_rate || 0;\r\n  const trate = frm.doc.target_exchange_rate || 0;\r\n  const paid = frm.doc.paid_amount || 0;\r\n\r\n  let received = rate * paid;\r\n\r\n  if (trate !== 0) {\r\n    received = received / trate;\r\n  }\r\n\r\n  if (frm.doc.payment_type === \"Pay\") {\r\n    if (frm.doc.received_amount !== received) {\r\n      frm.set_value(\"received_amount\", received);\r\n    }\r\n  }\r\n}\r\n\r\nfunction update_paid_amount(frm) {\r\n  const rate = frm.doc.target_exchange_rate || 0;\r\n  const srate = frm.doc.source_exchange_rate || 0;\r\n  const received = frm.doc.received_amount || 0;\r\n\r\n  let paid = rate * received;\r\n\r\n  if (srate !== 0) {\r\n    paid = paid / srate;\r\n  }\r\n\r\n  if (frm.doc.payment_type === \"Receive\") {\r\n    if (frm.doc.paid_amount !== paid) {\r\n      frm.set_value(\"paid_amount\", paid);\r\n    }\r\n  }\r\n}\r\n\r\nfrappe.ui.form.on(\"Payment Entry\", {\r\n  before_load(frm) {\r\n    hide_all_payment_entry_original_fields(frm);\r\n  },\r\n\r\n  refresh(frm) {\r\n    //hide_all_payment_entry_original_fields(frm);\r\n\r\n    setTimeout(() => {\r\n      render_payment_entry_voucher_layout(frm);\r\n    }, 800);\r\n  },\r\n  party_type: function(frm) {\r\n    let mop=frm.doc.mode_of_payment;\r\n    frm.set_value('mode_of_payment', '');\r\n    //frm.refresh_field('mode_of_payment');\r\n    frm.set_value('mode_of_payment', mop);\r\n    //frm.refresh_field('mode_of_payment');\r\n  },\r\n\r\n  party(frm) {\r\n    if ((frm.doc.party_type === \"Receivable\") && frm.doc.party) {\r\n      frappe.db.get_value(\"Receivable\", frm.doc.party, \"account\", (r) => {\r\n        if (r && r.account) {\r\n          if (frm.doc.payment_type === \"Pay\") {\r\n            frm.set_value(\"paid_to\", r.account);\r\n          } else if (frm.doc.payment_type === \"Receive\") {\r\n            frm.set_value(\"paid_from\", r.account);\r\n          }\r\n        }\r\n      });\r\n    }\r\n\r\n    if ((frm.doc.party_type === \"Payable\") && frm.doc.party) {\r\n      frappe.db.get_value(\"Payable\", frm.doc.party, \"account\", (r) => {\r\n        if (r && r.account) {\r\n          if (frm.doc.payment_type === \"Pay\") {\r\n            frm.set_value(\"paid_to\", r.account);\r\n          } else if (frm.doc.payment_type === \"Receive\") {\r\n            frm.set_value(\"paid_from\", r.account);\r\n          }\r\n        }\r\n      });\r\n    }\r\n  },\r\n\r\n  paid_amount(frm) {\r\n    update_received_amount(frm);\r\n  },\r\n\r\n  received_amount(frm) {\r\n    update_paid_amount(frm);\r\n  }\r\n});",
+  "docstatus": 0,
+  "doctype": "DocType Layout",
+  "document_type": "Payment Entry",
+  "fields": [
+   {
+    "fieldname": "type_of_payment",
+    "label": "Type of Payment",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "naming_series",
+    "label": "Series",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "payment_type",
+    "label": "Payment Type",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "payment_order_status",
+    "label": "Payment Order Status",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "column_break_5",
+    "label": null,
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "posting_date",
+    "label": "Posting Date",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "company",
+    "label": "Company",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "mode_of_payment",
+    "label": "Mode of Payment",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "party_section",
+    "label": "Payment From / To",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "party_type",
+    "label": "Party Type",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "party",
+    "label": "Party",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "party_name",
+    "label": "Party Name",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "book_advance_payments_in_separate_party_account",
+    "label": "Book Advance Payments in Separate Party Account",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "reconcile_on_advance_payment_date",
+    "label": "Reconcile on Advance Payment Date",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "column_break_11",
+    "label": null,
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "bank_account",
+    "label": "Company Bank Account",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "party_bank_account",
+    "label": "Party Bank Account",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "contact_person",
+    "label": "Contact",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "contact_email",
+    "label": "Email",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "payment_accounts_section",
+    "label": "Accounts",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "party_balance",
+    "label": "Party Balance",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "paid_from",
+    "label": "Account Paid From",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "paid_from_account_type",
+    "label": "Paid From Account Type",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "paid_from_account_currency",
+    "label": "Account Currency (From)",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "paid_from_account_balance",
+    "label": "Account Balance (From)",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "column_break_18",
+    "label": null,
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "paid_to",
+    "label": "Account Paid To",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "paid_to_account_type",
+    "label": "Paid To Account Type",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "paid_to_account_currency",
+    "label": "Account Currency (To)",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "paid_to_account_balance",
+    "label": "Account Balance (To)",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "payment_amounts_section",
+    "label": "Amount",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "paid_amount",
+    "label": "Paid Amount",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "paid_amount_after_tax",
+    "label": "Paid Amount After Tax",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "source_exchange_rate",
+    "label": "Source Exchange Rate",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "base_paid_amount",
+    "label": "Paid Amount (Company Currency)",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "base_paid_amount_after_tax",
+    "label": "Paid Amount After Tax (Company Currency)",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "column_break_21",
+    "label": null,
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "received_amount",
+    "label": "Received Amount",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "received_amount_after_tax",
+    "label": "Received Amount After Tax",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "target_exchange_rate",
+    "label": "Target Exchange Rate",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "base_received_amount",
+    "label": "Received Amount (Company Currency)",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "base_received_amount_after_tax",
+    "label": "Received Amount After Tax (Company Currency)",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "section_break_14",
+    "label": "Reference",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "get_outstanding_invoices",
+    "label": "Get Outstanding Invoices",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "get_outstanding_orders",
+    "label": "Get Outstanding Orders",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "references",
+    "label": "Payment References",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "section_break_34",
+    "label": "Writeoff",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "total_allocated_amount",
+    "label": "Total Allocated Amount",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "base_total_allocated_amount",
+    "label": "Total Allocated Amount (Company Currency)",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "set_exchange_gain_loss",
+    "label": "Set Exchange Gain / Loss",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "column_break_36",
+    "label": null,
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "unallocated_amount",
+    "label": "Unallocated Amount",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "difference_amount",
+    "label": "Difference Amount (Company Currency)",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "write_off_difference_amount",
+    "label": "Write Off Difference Amount",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "taxes_and_charges_section",
+    "label": "Taxes and Charges",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "purchase_taxes_and_charges_template",
+    "label": "Purchase Taxes and Charges Template",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "sales_taxes_and_charges_template",
+    "label": "Sales Taxes and Charges Template",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "column_break_55",
+    "label": null,
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "apply_tax_withholding_amount",
+    "label": "Apply Tax Withholding Amount",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "tax_withholding_category",
+    "label": "Tax Withholding Category",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "section_break_56",
+    "label": null,
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "taxes",
+    "label": "Advance Taxes and Charges",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "section_break_60",
+    "label": null,
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "base_total_taxes_and_charges",
+    "label": "Total Taxes and Charges (Company Currency)",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "column_break_61",
+    "label": null,
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "total_taxes_and_charges",
+    "label": "Total Taxes and Charges",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "deductions_or_loss_section",
+    "label": "Deductions or Loss",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "deductions",
+    "label": "Payment Deductions or Loss",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "transaction_references",
+    "label": "Transaction ID",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "reference_no",
+    "label": "Cheque/Reference No",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "column_break_23",
+    "label": null,
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "reference_date",
+    "label": "Cheque/Reference Date",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "clearance_date",
+    "label": "Clearance Date",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "accounting_dimensions_section",
+    "label": "Accounting Dimensions",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "project",
+    "label": "Project",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "dimension_col_break",
+    "label": null,
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "task",
+    "label": "Task",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "cost_center",
+    "label": "Cost Center",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "section_break_12",
+    "label": "More Information",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "status",
+    "label": "Status",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "custom_remarks",
+    "label": "Custom Remarks",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "remarks",
+    "label": "Remarks",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "base_in_words",
+    "label": "In Words (Company Currency)",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "column_break_16",
+    "label": null,
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "letter_head",
+    "label": "Letter Head",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "print_heading",
+    "label": "Print Heading",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "bank",
+    "label": "Bank",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "bank_account_no",
+    "label": "Bank Account No",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "payment_order",
+    "label": "Payment Order",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "in_words",
+    "label": "In Words",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "subscription_section",
+    "label": "Subscription Section",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "auto_repeat",
+    "label": "Auto Repeat",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "amended_from",
+    "label": "Amended From",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   },
+   {
+    "fieldname": "title",
+    "label": "Title",
+    "parent": "Payment Voucher",
+    "parentfield": "fields",
+    "parenttype": "DocType Layout"
+   }
+  ],
+  "modified": "2026-06-07 22:15:42.983723",
+  "name": "Payment Voucher",
+  "route": "/payment_voucher"
+ }
+]
