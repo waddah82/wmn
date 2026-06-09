@@ -1,8 +1,172 @@
+// WMNItemSelector_v15_clean.js
+// Clean override: Online = ERPNext original super methods; Offline = cache replacements only.
+// Preserved features: item-group buttons, barcode structure, button/card mode, image fallback, printer/offline buttons.
+
         const OriginalItemSelector = erpnext.PointOfSale.ItemSelector;
         class MyItemSelector extends OriginalItemSelector {
             constructor(wrapper, args) {
                 super(wrapper, args);
             }
+
+            wmn_is_offline() {
+                try {
+                    if (typeof wmn_is_pos_offline === "function") {
+                        return !!wmn_is_pos_offline();
+                    }
+                } catch (e) {}
+
+                return !navigator.onLine;
+            }
+
+            async wmn_get_cached_pos_settings() {
+                try {
+                    if (window.wmnPOSOffline && window.wmnPOSOffline.getFullSettings) {
+                        return await window.wmnPOSOffline.getFullSettings();
+                    }
+                } catch (e) {}
+
+                return (window.cur_pos && window.cur_pos.settings) || {};
+            }
+
+            async wmn_get_cached_pos_profile() {
+                try {
+                    if (window.wmnPOSOffline && window.wmnPOSOffline.getPOSProfile) {
+                        const profile = await window.wmnPOSOffline.getPOSProfile();
+                        if (profile) return profile;
+                    }
+                } catch (e) {}
+
+                return (window.cur_pos && window.cur_pos.settings) || {};
+            }
+
+            async wmn_get_offline_parent_item_group() {
+                const settings = await this.wmn_get_cached_pos_settings();
+                const profile = await this.wmn_get_cached_pos_profile();
+
+                return (
+                    settings.parent_item_group ||
+                    profile.parent_item_group ||
+                    this.parent_item_group ||
+                    ""
+                );
+            }
+
+            async get_parent_item_group() {
+                if (!this.wmn_is_offline()) {
+                    if (super.get_parent_item_group) {
+                        return await super.get_parent_item_group();
+                    }
+                    return undefined;
+                }
+
+                const parent = await this.wmn_get_offline_parent_item_group();
+                if (parent) {
+                    this.parent_item_group = parent;
+                    // Important: do not force this.item_group in offline.
+                    // v16 original sets item_group = parent_item_group, which filters all offline items.
+                }
+                return parent;
+            }
+
+            async load_items_data() {
+                if (!this.wmn_is_offline()) {
+                    return await super.load_items_data();
+                }
+
+                const settings = await this.wmn_get_cached_pos_settings();
+                const parent = await this.wmn_get_offline_parent_item_group();
+
+                if (parent) this.parent_item_group = parent;
+                if (!this.price_list) {
+                    this.price_list =
+                        settings.selling_price_list ||
+                        window.cur_pos?.frm?.doc?.selling_price_list ||
+                        window.cur_pos?.settings?.selling_price_list ||
+                        this.price_list ||
+                        "";
+                }
+
+                return this.get_items({}).then(({ message }) => {
+                    this.render_item_list((message && message.items) || []);
+                });
+            }
+
+            wmn_get_awesomplete_value(value) {
+                if (!value) return "";
+                if (typeof value === "string") return value;
+                if (typeof value.value === "string") return value.value;
+                if (typeof value.label === "string") return value.label;
+                if (value.text) return this.wmn_get_awesomplete_value(value.text);
+                return "";
+            }
+
+            wmn_get_item_group_filter_for_search() {
+                const explicitValue = String(
+                    this.item_group_field?.get_value?.() ||
+                    this.item_group_field?.$input?.val?.() ||
+                    ""
+                ).trim();
+
+                const current = String(this.item_group || "").trim();
+
+                if (!explicitValue && current && current === String(this.parent_item_group || "").trim()) {
+                    return "";
+                }
+
+                return explicitValue || current || "";
+            }
+
+            wmn_set_item_group_filter_label(item_group) {
+                const value = item_group || "";
+                if (super.set_item_selector_filter_label) {
+                    return super.set_item_selector_filter_label(value);
+                }
+
+                this.$component.find(".filter-section .label").html(value ? __(value) : __("All Items"));
+            }
+
+            async wmn_update_existing_cart_item_or_add(item, qty_value) {
+                const pos_ctrl = window.cur_pos;
+                qty_value = flt(qty_value || 1);
+
+                let existing_item = null;
+                if (pos_ctrl?.frm?.doc?.items) {
+                    existing_item = pos_ctrl.frm.doc.items.find(i =>
+                        i.item_code === item.item_code &&
+                        (i.batch_no === item.batch_no || (!i.batch_no && !item.batch_no)) &&
+                        (i.uom === item.uom || (!i.uom && !item.uom))
+                    );
+                }
+
+                if (existing_item) {
+                    const new_qty = flt(existing_item.qty || 0) + qty_value;
+                    await frappe.model.set_value(existing_item.doctype, existing_item.name, "qty", new_qty);
+
+                    if (item.batch_no && existing_item.batch_no !== item.batch_no) {
+                        await frappe.model.set_value(existing_item.doctype, existing_item.name, "batch_no", item.batch_no);
+                    }
+
+                    if (item.serial_no) {
+                        const new_serial_no = existing_item.serial_no
+                            ? existing_item.serial_no + "\n" + item.serial_no
+                            : item.serial_no;
+                        await frappe.model.set_value(existing_item.doctype, existing_item.name, "serial_no", new_serial_no);
+                    }
+
+                    if (pos_ctrl?.update_cart_html) pos_ctrl.update_cart_html(existing_item);
+                    if (pos_ctrl?.cart?.update_item_html) pos_ctrl.cart.update_item_html(existing_item);
+                    return existing_item;
+                }
+
+                this.events.item_selected({
+                    field: "qty",
+                    value: qty_value,
+                    item: item,
+                });
+
+                return null;
+            }
+
             get_item_html(item) {
         item = item || {};
 
@@ -22,12 +186,14 @@
     }
 
             make_search_bar() {
-    super.make_search_bar();
+                super.make_search_bar();
 
-    setTimeout(() => {
-        this.wmn_render_item_group_buttons();
-    }, 100);
-}
+                setTimeout(() => {
+                    // Online remains 100% ERPNext original. No Link/Awesomplete override here.
+                    this.wmn_render_item_group_buttons();
+                }, 100);
+            }
+
 
             async wmn_get_item_group_buttons_from_pos_profile() {
                 try {
@@ -113,57 +279,65 @@
                 }
             }
 
+            async wmn_set_item_group_field_value(item_group) {
+                try {
+                    item_group = item_group || "";
 
-async wmn_set_item_group_field_value(item_group) {
-    try {
-        item_group = item_group || "";
+                    if (!this.wmn_is_offline()) {
+                        // Online: keep ERPNext Link field behavior exactly as original.
+                        if (this.item_group_field && this.item_group_field.set_value) {
+                            await this.item_group_field.set_value(item_group);
+                            return;
+                        }
+                    }
 
-        if (this.item_group_field && this.item_group_field.set_value) {
-            await this.item_group_field.set_value(item_group);
-            return;
-        }
+                    // Offline: never use Link.set_value because it validates through the server.
+                    this.item_group = item_group;
 
-        if (this.item_group_field && this.item_group_field.$input) {
-            this.item_group_field.$input.val(item_group).trigger("input").trigger("change");
-            return;
-        }
+                    if (this.item_group_field && this.item_group_field.set_input) {
+                        this.item_group_field.set_input(item_group);
+                    } else if (this.item_group_field && this.item_group_field.$input) {
+                        this.item_group_field.$input.val(item_group);
+                    }
 
-        // Fallback only if the original field control is not available.
-        this.item_group = item_group || this.parent_item_group;
-        this.filter_items();
-        this.set_item_selector_filter_label(item_group);
-    } catch (e) {
-        console.warn("WMN item group button apply failed", e);
-    }
-}
-
-
-
-
+                    this.wmn_set_item_group_filter_label(item_group);
+                    this.filter_items();
+                } catch (e) {
+                    console.warn("WMN item group button apply failed", e);
+                }
+            }
 
             get_items({ start = 0, page_length = 40, search_term = "" } = {}) {
-                if (wmn_is_pos_offline() && window.wmnPOSOffline) {
-                    const promise = window.wmnPOSOffline
-                        .searchItems({
-                            start,
-                            page_length,
-                            search_term,
-                            price_list: this.price_list,
-                            item_group: this.item_group,
-                        })
-                        .then((items) => ({
-                            message: {
-                                items: items || [],
-                            },
-                        }));
-
-                    return wmn_as_frappe_call_like(promise);
+                if (!this.wmn_is_offline()) {
+                    // Online must return ERPNext original frappe.call/jqXHR object.
+                    return super.get_items({ start, page_length, search_term });
                 }
 
-                // Online must return ERPNext original frappe.call/jqXHR object,
-                // so load_items_data can safely call .then(...).always(...).
-                return super.get_items({ start, page_length, search_term });
+                if (!window.wmnPOSOffline) {
+                    return super.get_items({ start, page_length, search_term });
+                }
+
+                const doc = this.events?.get_frm?.().doc || window.cur_pos?.frm?.doc || {};
+                const price_list = doc.selling_price_list || this.price_list || window.cur_pos?.settings?.selling_price_list || "";
+                const item_group = this.wmn_get_item_group_filter_for_search();
+
+                const promise = window.wmnPOSOffline
+                    .searchItems({
+                        start,
+                        page_length,
+                        search_term,
+                        price_list,
+                        item_group,
+                    })
+                    .then((items) => ({
+                        message: {
+                            items: items || [],
+                        },
+                    }));
+
+                return wmn_as_frappe_call_like(promise);
             }
+
             
                         async wmn_scan_barcode_structure_offline(searchValue) {
                 if (!window.wmnPOSOffline || !searchValue) return null;
@@ -266,33 +440,29 @@ async wmn_set_item_group_field_value(item_group) {
 
                 return null;
             }     
-            
+
             filter_items({ search_term = "" } = {}) {
-
-
-                if (!navigator.onLine && window.wmnPOSOffline) {
-                    return this.wmn_scan_barcode_structure_offline(search_term).then((structured_item) => {
+                if (this.wmn_is_offline() && window.wmnPOSOffline) {
+                    return this.wmn_scan_barcode_structure_offline(search_term).then(async (structured_item) => {
                         if (structured_item && structured_item.item_code && search_term && search_term.length >= 12) {
-                            this.events.item_selected({
-                                field: "qty",
-                                value: structured_item.qty || 1,
-                                item: structured_item,
-                            });
+                            await this.wmn_update_existing_cart_item_or_add(
+                                structured_item,
+                                structured_item.qty || 1
+                            );
 
                             this.set_search_value("");
                             frappe.utils.play_sound("submit");
                             return;
                         }
 
-                        return this.get_items({ search_term }).then(({ message }) => {
+                        return this.get_items({ search_term }).then(async ({ message }) => {
                             const items = (message && message.items) || [];
 
                             if (items.length === 1 && search_term && search_term.length >= 8) {
-                                this.events.item_selected({
-                                    field: "qty",
-                                    value: items[0].qty || 1,
-                                    item: items[0],
-                                });
+                                await this.wmn_update_existing_cart_item_or_add(
+                                    items[0],
+                                    items[0].qty || 1
+                                );
 
                                 this.set_search_value("");
                                 frappe.utils.play_sound("submit");
@@ -303,27 +473,25 @@ async wmn_set_item_group_field_value(item_group) {
                         });
                     });
                 }
+
                 if (search_term && search_term.length >= 12) {
                     const pos_ctrl = window.cur_pos;
-                    
+
                     let pos_profile_name = null;
                     if (pos_ctrl.pos_profile && typeof pos_ctrl.pos_profile === 'string') {
                         pos_profile_name = pos_ctrl.pos_profile;
-                    } else if (pos_ctrl.settings && pos_ctrl.settings) {
-                        pos_profile_name = pos_ctrl.settings;
+                    } else if (pos_ctrl.settings && pos_ctrl.settings.name) {
+                        pos_profile_name = pos_ctrl.settings.name;
                     } else if (pos_ctrl.frm?.doc?.pos_profile) {
                         pos_profile_name = pos_ctrl.frm.doc.pos_profile;
                     }
-                    
-                    
+
                     return frappe.call({
                         method: "wmn.barcode_handler.custom_scan_barcode_pos",
-                        args: { 
+                        args: {
                             search_value: search_term,
-                            //pos_profile: this.pos_profile || this.events.get_frm().doc.pos_profile,
-        price_list: this.price_list || this.events.get_frm().doc.selling_price_list,
-
-                            pos_profile: pos_profile_name
+                            price_list: this.price_list || this.events.get_frm().doc.selling_price_list,
+                            pos_profile: pos_profile_name,
                         }
                     }).then(async (r) => {
                         if (r.message && r.message.item_code) {
@@ -333,8 +501,8 @@ async wmn_set_item_group_field_value(item_group) {
 
                             let existing_item = null;
                             if (pos_ctrl.frm && pos_ctrl.frm.doc.items) {
-                                existing_item = pos_ctrl.frm.doc.items.find(i => 
-                                    i.item_code === data.item_code && 
+                                existing_item = pos_ctrl.frm.doc.items.find(i =>
+                                    i.item_code === data.item_code &&
                                     (i.batch_no === data.batch_no || (!i.batch_no && !data.batch_no))
                                 );
                             }
@@ -342,7 +510,7 @@ async wmn_set_item_group_field_value(item_group) {
                             if (existing_item) {
                                 frappe.dom.freeze();
                                 const new_qty = flt(existing_item.qty) + flt(qty_value);
-                                
+
                                 await frappe.model.set_value(existing_item.doctype, existing_item.name, "qty", new_qty);
                                 if (data.batch_no && existing_item.batch_no !== data.batch_no) {
                                     await frappe.model.set_value(existing_item.doctype, existing_item.name, "batch_no", data.batch_no);
@@ -351,20 +519,19 @@ async wmn_set_item_group_field_value(item_group) {
                                     let new_serial_no = existing_item.serial_no ? existing_item.serial_no + "\n" + data.serial_no : data.serial_no;
                                     await frappe.model.set_value(existing_item.doctype, existing_item.name, "serial_no", new_serial_no);
                                 }
-                                
+
                                 if (pos_ctrl.update_cart_html) {
                                     pos_ctrl.update_cart_html(existing_item);
                                 }
                                 frappe.dom.unfreeze();
                             } else {
                                 let final_rate = data.rate || data.price_list_rate || 0;
-                                
+
                                 if (final_rate === 0 && pos_ctrl.item_selector && pos_ctrl.item_selector.items) {
                                     let ui_item = pos_ctrl.item_selector.items.find(i => i.item_code === data.item_code);
                                     final_rate = ui_item ? (ui_item.price_list_rate || ui_item.rate) : 0;
                                 }
-                                
-                                
+
                                 if (pos_ctrl.add_item) {
                                     await pos_ctrl.add_item({
                                         item_code: data.item_code,
@@ -403,6 +570,7 @@ async wmn_set_item_group_field_value(item_group) {
                 }
                 return super.filter_items({ search_term });
             }
+
             
             
             
