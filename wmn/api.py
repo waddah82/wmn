@@ -431,7 +431,15 @@ def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
         pos_settings = frappe.get_single("POS Settings").as_dict()
     except Exception:
         pos_settings = {}
+    try:
+        stock_settings_doc = frappe.get_single("Stock Settings")
+        stock_settings = stock_settings_doc.as_dict()
+    except Exception:
+        stock_settings = {}
 
+    stock_settings["doctype"] = "Stock Settings"
+    stock_settings["name"] = "Stock Settings"
+    stock_settings["allow_negative_stock"] = cint(stock_settings.get("allow_negative_stock") or 0)
     return {
         "server_time": str(now_datetime()),
         "pos_profile_name": profile.name,
@@ -458,6 +466,9 @@ def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
         "doctype_meta": doctype_meta,
         "barcode_structures": get_barcode_structures(),
         "wmn_print_format": wmn_print_format_doc,
+        "stock_settings": stock_settings,
+        "stock_settings_doc": stock_settings,
+        "allow_negative_stock": cint(stock_settings.get("allow_negative_stock") or 0),
     }
 
 def get_barcode_structures():
