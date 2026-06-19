@@ -578,15 +578,15 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                 this.settings = wmn_safe_settings(this.settings || {});
 
                 const stockSettings = await this.wmn_cache().getStockSettings();
-                this.allow_negative_stock = flt(stockSettings.allow_negative_stock) || false;
+                this.allow_negative_stock = stockSettings.allow_negative_stock || 0;
 
                 const profile = await this.wmn_cache().getPOSProfileData(this.pos_profile);
                 Object.assign(this.settings, profile || {});
                 this.settings.customer_groups = (this.settings.customer_groups || []).map((group) => group.name || group);
                 
-                const { message } = await this.wmn_cache().getStockSettingsValue("allow_negative_stock");
+                //const { message } = await this.wmn_cache().getStockSettingsValue("allow_negative_stock");
 
-                this.allow_negative_stock = cint(message?.allow_negative_stock || 0) === 1;
+                //this.allow_negative_stock = cint(message?.allow_negative_stock || 0) === 1;
                 return this.make_app();
             }
 
@@ -1125,7 +1125,7 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                 const target_warehouse = warehouse || (this.settings ? this.settings.warehouse : null);
                 if (!target_warehouse) return true;
 
-                if (wmn_controller_uses_offline_flow(this) && window.wmnPOSOffline) {
+                if (wmn_is_pos_offline() && window.wmnPOSOffline) {
                     const stock_row = await window.wmnPOSOffline.getStock(item.item_code, target_warehouse);
                     return flt(stock_row ? stock_row.actual_qty : 0) >= flt(qty || 0);
                 }
@@ -1513,9 +1513,9 @@ async wmn_apply_online_batch_after_cart_update(args, item_row) {
                         if (["qty", "conversion_factor"].includes(field) && value > 0 && !this.allow_negative_stock) {
                             const conversion = field === "conversion_factor" ? flt(value || 1) : flt(item_row.conversion_factor || 1);
                             const qty_needed = field === "qty" ? flt(value || 0) * conversion : flt(item_row.qty || 0) * conversion;
-                            const ok = await this.check_stock_availability(item_row, qty_needed, item_row.warehouse || effective_warehouse);
+                            const ok = this.allow_negative_stock ? true : await this.check_stock_availability(item, qty, effective_warehouse);
                             if (!ok) {
-                                frappe.show_alert({ message: __("\u0627\u0644\u0643\u0645\u064A\u0629 \u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631\u0629 \u0641\u064A \u0627\u0644\u0645\u062E\u0632\u0648\u0646 \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646"), indicator: "orange" });
+                                frappe.show_alert({ message: __("\u0627\u0644\u0643\u0645\u064A\u0629  ssss  \u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631\u0629 \u0641\u064A \u0627\u0644\u0645\u062E\u0632\u0648\u0646 \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646"), indicator: "orange" });
                                 return item_row;
                             }
                         }
@@ -1540,7 +1540,7 @@ async wmn_apply_online_batch_after_cart_update(args, item_row) {
 
                         const ok = this.allow_negative_stock ? true : await this.check_stock_availability(item, qty, effective_warehouse);
                         if (!ok) {
-                            frappe.show_alert({ message: __("\u0627\u0644\u0643\u0645\u064A\u0629 \u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631\u0629 \u0641\u064A \u0627\u0644\u0645\u062E\u0632\u0648\u0646 \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646"), indicator: "orange" });
+                            frappe.show_alert({ message: __("\u0627\u0644\u0643\u0645\u064A\u0629 aaaa \u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631\u0629 \u0641\u064A \u0627\u0644\u0645\u062E\u0632\u0648\u0646 \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646"), indicator: "orange" });
                             return null;
                         }
 
