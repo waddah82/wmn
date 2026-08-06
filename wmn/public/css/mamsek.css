@@ -1,3 +1,4 @@
+/* Mamsek POS override for ERPNext 15.109.1 - original ERPNext controls v7 */
 
 :root {
 	--wmn-ink: #22262e;
@@ -311,7 +312,7 @@ body:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {
 .wmn-mamsek-shell .past-order-list,
 .wmn-mamsek-shell .past-order-summary {
 	min-width: 0 !important;
-
+  height: 100% !important;
 	max-height: none !important;
 	margin: 0 !important;
 	border-radius: 0 !important;
