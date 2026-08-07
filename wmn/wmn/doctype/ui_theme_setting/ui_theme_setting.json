@@ -21,6 +21,13 @@
    "fieldtype": "Link",
    "label": "Active Theme",
    "options": "UI Theme"
+  },
+  {
+   "fieldname": "fixed_css",
+   "fieldtype": "Code",
+   "label": "Fixed CSS",
+   "options": "CSS",
+   "description": "Base CSS applied globally. When themes are enabled, the selected theme CSS is appended after this CSS."
   }
  ],
  "index_web_pages_for_search": 0,
