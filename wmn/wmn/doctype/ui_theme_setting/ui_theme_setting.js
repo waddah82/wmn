@@ -5,7 +5,7 @@ frappe.ui.form.on('UI Theme Setting', {
     refresh(frm) {
         frm.toggle_reqd('active_theme', !!frm.doc.enable_themes);
 
-        frm.add_custom_button(__('Apply Theme Now'), async () => {
+        frm.add_custom_button(__('Apply CSS Now'), async () => {
             if (window.ShamsTheme && window.ShamsTheme.refresh) {
                 await window.ShamsTheme.refresh(true);
             } else {
@@ -22,7 +22,7 @@ frappe.ui.form.on('UI Theme Setting', {
     },
 
     after_save() {
-        // Apply the new global setting immediately on the current browser tab.
+        // Rebuild and apply: Fixed CSS + (Active Theme CSS when enabled).
         if (window.ShamsTheme && window.ShamsTheme.refresh) {
             window.ShamsTheme.refresh(true);
         }
