@@ -13,16 +13,11 @@ app_license = "mit"
 # app_include_css = "/assets/wmn/css/wmn.css"
 # app_include_js = "/assets/wmn/js/ui_setting.js"
 app_include_js = [
-    "/assets/wmn/js/ui_setting.js",
     "/assets/wmn/js/pos_barcode_override.js",
     "/assets/wmn/js/workspace_header_unified.js",
     "/assets/wmn/js/silent_print.js",
     "/assets/wmn/js/global_new_override.js",
-    #"assets/wmn/js/html2canvas.js",
-    #"assets/wmn/js/pdfmake.min.js",
-    #"assets/wmn/js/vfs_fonts.js",
-    #"/assets/wmn/js/vfs_fonts_custom.js",
-    #"/assets/wmn/js/workspace_header.js",
+    "/assets/wmn/js/ui_theme_manager.js",
 ]
 #app_include_css = "assets/your_app/css/workspace_header.css"
 #website_route_rules = [
