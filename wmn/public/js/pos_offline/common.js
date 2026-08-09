@@ -365,22 +365,27 @@
 
         function wmn_pos_runtime_state() {
             const in_pos_page = wmn_pos_is_page();
+            const browser_offline = navigator.onLine === false;
             const effective_offline = window.__wmn_pos_effective_offline === true;
+
             return {
                 in_pos_page,
-                browser_offline: false,
+                browser_offline,
                 forced_offline: false,
                 effective_offline,
-                offline_doc: effective_offline,
+                offline_doc: effective_offline || browser_offline,
                 has_offline_db: !!window.wmnPOSOffline,
-                is_offline: !!(in_pos_page && effective_offline)
+                is_offline: !!(in_pos_page && (effective_offline || browser_offline))
             };
         }
 
         window.__wmn_pos_effective_offline = window.__wmn_pos_effective_offline === true;
 
         window.wmn_is_pos_offline = function () {
-            return window.__wmn_pos_effective_offline === true;
+            return (
+                window.__wmn_pos_effective_offline === true ||
+                navigator.onLine === false
+            );
         };
 
         function wmn_is_pos_offline() {
@@ -1141,6 +1146,16 @@ async function wmn_make_offline_invoice_doc(ctrl) {
                             wmn_register_offline_doc_locals(doc);
                             wmn_emit_offline_refresh_fields(frm);
 
+                            const pos = window.cur_pos;
+                            try {
+                                if (pos && pos.cart && pos.cart.update_totals_section) {
+                                    pos.cart.update_totals_section(frm);
+                                }
+                                if (pos && pos.payment && pos.payment.update_totals_section) {
+                                    pos.payment.update_totals_section(doc);
+                                }
+                            } catch (e) {}
+
                             return Promise.resolve({ message: target });
                         }
                     }
@@ -1489,17 +1504,26 @@ function wmn_recalc_offline_payment_doc(doc) {
                 p.base_amount = flt(p.base_amount || p.amount || 0);
             });
 
-            const paidBefore = payments.reduce((s, p) => s + flt(p.amount || 0), 0);
-            const difference = Math.max(0, total - paidBefore);
-            
-            //if (defaultPayment && paidBefore <= 0)
-            if (defaultPayment && difference > 0 && !doc.__wmn_default_payment_autofilled ) {
-                //defaultPayment.amount = total;
-                //defaultPayment.base_amount = total;
-                defaultPayment.amount = flt(defaultPayment.amount || 0) + difference;
-                defaultPayment.base_amount = flt(defaultPayment.base_amount || 0) + difference;
-                doc.__wmn_default_payment_autofilled = 1;
+            /*
+             * Reconcile the default payment against the CURRENT invoice total
+             * every time the offline payment dialog opens.
+             *
+             * Other payment-method amounts are preserved; the default row covers
+             * only the remaining balance.
+             */
+            if (defaultPayment) {
+                const otherPaid = payments.reduce((sum, p) => {
+                    if (p === defaultPayment) return sum;
+                    return sum + flt(p.amount || 0);
+                }, 0);
+
+                const requiredDefaultAmount = Math.max(0, total - otherPaid);
+                defaultPayment.amount = requiredDefaultAmount;
+                defaultPayment.base_amount = requiredDefaultAmount;
             }
+
+            delete doc.__wmn_default_payment_autofilled;
+            wmn_recalc_offline_payment_doc(doc);
 
             const rowsHtml = payments.map((p, idx) => {
                 const mode = frappe.utils.escape_html(p.mode_of_payment || "");
