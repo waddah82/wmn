@@ -78,7 +78,7 @@
 
                 const doRegister = function () {
                     navigator.serviceWorker.register("/pos-offline-sw.js", {
-                        scope: "/app/point-of-sale",
+                         scope: "/app/point-of-sale",
                         updateViaCache: "none"
                     })
                         .then(function (reg) {
@@ -1516,6 +1516,9 @@ wmn_install_pos_pwa_app_css();
                 };
 
                 await bulkPut(STORES.invoice_queue, [row]);
+                if (typeof window.wmn_notify_offline_queue_changed === "function") {
+                    window.wmn_notify_offline_queue_changed();
+                }
                 return row;
             }
 
@@ -1531,6 +1534,9 @@ wmn_install_pos_pwa_app_css();
 
             async function updateQueueRow(row) {
                 await bulkPut(STORES.invoice_queue, [row]);
+                if (typeof window.wmn_notify_offline_queue_changed === "function") {
+                    window.wmn_notify_offline_queue_changed();
+                }
             }
 
             async function syncInvoices() {

@@ -163,9 +163,35 @@
             window.__wmn_pos_offline_doctype_script_guard_installed = true;
         }
 
+        function wmn_emit_pos_connectivity_status(is_online, reason) {
+            window.__wmn_pos_server_online = is_online === true;
+            try {
+                window.dispatchEvent(new CustomEvent("wmn:pos-connectivity-status", {
+                    detail: {
+                        online: is_online === true,
+                        reason: reason || ""
+                    }
+                }));
+            } catch (e) {}
+        }
+
+        function wmn_notify_offline_queue_changed() {
+            try {
+                window.dispatchEvent(new CustomEvent("wmn:pos-offline-queue-changed"));
+            } catch (e) {}
+        }
+
+        window.wmn_notify_offline_queue_changed = wmn_notify_offline_queue_changed;
+
         function wmn_set_pos_effective_offline(reason) {
             window.__wmn_pos_effective_offline = true;
+            wmn_emit_pos_connectivity_status(false, reason || "effective offline");
             console.warn("WMN 15.27 OFFLINE:", reason || "effective offline");
+        }
+
+        function wmn_set_pos_effective_online(reason) {
+            window.__wmn_pos_effective_offline = false;
+            wmn_emit_pos_connectivity_status(true, reason || "health check ok");
         }
 
         function wmn_is_network_failure_text(value) {
@@ -241,7 +267,7 @@
                     return true;
                 }
 
-                window.__wmn_pos_effective_offline = false;
+                wmn_set_pos_effective_online("wmn.api.pos_health_check ok");
                 return false;
             } catch (e) {
                 clearTimeout(timer);
@@ -249,6 +275,8 @@
                 return true;
             }
         }
+
+        window.wmn_check_pos_server_connection = wmn_bootstrap_detect_effective_offline;
 
         function wmn_pos_cart_has_items() {
             const doc = window.cur_pos && window.cur_pos.frm && window.cur_pos.frm.doc ? window.cur_pos.frm.doc : null;
@@ -1822,6 +1850,8 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                     tx.onerror = () => reject(tx.error);
                     tx.onabort = () => reject(tx.error);
                 });
+
+                wmn_notify_offline_queue_changed();
             }
 
             function getInvoiceDoc(row) {
@@ -1860,6 +1890,7 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
             async function updateInvoiceQueueRow(row) {
                 if (!row || !row.offline_id) return row;
                 await window.wmnPOSOffline.bulkPut(window.wmnPOSOffline.STORES.invoice_queue, [row]);
+                wmn_notify_offline_queue_changed();
                 return row;
             }
 

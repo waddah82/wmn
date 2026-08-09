@@ -47,7 +47,7 @@ frappe.pages['point-of-sale'].on_page_load = function(wrapper) {
         var base = "/assets/wmn/js/pos_offline/";
         // Change this value only when replacing split files. It prevents the browser
         // from running an older cached common.js with a newer loader.
-        var v = "mamsek_v9_search_category_row_20260805_1";
+        var v = "20260809_connectivity_status_1";
         function asset(name) {
             return base + name + "?v=" + encodeURIComponent(v);
         }

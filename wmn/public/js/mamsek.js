@@ -8,7 +8,7 @@ frappe.provide("wmn.MamsekPOS");
 	const PAGE_NAME = "point-of-sale";
 	const ACTIVE_BODY_CLASS = "wmn-mamsek-pos-route";
 	const STYLE_ID = "wmn-mamsek-pos-style";
-	const STYLE_URL = "/assets/wmn/css/mamsek.css?v=20260805-v9-search-category-row-1";
+	const STYLE_URL = "/assets/wmn/css/mamsek.css?v=20260809-adaptive-cart-2";
 
 	function escape_html(value) {
 		if (frappe.utils && frappe.utils.escape_html) {
@@ -33,7 +33,11 @@ frappe.provide("wmn.MamsekPOS");
 	}
 
 	function ensure_stylesheet() {
-		if (document.getElementById(STYLE_ID)) return;
+		const existing = document.getElementById(STYLE_ID);
+		if (existing) {
+			if (existing.getAttribute("href") !== STYLE_URL) existing.setAttribute("href", STYLE_URL);
+			return;
+		}
 
 		const link = document.createElement("link");
 		link.id = STYLE_ID;
@@ -158,6 +162,7 @@ frappe.provide("wmn.MamsekPOS");
 				}
 				this.install_category_bar();
 				this.applyDisplayMode();
+				this.install_connectivity_indicator();
 			}
 
 			prepare_dom() {
@@ -189,6 +194,12 @@ frappe.provide("wmn.MamsekPOS");
 										</button>
 									</div>
 								</div>
+								<button type="button" class="wmn-nav-btn wmn-connectivity-btn is-checking" data-action="check-connectivity"
+									title="${escape_html(__("Check server connection"))}" aria-live="polite">
+									<span class="wmn-connectivity-dot" aria-hidden="true"></span>
+									<span class="wmn-connectivity-label">${__("Checking")}</span>
+									<span class="wmn-pending-badge" hidden>0</span>
+								</button>
 							</div>
 						</nav>
 						<div class="wmn-items-content">
@@ -221,6 +232,9 @@ frappe.provide("wmn.MamsekPOS");
 				this.$listBtn = this.$tools_menu.find(".wmn-list-view-btn");
 				this.$offlineBtn = this.$tools_menu.find(".wmn-list-offline-btn");
 				this.$printerBtn = this.$tools_menu.find(".wmn-printer-btn");
+				this.$connectivityBtn = this.$component.find(".wmn-connectivity-btn");
+				this.$connectivityLabel = this.$connectivityBtn.find(".wmn-connectivity-label");
+				this.$pendingBadge = this.$connectivityBtn.find(".wmn-pending-badge");
 				this.updateActiveButton();
 			}
 
@@ -257,6 +271,75 @@ frappe.provide("wmn.MamsekPOS");
 				this.$tools_menu?.toggleClass("is-open", is_open);
 				this.$tools_menu_toggle?.attr("aria-expanded", String(is_open));
 				this.$tools_menu_panel?.prop("hidden", !is_open);
+			}
+
+			set_connectivity_indicator_state(is_online, checking = false) {
+				if (!this.$connectivityBtn?.length) return;
+
+				this.$connectivityBtn
+					.removeClass("is-online is-offline is-checking")
+					.addClass(checking ? "is-checking" : (is_online ? "is-online" : "is-offline"));
+
+				this.$connectivityLabel?.text(
+					checking ? __("Checking") : (is_online ? __("Online") : __("Offline"))
+				);
+
+				this.$connectivityBtn.attr(
+					"title",
+					checking ? __("Checking server connection") : (is_online ? __("Server is online") : __("Server is offline"))
+				);
+			}
+
+			async refresh_pending_invoice_badge() {
+				if (!this.$pendingBadge?.length) return;
+
+				let count = 0;
+				try {
+					if (window.wmnPOSOffline?.getPendingInvoices) {
+						const rows = await window.wmnPOSOffline.getPendingInvoices();
+						count = Array.isArray(rows) ? rows.length : 0;
+					}
+				} catch (e) {
+					console.warn("WMN pending invoice count failed", e);
+				}
+
+				this.$pendingBadge.text(String(count));
+				this.$pendingBadge.prop("hidden", count <= 0);
+				this.$connectivityBtn.attr("data-pending-count", String(count));
+			}
+
+			install_connectivity_indicator() {
+				if (this.__wmn_connectivity_indicator_installed || !this.$connectivityBtn?.length) return;
+				this.__wmn_connectivity_indicator_installed = true;
+
+				this._wmn_connectivity_status_handler = (event) => {
+					const detail = event?.detail || {};
+					this.set_connectivity_indicator_state(detail.online === true, false);
+				};
+				this._wmn_offline_queue_handler = () => this.refresh_pending_invoice_badge();
+
+				window.addEventListener("wmn:pos-connectivity-status", this._wmn_connectivity_status_handler);
+				window.addEventListener("wmn:pos-offline-queue-changed", this._wmn_offline_queue_handler);
+
+				this.$connectivityBtn
+					.off("click.wmnConnectivity")
+					.on("click.wmnConnectivity", async (event) => {
+						event.preventDefault();
+						event.stopPropagation();
+						this.set_connectivity_indicator_state(false, true);
+
+						if (typeof window.wmn_check_pos_server_connection === "function") {
+							await window.wmn_check_pos_server_connection();
+						}
+						await this.refresh_pending_invoice_badge();
+					});
+
+				this.refresh_pending_invoice_badge();
+				this.set_connectivity_indicator_state(false, true);
+
+				if (typeof window.wmn_check_pos_server_connection === "function") {
+					window.wmn_check_pos_server_connection().catch(function () {});
+				}
 			}
 
 
@@ -761,6 +844,268 @@ frappe.provide("wmn.MamsekPOS");
 				});
 			}
 
+			init_item_details() {
+				const result = super.init_item_details();
+
+				// Keep ERPNext's ItemDetails business logic, but stop it from
+				// restructuring the main POS grid. The details panel is displayed
+				// as a modal and the existing ERPNext numpad is shown beside it.
+				if (this.item_details && this.item_details.events) {
+					this.item_details.events.toggle_item_selector = (show_details) => {
+						try {
+							this.item_selector?.resize_selector(false);
+						} catch (e) {}
+
+						if (this.cart && typeof this.cart.toggle_numpad === "function") {
+							this.cart.toggle_numpad(Boolean(show_details));
+						}
+
+						this.wmn_set_item_details_modal_open(Boolean(show_details));
+					};
+				}
+
+				return result;
+			}
+
+			init_item_cart() {
+				const result = super.init_item_cart();
+				this.wmn_setup_adaptive_cart_ui();
+				return result;
+			}
+
+			wmn_setup_adaptive_cart_ui() {
+				if (!this.$mamsek_shell || !this.cart || !this.item_details) return;
+				if (this.__wmn_adaptive_cart_ui_ready) return;
+				this.__wmn_adaptive_cart_ui_ready = true;
+
+				const shell = this.$mamsek_shell;
+				const app = this.$components_wrapper;
+				shell.addClass("wmn-cart-resize-enabled");
+
+				// Item Details modal. The original ERPNext component and numpad are
+				// moved, not cloned, so Online and Offline continue using the same
+				// controls, validation and event handlers.
+				this.$wmn_item_details_layer = $(
+					`<div class="wmn-item-details-layer" aria-hidden="true">
+						<div class="wmn-item-details-backdrop"></div>
+						<div class="wmn-item-details-modal" role="dialog" aria-modal="true" aria-label="${__("Item Details")}">
+							<div class="wmn-item-details-host"></div>
+							<div class="wmn-item-details-numpad-host"></div>
+						</div>
+					</div>`
+				).appendTo(shell);
+
+				this.item_details.$component
+					.detach()
+					.appendTo(this.$wmn_item_details_layer.find(".wmn-item-details-host"));
+
+				if (this.cart.$numpad_section && this.cart.$numpad_section.length) {
+					this.cart.$numpad_section
+						.detach()
+						.addClass("wmn-modal-numpad")
+						.appendTo(this.$wmn_item_details_layer.find(".wmn-item-details-numpad-host"));
+				}
+
+				// ERPNext normally hides cart totals while the numpad is visible.
+				// In modal mode the numpad is no longer inside the cart, so totals
+				// remain visible and only the numpad itself is toggled.
+				if (!this.cart.__wmn_modal_toggle_numpad_installed) {
+					this.cart.__wmn_modal_toggle_numpad_installed = true;
+					this.cart.__wmn_original_toggle_numpad = this.cart.toggle_numpad.bind(this.cart);
+					this.cart.toggle_numpad = (show) => {
+						if (this.cart.$totals_section) {
+							this.cart.$totals_section.css("display", "flex");
+						}
+						if (this.cart.$numpad_section) {
+							this.cart.$numpad_section.css("display", show ? "flex" : "none");
+						}
+						if (typeof this.cart.reset_numpad === "function") {
+							this.cart.reset_numpad();
+						}
+					};
+				}
+
+				// Resizable cart divider for desktop/tablet layouts where cart is a
+				// fixed side column.
+				this.$wmn_cart_resizer = $('<div class="wmn-cart-resizer" role="separator" aria-orientation="vertical" tabindex="0"></div>')
+					.appendTo(app);
+
+				this.wmn_restore_cart_width();
+				this.wmn_bind_cart_resizer();
+
+				// Mobile drawer controls.
+				this.$wmn_cart_backdrop = $('<button type="button" class="wmn-cart-drawer-backdrop" aria-label="' + __("Close Cart") + '"></button>')
+					.appendTo(shell);
+
+				this.$wmn_cart_fab = $(
+					`<button type="button" class="wmn-cart-fab" aria-label="${__("Open Cart")}" aria-expanded="false">
+						<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.2 10.1a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 1.9-1.4L21 7H7.1M10 20a1 1 0 1 1-2 0 1 1 0 0 1 2 0Zm8 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+						<span class="wmn-cart-fab-badge">0</span>
+					</button>`
+				).appendTo(shell);
+
+				this.$wmn_cart_drawer_close = $(
+					`<button type="button" class="wmn-cart-drawer-close" aria-label="${__("Close Cart")}">×</button>`
+				).appendTo(this.cart.$component.find(".wmn-customer-title-row"));
+
+				this.$wmn_cart_fab.on("click.wmnAdaptiveCart", () => this.wmn_open_cart_drawer());
+				this.$wmn_cart_backdrop.on("click.wmnAdaptiveCart", () => this.wmn_close_cart_drawer());
+				this.$wmn_cart_drawer_close.on("click.wmnAdaptiveCart", () => this.wmn_close_cart_drawer());
+
+				this.wmn_install_cart_state_observers();
+				this.wmn_sync_cart_context();
+			}
+
+			wmn_set_item_details_modal_open(show) {
+				if (!this.$wmn_item_details_layer) return;
+				this.$wmn_item_details_layer
+					.toggleClass("is-open", Boolean(show))
+					.attr("aria-hidden", show ? "false" : "true");
+				this.$mamsek_shell?.toggleClass("wmn-item-details-open", Boolean(show));
+			}
+
+			wmn_open_cart_drawer() {
+				if (!this.$mamsek_shell?.hasClass("wmn-cart-context-active")) return;
+				this.$mamsek_shell.addClass("wmn-cart-drawer-open");
+				this.$wmn_cart_fab?.attr("aria-expanded", "true");
+			}
+
+			wmn_close_cart_drawer() {
+				this.$mamsek_shell?.removeClass("wmn-cart-drawer-open");
+				this.$wmn_cart_fab?.attr("aria-expanded", "false");
+			}
+
+			wmn_update_cart_fab() {
+				if (!this.$wmn_cart_fab) return;
+				const rows = this.frm?.doc?.items || [];
+				const qty = rows.reduce((total, row) => total + Math.max(0, flt(row?.qty || 0)), 0);
+				const badge = this.$wmn_cart_fab.find(".wmn-cart-fab-badge");
+				badge.text(qty);
+				badge.toggleClass("is-empty", qty <= 0);
+			}
+
+			wmn_sync_cart_context() {
+				if (!this.$mamsek_shell || !this.item_selector?.$component || !this.cart?.$component) return;
+				const items_visible = this.item_selector.$component.css("display") !== "none";
+				const cart_visible = this.cart.$component.css("display") !== "none";
+				const details_visible = this.item_details?.$component?.css("display") !== "none";
+				const active = items_visible && cart_visible;
+
+				this.$mamsek_shell.toggleClass("wmn-cart-context-active", active);
+				if (!active) this.wmn_close_cart_drawer();
+
+				// Some ERPNext flows hide ItemDetails directly (for example Recent
+				// Orders/Payment). Mirror that direct state into the modal layer.
+				this.wmn_set_item_details_modal_open(Boolean(details_visible));
+				if (!details_visible && this.cart.$numpad_section) {
+					this.cart.$numpad_section.css("display", "none");
+				}
+
+				this.wmn_update_cart_fab();
+			}
+
+			wmn_install_cart_state_observers() {
+				if (typeof MutationObserver !== "function") return;
+
+				const schedule_sync = () => {
+					window.clearTimeout(this.__wmn_cart_ui_sync_timer);
+					this.__wmn_cart_ui_sync_timer = window.setTimeout(() => this.wmn_sync_cart_context(), 0);
+				};
+
+				this.__wmn_cart_state_observer = new MutationObserver(schedule_sync);
+				[
+					this.item_selector.$component?.[0],
+					this.cart.$component?.[0],
+					this.item_details.$component?.[0],
+				].filter(Boolean).forEach((node) => {
+					this.__wmn_cart_state_observer.observe(node, { attributes: true, attributeFilter: ["style", "class"] });
+				});
+
+				if (this.cart.$cart_items_wrapper?.[0]) {
+					this.__wmn_cart_items_observer = new MutationObserver(schedule_sync);
+					this.__wmn_cart_items_observer.observe(this.cart.$cart_items_wrapper[0], {
+						childList: true,
+						subtree: true,
+						characterData: true,
+					});
+				}
+
+				window.addEventListener("resize", () => {
+					if (window.innerWidth > 720) this.wmn_close_cart_drawer();
+					this.wmn_sync_cart_context();
+				}, { passive: true });
+			}
+
+			wmn_restore_cart_width() {
+				let saved = 0;
+				try {
+					saved = parseFloat(window.localStorage.getItem("wmn_pos_cart_width") || "0");
+				} catch (e) {}
+				if (Number.isFinite(saved) && saved >= 300 && saved <= 620) {
+					this.$mamsek_shell?.[0]?.style.setProperty("--wmn-cart-width", `${saved}px`);
+				}
+			}
+
+			wmn_bind_cart_resizer() {
+				const handle = this.$wmn_cart_resizer?.[0];
+				const cart_el = this.cart?.$component?.[0];
+				const app_el = this.$components_wrapper?.[0];
+				if (!handle || !cart_el || !app_el) return;
+
+				let start_x = 0;
+				let start_width = 0;
+				let cart_on_right = true;
+
+				const clamp_width = (value) => {
+					const app_width = app_el.getBoundingClientRect().width || window.innerWidth;
+					const max_width = Math.max(300, Math.min(620, app_width - 420));
+					return Math.min(max_width, Math.max(300, value));
+				};
+
+				const apply_width = (value, save) => {
+					const width = clamp_width(value);
+					this.$mamsek_shell?.[0]?.style.setProperty("--wmn-cart-width", `${width}px`);
+					if (save) {
+						try { window.localStorage.setItem("wmn_pos_cart_width", String(Math.round(width))); } catch (e) {}
+					}
+					return width;
+				};
+
+				const on_move = (event) => {
+					if (!start_width) return;
+					const delta = cart_on_right ? (start_x - event.clientX) : (event.clientX - start_x);
+					apply_width(start_width + delta, false);
+				};
+
+				const on_up = () => {
+					if (!start_width) return;
+					start_width = 0;
+					document.body.classList.remove("wmn-cart-is-resizing");
+					const width = cart_el.getBoundingClientRect().width;
+					apply_width(width, true);
+					window.removeEventListener("pointermove", on_move);
+					window.removeEventListener("pointerup", on_up);
+				};
+
+				handle.addEventListener("pointerdown", (event) => {
+					if (window.innerWidth <= 720) return;
+					event.preventDefault();
+					const app_rect = app_el.getBoundingClientRect();
+					const cart_rect = cart_el.getBoundingClientRect();
+					cart_on_right = cart_rect.left >= app_rect.left + (app_rect.width / 2);
+					start_x = event.clientX;
+					start_width = cart_rect.width;
+					document.body.classList.add("wmn-cart-is-resizing");
+					window.addEventListener("pointermove", on_move);
+					window.addEventListener("pointerup", on_up, { once: true });
+				});
+
+				handle.addEventListener("dblclick", () => {
+					try { window.localStorage.removeItem("wmn_pos_cart_width"); } catch (e) {}
+					this.$mamsek_shell?.[0]?.style.removeProperty("--wmn-cart-width");
+				});
+			}
+
 			async on_cart_update(args) {
 				const item_row = await super.on_cart_update(args);
 				this.item_selector?.sync_card_quantities();
@@ -869,6 +1214,16 @@ frappe.provide("wmn.MamsekPOS");
 			update_cart_html(item_row, remove_item) {
 				super.update_cart_html(item_row, remove_item);
 				this.item_selector?.sync_card_quantities();
+			}
+
+			async save_and_checkout() {
+				// A keyboard/cart checkout can be triggered while Item Details is open.
+				// Close the modal through ERPNext's own toggle first so validation,
+				// highlight cleanup and Online/Offline behavior stay consistent.
+				if (this.item_details?.$component?.is(":visible")) {
+					await this.item_details.toggle_item_details_section(null);
+				}
+				return super.save_and_checkout();
 			}
 
 			async make_new_invoice() {
