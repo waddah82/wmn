@@ -780,9 +780,26 @@ frappe.provide("wmn.MamsekPOS");
 				const next_qty = Math.max(0, flt(item_row.qty) - 1);
 				frappe.dom.freeze();
 				try {
+					// Keep the existing working decrement exactly as-is.
 					await frappe.model.set_value(item_row.doctype, item_row.name, "qty", next_qty);
-					if (next_qty === 0) frappe.model.clear_doc(item_row.doctype, item_row.name);
-					this.update_cart_html(item_row, next_qty === 0);
+
+					if (next_qty === 0) {
+						// Keep ERPNext's normal remove sequence.
+						frappe.model.clear_doc(item_row.doctype, item_row.name);
+						this.update_cart_html(item_row, true);
+
+						// Offline lightweight frm also needs its child row removed from frm.doc.items.
+						if (
+							typeof wmn_is_pos_offline === "function" &&
+							wmn_is_pos_offline() &&
+							typeof this.wmn_remove_offline_item_detail_row === "function"
+						) {
+							this.wmn_remove_offline_item_detail_row(item_row);
+						}
+					} else {
+						this.update_cart_html(item_row, false);
+					}
+
 					this.item_selector.sync_card_quantities();
 				} finally {
 					frappe.dom.unfreeze();
