@@ -78,7 +78,7 @@
 
                 const doRegister = function () {
                     navigator.serviceWorker.register("/pos-offline-sw.js", {
-                        scope: "/",
+                        scope: "/app/point-of-sale",
                         updateViaCache: "none"
                     })
                         .then(function (reg) {
