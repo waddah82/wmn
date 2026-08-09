@@ -24,6 +24,9 @@ body.wmn-mamsek-pos-route .page-head,
 body.wmn-mamsek-pos-route .desk-sidebar {
 	display: none !important;
 }
+body.wmn-mamsek-pos-route .wmn-global-workspace-header {
+    display: none !important;
+}
 
 /* Keep the real ERPNext navbar and only apply the Mamsek visual language. */
 body.wmn-mamsek-pos-route header.navbar {
@@ -1577,7 +1580,7 @@ body:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {
  * Desktop only. Touch landscape is overridden later even when it is wider
  * than 860px.
  * -------------------------------------------------------------------------- */
-@media (min-width: 861px) {
+@media (min-width: 720px) {
 	body.wmn-mamsek-pos-route {
 		height: 100vh !important;
 		height: 100dvh !important;
@@ -1660,7 +1663,7 @@ body:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {
 	}
 }
 
-@media (min-width: 861px) and (max-width: 1100px) {
+@media (min-width: 720px) and (max-width: 1100px) {
 	.wmn-mamsek-shell > .point-of-sale-app {
 		grid-template-columns: minmax(0, 1fr) 330px !important;
 	}
@@ -1669,13 +1672,7 @@ body:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {
 		grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
 	}
 
-	.wmn-pos-nav {
-		padding-inline: 10px !important;
-	}
 
-	.wmn-pos-nav-links {
-		gap: 3px !important;
-	}
 
 	.wmn-pos-nav-links > .wmn-nav-btn,
 	.wmn-pos-nav-links > .wmn-tools-menu .wmn-nav-btn {
@@ -1699,9 +1696,9 @@ body:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {
  * Shared phone/tablet mode. The second query catches mobile landscape whose
  * viewport width exceeds the old 860px breakpoint.
  * -------------------------------------------------------------------------- */
-@media (max-width: 860px),
-	(orientation: landscape) and (hover: none) and (pointer: coarse) and (max-height: 650px),
-	(orientation: landscape) and (any-hover: none) and (any-pointer: coarse) and (max-height: 650px) {
+@media (max-width: 720px),
+	(orientation: landscape) and (hover: none) and (pointer: coarse) and (max-height: 60px),
+	(orientation: landscape) and (any-hover: none) and (any-pointer: coarse) and (max-height: 60px) {
 	body.wmn-mamsek-pos-route {
 		height: auto !important;
 		min-height: 100vh !important;
@@ -1770,20 +1767,13 @@ body:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {
 	}
 
 	.wmn-pos-nav {
-		display: flex !important;
-		flex: 0 0 54px !important;
-		height: 54px !important;
-		min-height: 54px !important;
-		padding: 6px 10px !important;
+		
+		flex: 0 0 1px !important;
+		
+		min-height: 2px !important;
+		
 	}
 
-	.wmn-pos-nav-links {
-		justify-content: center !important;
-		gap: 5px !important;
-		overflow-x: auto !important;
-		overflow-y: hidden !important;
-		scrollbar-width: none;
-	}
 
 	.wmn-pos-nav-links::-webkit-scrollbar {
 		display: none;
@@ -1961,7 +1951,7 @@ body:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {
 }
 
 /* Mobile/tablet landscape: never fall back to the desktop two-pane layout. */
-@media (orientation: landscape) and (max-height: 650px) and (max-width: 1100px) {
+@media (orientation: landscape) and (max-height: 60px) and (max-width: 1100px) {
 	.wmn-mamsek-shell {
 		margin-top: var(--wmn-pos-mobile-header-height) !important;
 	}
@@ -2065,7 +2055,7 @@ body:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {
 	}
 }
 
-@media (orientation: landscape) and (min-width: 900px) and (max-height: 650px) and (max-width: 1100px) {
+@media (orientation: landscape) and (min-width: 900px) and (max-height: 60px) and (max-width: 1100px) {
 	.wmn-mamsek-shell .items-container {
 		grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
 	}
@@ -2088,7 +2078,7 @@ body:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {
 }
 
 /* ========================================================================== 
- * v16 â€” Proportional item cards
+ * v16 — Proportional item cards
  * One sizing rule for every viewport. The grid decides the number of cards
  * from the available width; portrait/landscape breakpoints no longer set a
  * fixed card count or fixed card height.
@@ -2176,10 +2166,10 @@ body:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {
 }
 
 /* ========================================================================== 
- * v19 â€” Mobile landscape: items and cart side by side
+ * v19 — Mobile landscape: items and cart side by side
  * Layout only. Preserve the existing page and section overflow behavior.
  * ========================================================================== */
-@media (orientation: landscape) and (min-width: 600px) and (max-width: 1100px) and (max-height: 650px) {
+@media (orientation: landscape) and (min-width: 600px) and (max-width: 1100px) and (max-height: 60px) {
 	.wmn-mamsek-shell > .point-of-sale-app {
 		display: grid !important;
 		grid-template-columns: minmax(0, 1fr) clamp(280px, 36vw, 380px) !important;
@@ -2214,6 +2204,492 @@ body:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {
 	.wmn-mamsek-shell .items-container {
 		overflow-x: hidden !important;
 		overflow-y: auto !important;
+	}
+}
+
+body.wmn-mamsek-pos-route:has(.wmn-mamsek-shell.wmn-button-view-active) header.navbar {
+	display: none !important;
+	height: 0 !important;
+	min-height: 0 !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	border: 0 !important;
+}
+
+body.wmn-mamsek-pos-route:has(.wmn-mamsek-shell.wmn-button-view-active)
+	.wmn-mamsek-shell.wmn-button-view-active {
+	top: 0 !important;
+	inset-block-start: 0 !important;
+	margin-top: 0 !important;
+}
+
+body.wmn-mamsek-pos-route:has(.wmn-mamsek-shell.wmn-button-view-active)
+	.wmn-mamsek-shell.wmn-button-view-active,
+body.wmn-mamsek-pos-route:has(.wmn-mamsek-shell.wmn-button-view-active)
+	.wmn-mamsek-shell.wmn-button-view-active .items-selector {
+	min-height: 100vh !important;
+	min-height: 100dvh !important;
+}
+
+/* 2) Hide category browser and reclaim its full height */
+.wmn-mamsek-shell.wmn-button-view-active .wmn-category-browser {
+	display: none !important;
+	width: 0 !important;
+	height: 0 !important;
+	min-height: 0 !important;
+	flex: 0 0 0 !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	gap: 0 !important;
+	overflow: hidden !important;
+}
+
+/* Keep only search row */
+.wmn-mamsek-shell.wmn-button-view-active .wmn-category-section {
+	flex: 0 0 44px !important;
+	height: 44px !important;
+	min-height: 44px !important;
+	max-height: 44px !important;
+	gap: 0 !important;
+	margin: 0 !important;
+	padding: 0 !important;
+}
+
+.wmn-mamsek-shell.wmn-button-view-active .wmn-category-search-row,
+.wmn-mamsek-shell.wmn-button-view-active .wmn-menu-search {
+	height: 44px !important;
+	min-height: 44px !important;
+	max-height: 44px !important;
+	margin: 0 !important;
+}
+
+.wmn-mamsek-shell.wmn-button-view-active .wmn-items-content {
+	gap: 5px !important;
+	padding: 6px 8px 8px !important;
+}
+
+/* 3) Smaller button-mode items */
+.wmn-mamsek-shell.wmn-button-view-active .items-container.wmn-button-mode {
+	grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)) !important;
+	grid-auto-rows: 54px !important;
+	align-content: start !important;
+	gap: 5px !important;
+	padding: 0 2px 10px 0 !important;
+	overflow-x: hidden !important;
+	overflow-y: auto !important;
+}
+
+.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card {
+	height: 54px !important;
+	min-height: 54px !important;
+	max-height: 54px !important;
+	border-radius: 7px !important;
+}
+
+.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card .item-wrapper {
+	position: relative !important;
+	display: flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	height: 100% !important;
+	padding: 6px 9px !important;
+	text-align: center !important;
+}
+
+.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card .item-detail {
+	display: flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	width: 100% !important;
+	height: 100% !important;
+	min-height: 0 !important;
+	padding: 0 !important;
+}
+
+.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card .item-name {
+	display: -webkit-box !important;
+	width: 100% !important;
+	max-width: 100% !important;
+	min-height: 0 !important;
+	padding-inline: 2px !important;
+	overflow: hidden !important;
+	font-size: 12px !important;
+	font-weight: 650 !important;
+	line-height: 15px !important;
+	text-align: center !important;
+	white-space: normal !important;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+}
+
+.wmn-mamsek-shell.wmn-button-view-active .wmn-card-media,
+.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card .item-rate {
+	display: none !important;
+}
+
+/* 4) Live cart quantity badge using existing .wmn-item-count */
+.wmn-mamsek-shell.wmn-button-view-active .wmn-item-stepper {
+	display: none !important;
+}
+
+.wmn-mamsek-shell.wmn-button-view-active
+	.wmn-item-card.has-quantity .wmn-item-stepper {
+	position: absolute !important;
+	top: 4px !important;
+	right: 4px !important;
+	bottom: auto !important;
+	left: auto !important;
+	z-index: 8 !important;
+	display: block !important;
+	width: 22px !important;
+	height: 22px !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	border: 0 !important;
+	border-radius: 50% !important;
+	background: transparent !important;
+	box-shadow: none !important;
+	pointer-events: none !important;
+}
+
+.wmn-mamsek-shell.wmn-button-view-active
+	.wmn-item-card.has-quantity .wmn-item-stepper .wmn-qty-button {
+	display: none !important;
+}
+
+.wmn-mamsek-shell.wmn-button-view-active
+	.wmn-item-card.has-quantity .wmn-item-count {
+	display: grid !important;
+	place-items: center !important;
+	width: 22px !important;
+	min-width: 22px !important;
+	max-width: 22px !important;
+	height: 22px !important;
+	min-height: 22px !important;
+	max-height: 22px !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	border: 2px solid #fff !important;
+	border-radius: 50% !important;
+	outline: 0 !important;
+	background: var(--wmn-teal) !important;
+	color: #fff !important;
+	box-shadow: 0 2px 6px rgba(34, 38, 46, 0.20) !important;
+	font-family: inherit !important;
+	font-size: 10px !important;
+	font-weight: 800 !important;
+	line-height: 18px !important;
+	text-align: center !important;
+	-moz-appearance: textfield !important;
+	pointer-events: none !important;
+}
+
+.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card.has-quantity {
+	border-color: #82d5d5 !important;
+	background: var(--wmn-teal-soft) !important;
+	box-shadow: inset 0 0 0 1px rgba(13, 140, 140, 0.08) !important;
+}
+
+/* RTL badge corner */
+body[dir="rtl"] .wmn-mamsek-shell.wmn-button-view-active
+	.wmn-item-card.has-quantity .wmn-item-stepper,
+body.rtl-mode .wmn-mamsek-shell.wmn-button-view-active
+	.wmn-item-card.has-quantity .wmn-item-stepper {
+	right: auto !important;
+	left: 4px !important;
+}
+
+/* Touch/mobile button mode */
+@media (max-width: 720px),
+	(orientation: landscape) and (hover: none) and (pointer: coarse) {
+
+	.wmn-mamsek-shell.wmn-button-view-active .wmn-category-section,
+	.wmn-mamsek-shell.wmn-button-view-active .wmn-category-search-row,
+	.wmn-mamsek-shell.wmn-button-view-active .wmn-menu-search {
+		flex-basis: 40px !important;
+		height: 40px !important;
+		min-height: 40px !important;
+		max-height: 40px !important;
+	}
+
+	.wmn-mamsek-shell.wmn-button-view-active .items-container.wmn-button-mode {
+		grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)) !important;
+		grid-auto-rows: 50px !important;
+		gap: 4px !important;
+	}
+
+	.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card {
+		height: 50px !important;
+		min-height: 50px !important;
+		max-height: 50px !important;
+	}
+
+	.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card .item-name {
+		font-size: 11px !important;
+		line-height: 14px !important;
+	}
+}
+
+
+
+.wmn-mamsek-shell.wmn-button-view-active .wmn-item-stepper {
+	position: absolute !important;
+	inset: 0 !important;
+	z-index: 9 !important;
+
+	display: block !important;
+
+	width: 100% !important;
+	height: 100% !important;
+
+	margin: 0 !important;
+	padding: 0 !important;
+
+	border: 0 !important;
+	border-radius: inherit !important;
+	background: transparent !important;
+	box-shadow: none !important;
+
+	/* Let normal clicks pass through to the item card. */
+	pointer-events: none !important;
+}
+
+
+/* ----------------------------------------------------------
+ * Hide PLUS completely.
+ * Clicking the item itself is the increase action.
+ * ---------------------------------------------------------- */
+.wmn-mamsek-shell.wmn-button-view-active
+	.wmn-item-stepper .wmn-qty-button.is-plus {
+
+	display: none !important;
+}
+
+
+/* ----------------------------------------------------------
+ * Hide MINUS when quantity is zero.
+ * ---------------------------------------------------------- */
+.wmn-mamsek-shell.wmn-button-view-active
+	.wmn-item-stepper .wmn-qty-button:not(.is-plus) {
+
+	display: none !important;
+}
+
+
+/* ----------------------------------------------------------
+ * Show MINUS only when item exists in cart.
+ * ---------------------------------------------------------- */
+.wmn-mamsek-shell.wmn-button-view-active
+	.wmn-item-card.has-quantity
+	.wmn-item-stepper .wmn-qty-button:not(.is-plus) {
+
+	position: absolute !important;
+
+	top: 50% !important;
+	left: 5px !important;
+	right: auto !important;
+
+	transform: translateY(-50%) !important;
+
+	z-index: 11 !important;
+
+	display: grid !important;
+	place-items: center !important;
+
+	width: 28px !important;
+	height: 28px !important;
+	min-width: 28px !important;
+	min-height: 28px !important;
+
+	margin: 0 !important;
+	padding: 0 !important;
+
+	border: 1px solid #d5dde1 !important;
+	border-radius: 50% !important;
+
+	background: rgba(255,255,255,.96) !important;
+	color: var(--wmn-danger) !important;
+
+	box-shadow: 0 2px 7px rgba(34,38,46,.12) !important;
+
+	cursor: pointer !important;
+
+	/* Only minus intercepts the click. */
+	pointer-events: auto !important;
+}
+
+
+/* Minus hover */
+.wmn-mamsek-shell.wmn-button-view-active
+	.wmn-item-card.has-quantity
+	.wmn-item-stepper .wmn-qty-button:not(.is-plus):hover {
+
+	border-color: #efbcbc !important;
+	background: #fff3f3 !important;
+	color: #c63838 !important;
+
+	transform: translateY(-50%) scale(1.06) !important;
+}
+
+
+/* ----------------------------------------------------------
+ * Quantity badge remains in top corner.
+ * ---------------------------------------------------------- */
+.wmn-mamsek-shell.wmn-button-view-active
+	.wmn-item-stepper .wmn-item-count {
+
+	position: absolute !important;
+
+	top: 3px !important;
+	right: 3px !important;
+	left: auto !important;
+
+	z-index: 12 !important;
+
+	display: none !important;
+
+	width: 20px !important;
+	min-width: 20px !important;
+	max-width: 20px !important;
+
+	height: 20px !important;
+	min-height: 20px !important;
+	max-height: 20px !important;
+
+	margin: 0 !important;
+	padding: 0 !important;
+
+	border: 2px solid #fff !important;
+	border-radius: 50% !important;
+
+	background: var(--wmn-teal) !important;
+	color: #fff !important;
+
+	box-shadow: 0 2px 6px rgba(34,38,46,.20) !important;
+
+	font-size: 10px !important;
+	font-weight: 800 !important;
+	line-height: 16px !important;
+	text-align: center !important;
+
+	pointer-events: none !important;
+}
+
+.wmn-mamsek-shell.wmn-button-view-active
+	.wmn-item-card.has-quantity
+	.wmn-item-count {
+
+	display: grid !important;
+	place-items: center !important;
+}
+
+
+/* ----------------------------------------------------------
+ * Item text:
+ * no need to reserve right-side space for the removed + button.
+ * Reserve only a little room near minus.
+ * ---------------------------------------------------------- */
+.wmn-mamsek-shell.wmn-button-view-active
+	.wmn-item-card .item-detail {
+
+	padding-inline: 8px !important;
+}
+
+.wmn-mamsek-shell.wmn-button-view-active
+	.wmn-item-card.has-quantity .item-detail {
+
+	padding-left: 36px !important;
+	padding-right: 8px !important;
+}
+
+
+/* ----------------------------------------------------------
+ * RTL:
+ * Minus moves to right side.
+ * Quantity badge moves to left corner.
+ * ---------------------------------------------------------- */
+body[dir="rtl"]
+	.wmn-mamsek-shell.wmn-button-view-active
+	.wmn-item-card.has-quantity
+	.wmn-item-stepper .wmn-qty-button:not(.is-plus),
+body.rtl-mode
+	.wmn-mamsek-shell.wmn-button-view-active
+	.wmn-item-card.has-quantity
+	.wmn-item-stepper .wmn-qty-button:not(.is-plus) {
+
+	left: auto !important;
+	right: 5px !important;
+}
+
+body[dir="rtl"]
+	.wmn-mamsek-shell.wmn-button-view-active
+	.wmn-item-stepper .wmn-item-count,
+body.rtl-mode
+	.wmn-mamsek-shell.wmn-button-view-active
+	.wmn-item-stepper .wmn-item-count {
+
+	right: auto !important;
+	left: 3px !important;
+}
+
+body[dir="rtl"]
+	.wmn-mamsek-shell.wmn-button-view-active
+	.wmn-item-card.has-quantity .item-detail,
+body.rtl-mode
+	.wmn-mamsek-shell.wmn-button-view-active
+	.wmn-item-card.has-quantity .item-detail {
+
+	padding-right: 36px !important;
+	padding-left: 8px !important;
+}
+
+
+/* ----------------------------------------------------------
+ * Touch/mobile: slightly smaller minus.
+ * ---------------------------------------------------------- */
+@media (max-width: 720px),
+	(orientation: landscape) and (hover: none) and (pointer: coarse) {
+
+	.wmn-mamsek-shell.wmn-button-view-active
+		.wmn-item-card.has-quantity
+		.wmn-item-stepper .wmn-qty-button:not(.is-plus) {
+
+		width: 25px !important;
+		height: 25px !important;
+		min-width: 25px !important;
+		min-height: 25px !important;
+
+		left: 4px !important;
+	}
+
+	.wmn-mamsek-shell.wmn-button-view-active
+		.wmn-item-card.has-quantity .item-detail {
+
+		padding-left: 32px !important;
+	}
+
+	body[dir="rtl"]
+		.wmn-mamsek-shell.wmn-button-view-active
+		.wmn-item-card.has-quantity
+		.wmn-item-stepper .wmn-qty-button:not(.is-plus),
+	body.rtl-mode
+		.wmn-mamsek-shell.wmn-button-view-active
+		.wmn-item-card.has-quantity
+		.wmn-item-stepper .wmn-qty-button:not(.is-plus) {
+
+		left: auto !important;
+		right: 4px !important;
+	}
+
+	body[dir="rtl"]
+		.wmn-mamsek-shell.wmn-button-view-active
+		.wmn-item-card.has-quantity .item-detail,
+	body.rtl-mode
+		.wmn-mamsek-shell.wmn-button-view-active
+		.wmn-item-card.has-quantity .item-detail {
+
+		padding-right: 32px !important;
+		padding-left: 8px !important;
 	}
 }
 
