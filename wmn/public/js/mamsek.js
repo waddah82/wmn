@@ -8,7 +8,7 @@ frappe.provide("wmn.MamsekPOS");
 	const PAGE_NAME = "point-of-sale";
 	const ACTIVE_BODY_CLASS = "wmn-mamsek-pos-route";
 	const STYLE_ID = "wmn-mamsek-pos-style";
-	const STYLE_URL = "/assets/wmn/css/mamsek.css?v=20260809-adaptive-cart-2";
+	const STYLE_URL = "/assets/wmn/css/mamsek.css?v=20260811-variant-uom-6";
 
 	function escape_html(value) {
 		if (frappe.utils && frappe.utils.escape_html) {
@@ -449,6 +449,61 @@ frappe.provide("wmn.MamsekPOS");
 			}
 
 			get_item_html(item) {
+				if (cint(item?.__wmn_variant_template || 0)) {
+					const item_image = item.item_image || item.image || "";
+					const safe_name = escape_html(item.item_name || item.item_code || "");
+					const safe_abbr = escape_html(frappe.get_abbr(item.item_name || item.item_code || ""));
+					const media = !this.hide_images && item_image
+						? `<img onerror="cur_pos.item_selector.handle_broken_image(this)" class="item-img" src="${escape_html(item_image)}" alt="${safe_abbr}">`
+						: `<div class="item-display abbr">${safe_abbr}</div>`;
+
+					return `<article class="wmn-item-card wmn-variant-template-card"
+						data-item-code="${escape(item.item_code)}" data-wmn-variant-template="1">
+						<div class="item-wrapper"
+							data-item-code="${escape(item.item_code)}" data-uom="${escape(item.uom || item.stock_uom || "")}"
+							data-rate="0" data-stock-uom="${escape(item.stock_uom || item.uom || "")}"
+							title="${safe_name}">
+							<div class="wmn-card-media">
+								${media}
+								<span class="wmn-variant-pill">${cint(item.__wmn_variant_count || 0) > 0 ? `${cint(item.__wmn_variant_count)} ${__("Variants")}` : __("Variants")}</span>
+							</div>
+							<div class="item-detail">
+								<div class="item-name">${safe_name}</div>
+								<div class="item-rate wmn-variant-select-label">${__("Choose Variant")}</div>
+							</div>
+						</div>
+					</article>`;
+				}
+
+				if (cint(item?.__wmn_multi_uom || 0)) {
+					const item_image = item.item_image || item.image || "";
+					const safe_name = escape_html(item.item_name || item.item_code || "");
+					const safe_abbr = escape_html(frappe.get_abbr(item.item_name || item.item_code || ""));
+					const stock_value = item.is_stock_item ? flt(item.actual_qty) : "";
+					const stock_class = flt(item.actual_qty) <= 0 ? " is-empty" : flt(item.actual_qty) <= 10 ? " is-low" : "";
+					const media = !this.hide_images && item_image
+						? `<img onerror="cur_pos.item_selector.handle_broken_image(this)" class="item-img" src="${escape_html(item_image)}" alt="${safe_abbr}">`
+						: `<div class="item-display abbr">${safe_abbr}</div>`;
+
+					return `<article class="wmn-item-card wmn-multi-uom-card" data-item-code="${escape(item.item_code)}">
+						<div class="item-wrapper"
+							data-item-code="${escape(item.item_code)}" data-serial-no="${escape(item.serial_no)}"
+							data-batch-no="${escape(item.batch_no)}" data-uom="${escape(item.uom || item.stock_uom || "")}"
+							data-rate="${escape(item.price_list_rate || item.rate || 0)}" data-stock-uom="${escape(item.stock_uom || item.uom || "")}"
+							title="${safe_name}">
+							<div class="wmn-card-media">
+								${media}
+								${item.is_stock_item ? `<span class="wmn-stock-pill${stock_class}">${stock_value}</span>` : ""}
+								<span class="wmn-uom-pill">${__("Multiple UOM")}</span>
+							</div>
+							<div class="item-detail">
+								<div class="item-name">${safe_name}</div>
+								<div class="item-rate wmn-variant-select-label">${__("Choose UOM")}</div>
+							</div>
+						</div>
+					</article>`;
+				}
+
 				const {
 					item_image,
 					serial_no,
@@ -668,6 +723,92 @@ frappe.provide("wmn.MamsekPOS");
 				});
 			}
 
+			async wmn_refresh_available_stock() {
+				if (!this.$items_container || !this.$items_container.length) return;
+
+				const currentItems = Array.isArray(this.items) ? this.items : [];
+				const isOffline = typeof this.wmn_is_offline === "function"
+					? this.wmn_is_offline()
+					: (typeof wmn_is_pos_offline === "function" ? wmn_is_pos_offline() : !navigator.onLine);
+
+				if (isOffline && window.wmnPOSOffline && window.wmnPOSOffline.getStock) {
+					const frm = this.events?.get_frm?.() || window.cur_pos?.frm || null;
+					const defaultWarehouse =
+						frm?.doc?.set_warehouse ||
+						window.cur_pos?.settings?.warehouse ||
+						"";
+
+					for (const item of currentItems) {
+						if (!item || !item.item_code || !cint(item.is_stock_item || 0)) continue;
+
+						const warehouse = item.warehouse || defaultWarehouse;
+						if (!warehouse) continue;
+
+						try {
+							const stock = await window.wmnPOSOffline.getStock(item.item_code, warehouse);
+							if (stock && stock.actual_qty !== undefined && stock.actual_qty !== null) {
+								item.actual_qty = flt(stock.actual_qty || 0);
+							}
+						} catch (e) {
+							console.warn("WMN offline stock pill refresh skipped", item.item_code, e);
+						}
+					}
+				} else if (!isOffline) {
+					try {
+						const searchTerm = String(
+							this.search_field?.get_value?.() ||
+							this.search_field?.$input?.val?.() ||
+							""
+						).trim();
+
+						const response = await this.get_items({
+							start: 0,
+							page_length: Math.max(currentItems.length, 40),
+							search_term: searchTerm,
+						});
+
+						const freshItems = response?.message?.items || [];
+						const freshByCode = new Map();
+
+						for (const fresh of freshItems) {
+							if (!fresh || !fresh.item_code) continue;
+							if (!freshByCode.has(fresh.item_code)) freshByCode.set(fresh.item_code, fresh);
+						}
+
+						for (const item of currentItems) {
+							const fresh = item?.item_code ? freshByCode.get(item.item_code) : null;
+							if (fresh && fresh.actual_qty !== undefined && fresh.actual_qty !== null) {
+								item.actual_qty = flt(fresh.actual_qty || 0);
+							}
+						}
+					} catch (e) {
+						console.warn("WMN online stock pill refresh skipped", e);
+					}
+				}
+
+				const selector = this;
+				this.$items_container.find(".wmn-item-card").each(function () {
+					const $card = $(this);
+					const cardData = read_item_data($card);
+					const item = currentItems.find((row) => row && row.item_code === cardData.item_code);
+
+					if (!item || !cint(item.is_stock_item || 0)) return;
+
+					const qty = flt(item.actual_qty || 0);
+					let $pill = $card.find(".wmn-stock-pill").first();
+
+					if (!$pill.length) {
+						$pill = $('<span class="wmn-stock-pill"></span>');
+						$card.find(".wmn-card-media").first().append($pill);
+					}
+
+					$pill
+						.text(qty)
+						.toggleClass("is-empty", qty <= 0)
+						.toggleClass("is-low", qty > 0 && qty <= 10);
+				});
+			}
+
 			resize_selector(minimize) {
 				this.$component.toggleClass("is-minimized", Boolean(minimize));
 			}
@@ -843,7 +984,53 @@ frappe.provide("wmn.MamsekPOS");
 					},
 				});
 			}
+			init_recent_order_list() {
+			    super.init_recent_order_list();
 
+			    const $component = this.recent_order_list?.$component;
+			    if (!$component?.length) return;
+
+			    const $filter = $component.find(".filter-section").first();
+			    if (!$filter.length) return;
+
+			    if ($filter.find(".wmn-recent-orders-back").length) return;
+
+			    const $label = $filter.children(".label").first();
+
+			    const $titleRow = $(`
+			        <div class="wmn-recent-orders-title-row">
+			            <div class="wmn-recent-orders-title"></div>
+			            <button type="button" class="wmn-recent-orders-back">
+			                <svg width="18" height="18" viewBox="0 0 24 24"
+			                    fill="none"
+			                    stroke="currentColor"
+			                    stroke-width="2"
+			                    stroke-linecap="round"
+			                    stroke-linejoin="round"
+			                    aria-hidden="true">
+			                    <path d="M15 18l-6-6 6-6"></path>
+			                </svg>
+			                <span>${__("Back to Cart")}</span>
+			            </button>
+			        </div>
+			    `);
+
+			    $filter.prepend($titleRow);
+
+			    if ($label.length) {
+			        $titleRow.find(".wmn-recent-orders-title").append($label);
+			    }
+
+			    $titleRow
+			        .find(".wmn-recent-orders-back")
+			        .on("click.wmnMamsek", (event) => {
+			            event.preventDefault();
+			            event.stopPropagation();
+
+			            this.toggle_recent_order_list(false);
+			            this.item_selector?.sync_card_quantities?.();
+			        });
+			}
 			init_item_details() {
 				const result = super.init_item_details();
 

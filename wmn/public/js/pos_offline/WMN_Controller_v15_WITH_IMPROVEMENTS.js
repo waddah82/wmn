@@ -176,6 +176,9 @@
                             const posting_datetime = moment(invoice.posting_date + " " + invoice.posting_time).format("Do MMMM, h:mma");
                             const indicator_color = {
                                 Paid: "green",
+                                Unpaid: "orange",
+                                "Partly Paid": "orange",
+                                Overdue: "red",
                                 Draft: "red",
                                 Return: "gray",
                                 Consolidated: "blue",
@@ -327,7 +330,7 @@
                     item_code: item.item_code,
                     warehouse: warehouse || "",
                     price_list: price_list || "",
-                    uom: item.uom || item.stock_uom || "",
+                    uom: "",
                 },
                 freeze: false,
             });
@@ -623,6 +626,34 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
 
             get_item_from_frm(item) {
                 if (!wmn_controller_uses_offline_flow(this)) {
+                    const doc = this.frm && this.frm.doc ? this.frm.doc : null;
+                    const rows = doc && Array.isArray(doc.items) ? doc.items : [];
+
+                    if (item && item.__wmn_uom_selected && item.item_code && rows.length) {
+                        const itemCode = String(item.item_code || "");
+                        const selectedUom = String(item.uom || item.stock_uom || "");
+                        const selectedBatch = String(item.batch_no || "");
+                        const selectedRate = flt(item.price_list_rate || item.rate || 0);
+
+                        const candidates = rows.filter(row => {
+                            if (!row || String(row.item_code || "") !== itemCode) return false;
+                            if (selectedUom && String(row.uom || row.stock_uom || "") !== selectedUom) return false;
+                            if (String(row.batch_no || "") !== selectedBatch) return false;
+                            return flt(row.qty || 0) > 0;
+                        });
+
+                        if (candidates.length) {
+                            const exactRate = candidates.find(row =>
+                                flt(row.price_list_rate || row.rate || 0) === selectedRate
+                            );
+                            return exactRate || candidates[0];
+                        }
+
+                        const fallbackItem = Object.assign({}, item);
+                        delete fallbackItem.name;
+                        return super.get_item_from_frm(fallbackItem);
+                    }
+
                     return super.get_item_from_frm(item);
                 }
 
@@ -731,6 +762,10 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                         }
                     }
 
+                    if (this.wmn_refresh_sell_on_credit_button) {
+                        await this.wmn_refresh_sell_on_credit_button();
+                    }
+
                     return this.frm;
                 }
 
@@ -754,6 +789,10 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
 
                 if (!wmn_is_pos_offline() && window.wmnPOSOffline) {
                     window.wmnPOSOffline.preload(this, false);
+                }
+
+                if (this.wmn_refresh_sell_on_credit_button) {
+                    await this.wmn_refresh_sell_on_credit_button();
                 }
 
                 return result;
@@ -872,6 +911,10 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
         }
 
         edit_item_details_of(item_row) {
+            if (this.__wmn_suppress_item_details_during_selection) {
+                return Promise.resolve(item_row);
+            }
+
             this.wmn_ensure_item_stock_map_for_cart_rows();
             this.wmn_ensure_item_stock_map_for_item_details(item_row);
             this.wmn_install_item_stock_map_bridge();
@@ -1143,21 +1186,103 @@ class MyPOSController extends erpnext.PointOfSale.Controller {
                 if (wmn_is_pos_offline()) {
                     return this.wmn_offline_on_cart_update(args);
                 }
-                console.log(args);
 
                 args = await this.wmn_prepare_online_batch_args_before_super(args);
+                if (!args) return null;
 
                 const wmn_batch_item = (args && args.item && args.item.__wmn_batch_dialog_done)
                     ? Object.assign({}, args.item)
                     : null;
+                const wmn_uom_item = (args && args.item && args.item.__wmn_uom_selected)
+                    ? Object.assign({}, args.item)
+                    : null;
+                const suppressItemDetails = !!(
+                    wmn_batch_item &&
+                    (args.item.__wmn_skip_item_details_for_batch_flow || args.item.__wmn_batch_dialog_done)
+                );
 
-                const item_row = await super.on_cart_update(args);
-
-                if (wmn_batch_item && item_row) {
-                    await this.wmn_restore_online_batch_price_after_super(item_row, wmn_batch_item);
+                if (suppressItemDetails) {
+                    this.__wmn_suppress_item_details_during_selection = true;
+                    try {
+                        if (this.item_details?.$component?.is(":visible") && this.item_details.toggle_item_details_section) {
+                            await this.item_details.toggle_item_details_section(null);
+                        }
+                    } catch (e) {
+                        console.warn("WMN item details close before batch selection skipped", e);
+                    }
                 }
 
-                return item_row;
+                let item_row = null;
+                try {
+                    item_row = await super.on_cart_update(args);
+
+                    if (wmn_batch_item && item_row) {
+                        await this.wmn_restore_online_batch_price_after_super(item_row, wmn_batch_item);
+                    }
+
+                    if (wmn_uom_item && item_row) {
+                        await this.wmn_restore_online_uom_after_super(item_row, wmn_uom_item);
+                    }
+
+                    return item_row;
+                } finally {
+                    if (suppressItemDetails) {
+                        this.__wmn_suppress_item_details_during_selection = false;
+                    }
+                }
+            }
+
+            async wmn_restore_online_uom_after_super(item_row, item) {
+                try {
+                    if (!item_row || !item_row.doctype || !item_row.name || !item) return item_row;
+                    if (!item.__wmn_uom_selected) return item_row;
+
+                    const selectedUom = item.uom || item.stock_uom || "";
+                    const selectedRate = flt(item.price_list_rate || item.rate || 0);
+                    const selectedConversion = flt(item.conversion_factor || 1);
+
+                    if (selectedUom && item_row.uom !== selectedUom) {
+                        await frappe.model.set_value(item_row.doctype, item_row.name, "uom", selectedUom);
+                    }
+
+                    if (selectedConversion > 0 && flt(item_row.conversion_factor || 0) !== selectedConversion) {
+                        await frappe.model.set_value(
+                            item_row.doctype,
+                            item_row.name,
+                            "conversion_factor",
+                            selectedConversion
+                        );
+                    }
+
+                    if (selectedRate >= 0 && flt(item_row.price_list_rate || 0) !== selectedRate) {
+                        await frappe.model.set_value(
+                            item_row.doctype,
+                            item_row.name,
+                            "price_list_rate",
+                            selectedRate
+                        );
+                    }
+
+                    if (selectedRate >= 0 && flt(item_row.rate || 0) !== selectedRate) {
+                        await frappe.model.set_value(item_row.doctype, item_row.name, "rate", selectedRate);
+                    }
+
+                    item_row.uom = selectedUom || item_row.uom;
+                    item_row.conversion_factor = selectedConversion;
+                    item_row.price_list_rate = selectedRate;
+                    item_row.rate = selectedRate;
+                    item_row.stock_qty = flt(item_row.qty || 0) * selectedConversion;
+
+                    if (this.wmn_ensure_item_stock_map_for_item_details) {
+                        this.wmn_ensure_item_stock_map_for_item_details(item_row);
+                    }
+
+                    this.update_cart_html(item_row);
+                    return item_row;
+                } catch (e) {
+                    console.warn("WMN online UOM restore skipped", e);
+                    return item_row;
+                }
             }
 
             async wmn_restore_online_batch_price_after_super(item_row, item) {
@@ -1257,68 +1382,88 @@ async wmn_prepare_online_batch_args_before_super(args) {
     try {
         if (!args || !args.item) return args;
 
-        const batchValue = args.item.batch_no;
-
-        const needsBatchDialog =
-            batchValue !== undefined &&
-            batchValue !== null &&
-            String(batchValue) !== "" &&
-            String(batchValue).toLowerCase() !== "null" &&
-            !args.item.__wmn_batch_dialog_done;
-
-        if (!needsBatchDialog) return args;
-
-        const warehouse =
-            args.item.warehouse ||
-            this.frm?.doc?.set_warehouse ||
-            this.settings?.warehouse ||
-            "";
-
-        const priceList =
-            this.frm?.doc?.selling_price_list ||
-            this.settings?.selling_price_list ||
-            "";
-
-        const selected = await wmn_show_online_batch_selection_dialog(
-            args.item,
-            warehouse,
-            priceList
-        );
-
-        args.item.__wmn_batch_dialog_done = 1;
-
-        if (!selected) {
-            return args;
-        }
-
-        args.item.batch_no = selected.batch_no;
-
-        const selectedQty = flt(selected.__selected_qty || 0);
-        if (selectedQty > 0) {
-            args.field = "qty";
-            args.value = selectedQty;
-            args.item.qty = selectedQty;
-        }
-
-        const selectedRate = flt(
-            selected.price_list_rate ||
-            selected.rate ||
-            args.item.price_list_rate ||
-            args.item.rate ||
-            (args.item.item_data && (args.item.item_data.price_list_rate || args.item.item_data.rate)) ||
+        const itemData = args.item.item_data || {};
+        const hasBatch = cint(
+            args.item.has_batch_no ||
+            itemData.has_batch_no ||
             0
-        );
-        if (selectedRate > 0) {
-            args.item.rate = selectedRate;
-            args.item.price_list_rate = selectedRate;
+        ) === 1;
+
+        if (!hasBatch) return args;
+
+        const currentBatch = String(args.item.batch_no || "").trim();
+        const needsBatchDialog =
+            !currentBatch &&
+            !cint(args.item.__wmn_batch_dialog_done || 0) &&
+            !cint(args.item.__wmn_batch_from_scan || 0);
+
+        if (needsBatchDialog) {
+            const warehouse =
+                args.item.warehouse ||
+                this.frm?.doc?.set_warehouse ||
+                this.settings?.warehouse ||
+                "";
+
+            const priceList =
+                this.frm?.doc?.selling_price_list ||
+                this.settings?.selling_price_list ||
+                "";
+
+            const selected = await wmn_show_online_batch_selection_dialog(
+                args.item,
+                warehouse,
+                priceList
+            );
+
+            if (!selected) {
+                return null;
+            }
+
+            args.item.__wmn_batch_dialog_done = 1;
+            args.item.__wmn_skip_item_details_for_batch_flow = 1;
+            args.item.batch_no = selected.batch_no;
+
+            const selectedQty = flt(selected.__selected_qty || 0);
+            if (selectedQty > 0) {
+                args.field = "qty";
+                args.value = selectedQty;
+                args.item.qty = selectedQty;
+            }
+
+            if (selected.warehouse) {
+                args.item.warehouse = selected.warehouse;
+            }
+
+            if (selected.currency) {
+                args.item.currency = selected.currency;
+            }
+
+            args.item.__wmn_selected_batch_available_qty = flt(selected.actual_qty || 0);
         }
 
-        if (selected.uom && !args.item.uom) {
-            args.item.uom = selected.uom;
+        if (
+            this.item_selector &&
+            typeof this.item_selector.wmn_choose_uom === "function" &&
+            !cint(args.item.__wmn_uom_selected || 0)
+        ) {
+            const selectedUomItem = await this.item_selector.wmn_choose_uom(args.item);
+            if (!selectedUomItem) {
+                return null;
+            }
+            args.item = selectedUomItem;
         }
 
-        if (selected.warehouse) {
-            args.item.warehouse = selected.warehouse;
+        const availableBatchQty = flt(args.item.__wmn_selected_batch_available_qty || 0);
+        const selectedQty = flt(args.item.qty || args.value || 1);
+        const conversion = flt(args.item.conversion_factor || 1);
+        const requiredStockQty = selectedQty * conversion;
+
+        if (availableBatchQty > 0 && requiredStockQty > availableBatchQty) {
+            frappe.show_alert({
+                message: __("Quantity cannot exceed available batch quantity"),
+                indicator: "orange",
+            });
+            return null;
         }
 
         return args;
@@ -1417,8 +1562,20 @@ async wmn_apply_online_batch_after_cart_update(args, item_row) {
 
                     const target_warehouse = this.frm.doc.set_warehouse || this.settings.warehouse || item.warehouse || "";
 
-                    if (cint(item.has_batch_no || 0) && !cint(item.__wmn_batch_from_scan || 0)) {
-                        const selectedBatch = await window.showBatchSelectionDialog(item, target_warehouse);
+                    let selectedBatch = null;
+                    const customBatchFlow = cint(item.has_batch_no || 0) && !cint(item.__wmn_batch_from_scan || 0);
+
+                    if (customBatchFlow) {
+                        item.__wmn_skip_item_details_for_batch_flow = 1;
+                        try {
+                            if (this.item_details?.$component?.is(":visible") && this.item_details.toggle_item_details_section) {
+                                await this.item_details.toggle_item_details_section(null);
+                            }
+                        } catch (e) {
+                            console.warn("WMN offline item details close before batch selection skipped", e);
+                        }
+
+                        selectedBatch = await window.showBatchSelectionDialog(item, target_warehouse);
 
                         if (selectedBatch && selectedBatch.batch_no) {
                             item.batch_no = selectedBatch.batch_no;
@@ -1426,31 +1583,10 @@ async wmn_apply_online_batch_after_cart_update(args, item_row) {
                             item.actual_qty = flt(selectedBatch.actual_qty || item.actual_qty || 0);
                             item.qty = flt(selectedBatch.__selected_qty || item.qty || 1);
                             item.__wmn_selected_batch_qty = item.qty;
-                            item = wmn_prepare_offline_item_detail_row(
-                                item,
-                                this.frm.doc,
-                                this.settings || {}
-                            );
-                            const batch_rate = flt(
-                                selectedBatch.price_list_rate ||
-                                selectedBatch.rate ||
-                                0
-                            );
-
-                            if (batch_rate > 0) {
-                                item.price_list_rate = batch_rate;
-                                item.rate = batch_rate;
-                            } else {
-                                item.price_list_rate = flt(item.price_list_rate || item.rate || 0);
-                                item.rate = flt(item.rate || item.price_list_rate || 0);
-                            }
+                            item.__wmn_selected_batch_available_qty = flt(selectedBatch.actual_qty || 0);
 
                             if (selectedBatch.currency) {
                                 item.currency = selectedBatch.currency;
-                            }
-
-                            if (selectedBatch.uom) {
-                                item.uom = selectedBatch.uom;
                             }
                         } else {
                             frappe.show_alert({
@@ -1467,6 +1603,58 @@ async wmn_apply_online_batch_after_cart_update(args, item_row) {
                             indicator: "orange"
                         });
                         return null;
+                    }
+
+                    if (
+                        cint(item.has_batch_no || 0) &&
+                        this.item_selector &&
+                        typeof this.item_selector.wmn_choose_uom === "function" &&
+                        !cint(item.__wmn_uom_selected || 0)
+                    ) {
+                        const selectedUomItem = await this.item_selector.wmn_choose_uom(item);
+                        if (!selectedUomItem) {
+                            return null;
+                        }
+                        item = selectedUomItem;
+                    }
+
+                    const selectedBatchAvailableQty = flt(
+                        item.__wmn_selected_batch_available_qty ||
+                        item.actual_qty ||
+                        0
+                    );
+                    const requiredBatchStockQty =
+                        flt(item.qty || item.__wmn_selected_batch_qty || 1) *
+                        flt(item.conversion_factor || 1);
+
+                    if (
+                        cint(item.has_batch_no || 0) &&
+                        selectedBatchAvailableQty > 0 &&
+                        requiredBatchStockQty > selectedBatchAvailableQty
+                    ) {
+                        frappe.show_alert({
+                            message: __("Quantity cannot exceed available batch quantity"),
+                            indicator: "orange"
+                        });
+                        return null;
+                    }
+
+                    item = wmn_prepare_offline_item_detail_row(
+                        item,
+                        this.frm.doc,
+                        this.settings || {}
+                    );
+
+                    if (!cint(item.__wmn_uom_selected || 0) && selectedBatch) {
+                        const batchRate = flt(
+                            selectedBatch.price_list_rate ||
+                            selectedBatch.rate ||
+                            0
+                        );
+                        if (batchRate > 0) {
+                            item.price_list_rate = batchRate;
+                            item.rate = batchRate;
+                        }
                     }
 
                     // \u0644\u0627 \u062A\u0639\u0645\u0644 freeze \u0642\u0628\u0644 Dialog \u0627\u062E\u062A\u064A\u0627\u0631 Batch \u062D\u062A\u0649 \u0644\u0627 \u064A\u0635\u0628\u062D \u0627\u0644\u062F\u064A\u0627\u0644\u0648\u062C \u063A\u064A\u0631 \u0642\u0627\u0628\u0644 \u0644\u0644\u062A\u0641\u0627\u0639\u0644.
@@ -1513,7 +1701,7 @@ async wmn_apply_online_batch_after_cart_update(args, item_row) {
                         if (["qty", "conversion_factor"].includes(field) && value > 0 && !this.allow_negative_stock) {
                             const conversion = field === "conversion_factor" ? flt(value || 1) : flt(item_row.conversion_factor || 1);
                             const qty_needed = field === "qty" ? flt(value || 0) * conversion : flt(item_row.qty || 0) * conversion;
-                            const ok = this.allow_negative_stock ? true : await this.check_stock_availability(item, qty, effective_warehouse);
+                            const ok = this.allow_negative_stock ? true : await this.check_stock_availability(item, qty_needed, effective_warehouse);
                             if (!ok) {
                                 frappe.show_alert({ message: __("\u0627\u0644\u0643\u0645\u064A\u0629  ssss  \u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631\u0629 \u0641\u064A \u0627\u0644\u0645\u062E\u0632\u0648\u0646 \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646"), indicator: "orange" });
                                 return item_row;
@@ -1538,7 +1726,9 @@ async wmn_apply_online_batch_after_cart_update(args, item_row) {
                         let qty = from_selector ? flt(item.qty || item.__wmn_selected_batch_qty || 1) : flt(value || item.qty || 1);
                         if (field === "serial_no") qty = String(value || "").split("\n").filter(Boolean).length || 0;
 
-                        const ok = this.allow_negative_stock ? true : await this.check_stock_availability(item, qty, effective_warehouse);
+                        const item_conversion_factor = flt(item.conversion_factor || 1);
+                        const qty_needed = flt(qty || 0) * item_conversion_factor;
+                        const ok = this.allow_negative_stock ? true : await this.check_stock_availability(item, qty_needed, effective_warehouse);
                         if (!ok) {
                             frappe.show_alert({ message: __("\u0627\u0644\u0643\u0645\u064A\u0629 aaaa \u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631\u0629 \u0641\u064A \u0627\u0644\u0645\u062E\u0632\u0648\u0646 \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646"), indicator: "orange" });
                             return null;
@@ -1560,9 +1750,9 @@ async wmn_apply_online_batch_after_cart_update(args, item_row) {
                             serial_no: item.serial_no,
                             uom: item.uom || item.stock_uom || "Nos",
                             stock_uom: item.stock_uom || item.uom || "Nos",
-                            conversion_factor: 1,
+                            conversion_factor: flt(item.conversion_factor || 1),
                             qty: qty,
-                            stock_qty: qty,
+                            stock_qty: flt(qty) * flt(item.conversion_factor || 1),
                             price_list_rate: flt(item.price_list_rate || item.rate || 0),
                             rate: flt(item.rate || item.price_list_rate || 0),
                             amount: flt(qty) * flt(item.rate || item.price_list_rate || 0),
@@ -1595,7 +1785,12 @@ async wmn_apply_online_batch_after_cart_update(args, item_row) {
                         this.update_cart_html(item_row);
                     }
 
-                    if (this.item_details && this.item_details.$component && this.item_details.$component.is(":visible")) {
+                    if (
+                        !cint(item.__wmn_skip_item_details_for_batch_flow || 0) &&
+                        this.item_details &&
+                        this.item_details.$component &&
+                        this.item_details.$component.is(":visible")
+                    ) {
                         this.edit_item_details_of(item_row);
                     }
 
@@ -1619,54 +1814,53 @@ async wmn_apply_online_batch_after_cart_update(args, item_row) {
                 }
             }
 
+            async wmn_finalize_offline_invoice() {
+                frappe.dom.freeze(wmn_t("Saving offline invoice...", "\u062C\u0627\u0631\u064A \u062D\u0641\u0638 \u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0623\u0648\u0641\u0644\u0627\u064A\u0646..."));
+
+                try {
+                    await wmn_assign_receipt_number(this.frm.doc);
+                    const previousOfflineInvoice = typeof wmn_get_existing_offline_invoice_for_stock === "function"
+                        ? await wmn_get_existing_offline_invoice_for_stock(this.frm.doc)
+                        : null;
+                    const row = await window.wmnPOSOffline.saveInvoice(this.frm.doc, this);
+
+                    if (typeof wmn_apply_offline_available_qty_delta === "function") {
+                        await wmn_apply_offline_available_qty_delta(this.frm.doc, previousOfflineInvoice);
+                    }
+
+                    if (this.item_selector && typeof this.item_selector.wmn_refresh_available_stock === "function") {
+                        await this.item_selector.wmn_refresh_available_stock();
+                    }
+
+                    frappe.show_alert({
+                        message: wmn_msg("Invoice added offline successfully: {0}", "\u062A\u0645\u062A \u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0623\u0648\u0641\u0644\u0627\u064A\u0646 \u0628\u0646\u062C\u0627\u062D: {0}", [row.offline_id || row.name || this.frm.doc.name]),
+                        indicator: "orange"
+                    });
+
+                    this.toggle_components(false);
+                    this.order_summary.toggle_component(true);
+                    this.order_summary.load_summary_of(this.frm.doc, true);
+                    wmn_try_auto_silent_print_after_order(this.frm.doc, "offline");
+                    this.wmn_bind_offline_receipt_buttons();
+
+                    if (this.wmn_cache && this.wmn_cache()) {
+                        await this.wmn_cache().safeRefreshRecentOrders(this);
+                    } else if (this.recent_order_list && this.recent_order_list.refresh_list) {
+                        this.recent_order_list.refresh_list();
+                    }
+
+                    return row;
+                } finally {
+                    frappe.dom.unfreeze();
+                }
+            }
+
             async save_and_checkout() {
                 if (wmn_controller_uses_offline_flow(this)) {
                     try {
-                    
-                    
                         this.wmn_recalculate_offline_totals();
-                        
-
                         await wmn_show_offline_payment_dialog(this);
-
-                        frappe.dom.freeze(wmn_t("Saving offline invoice...", "\u062C\u0627\u0631\u064A \u062D\u0641\u0638 \u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0623\u0648\u0641\u0644\u0627\u064A\u0646..."));
-                        // console.table(
-                        //     (this.frm.doc.items || []).map(r => ({
-                        //         item_code: r.item_code,
-                        //         qty: r.qty,
-                        //         batch_no: r.batch_no,
-                        //         rate: r.rate,
-                        //         amount: r.amount
-                        //     }))
-                        // );
-                        await wmn_assign_receipt_number(this.frm.doc);
-                        const previousOfflineInvoice = typeof wmn_get_existing_offline_invoice_for_stock === "function"
-                            ? await wmn_get_existing_offline_invoice_for_stock(this.frm.doc)
-                            : null;
-                        const row = await window.wmnPOSOffline.saveInvoice(this.frm.doc, this);
-                        if (typeof wmn_apply_offline_available_qty_delta === "function") {
-                            await wmn_apply_offline_available_qty_delta(this.frm.doc, previousOfflineInvoice);
-                        }
-                        frappe.dom.unfreeze();
-
-                        frappe.show_alert({
-                            message: wmn_msg("Invoice added offline successfully: {0}", "\u062A\u0645\u062A \u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0623\u0648\u0641\u0644\u0627\u064A\u0646 \u0628\u0646\u062C\u0627\u062D: {0}", [row.offline_id || row.name || this.frm.doc.name]),
-                            indicator: "orange"
-                        });
-
-                        this.toggle_components(false);
-                        this.order_summary.toggle_component(true);
-                        this.order_summary.load_summary_of(this.frm.doc, true);
-                        wmn_try_auto_silent_print_after_order(this.frm.doc, "offline");
-                        this.wmn_bind_offline_receipt_buttons();
-
-                        if (this.wmn_cache && this.wmn_cache()) {
-                            await this.wmn_cache().safeRefreshRecentOrders(this);
-                        } else if (this.recent_order_list && this.recent_order_list.refresh_list) {
-                            this.recent_order_list.refresh_list();
-                        }
-
-                        return row;
+                        return await this.wmn_finalize_offline_invoice();
                     } catch (e) {
                         frappe.dom.unfreeze();
 
@@ -1686,6 +1880,7 @@ async wmn_apply_online_batch_after_cart_update(args, item_row) {
 
                 return super.save_and_checkout();
             }
+
             async make_sales_invoice_frm() {
                 const doctype = wmn_pos_invoice_doctype(this);
 
@@ -1826,6 +2021,184 @@ set_pos_profile_data() {
                 return Promise.resolve();
             }
 
+            async wmn_can_sell_on_credit() {
+                const doc = this.frm && this.frm.doc ? this.frm.doc : null;
+                if (!doc) return false;
+                if (doc.doctype !== "Sales Invoice") return false;
+                if (cint(doc.docstatus || 0) !== 0) return false;
+                if (cint(doc.is_return || 0) === 1) return false;
+                return await wmn_is_partial_payment_allowed(this);
+            }
+
+            async wmn_refresh_sell_on_credit_button() {
+                if (!this.payment || !this.payment.$component) return;
+                const allowed = await this.wmn_can_sell_on_credit();
+                this.payment.$component.find(".wmn-sell-on-credit-btn").toggle(allowed);
+            }
+
+            wmn_install_sell_on_credit_button() {
+                if (!this.payment || !this.payment.$component) return;
+
+                const $component = this.payment.$component;
+                let $button = $component.find(".wmn-sell-on-credit-btn");
+
+                if (!$button.length) {
+                    $button = $(`<div class="wmn-sell-on-credit-btn">${__("Sell on Credit")}</div>`);
+                    const $submit = $component.find(".submit-order-btn").first();
+
+                    if ($submit.length) {
+                        $button.insertBefore($submit);
+                    } else {
+                        $component.append($button);
+                    }
+
+                    $button.on("click.wmnSellOnCredit", async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        await this.wmn_sell_on_credit();
+                    });
+                }
+
+                this.wmn_refresh_sell_on_credit_button();
+            }
+
+            async wmn_sell_on_credit() {
+                const doc = this.frm && this.frm.doc ? this.frm.doc : null;
+                if (!doc || !Array.isArray(doc.items) || !doc.items.length) {
+                    frappe.show_alert({ message: __("You cannot submit empty order."), indicator: "orange" });
+                    return;
+                }
+
+                if (this.payment && this.payment.validate_reqd_invoice_fields && !this.payment.validate_reqd_invoice_fields()) {
+                    return;
+                }
+
+                if (!(await this.wmn_can_sell_on_credit())) {
+                    frappe.show_alert({ message: __("Sell on Credit is not allowed for this invoice."), indicator: "orange" });
+                    return;
+                }
+
+                if (wmn_controller_uses_offline_flow(this)) {
+                    try {
+                        this.wmn_recalculate_offline_totals();
+                        const payments = await wmn_ensure_offline_payment_rows(doc);
+
+                        if (!payments.length) {
+                            frappe.show_alert({ message: __("No payment mode is configured for the POS Profile."), indicator: "orange" });
+                            return;
+                        }
+
+                        payments.forEach((row) => {
+                            row.amount = 0;
+                            row.base_amount = 0;
+                            row.parent = doc.name;
+                            row.parenttype = doc.doctype;
+                            row.parentfield = "payments";
+                        });
+
+                        doc.payments = payments;
+                        wmn_recalc_offline_payment_doc(doc);
+                        return await this.wmn_finalize_offline_invoice();
+                    } catch (e) {
+                        frappe.dom.unfreeze();
+                        console.error("WMN offline credit sale failed", e);
+                        frappe.msgprint({
+                            title: wmn_t("Offline Save Failed", "\u0641\u0634\u0644 \u0627\u0644\u062D\u0641\u0638 \u0623\u0648\u0641\u0644\u0627\u064A\u0646"),
+                            indicator: "red",
+                            message: wmn_msg("Failed to save invoice offline: {0}", "\u062A\u0639\u0630\u0631 \u062D\u0641\u0638 \u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0623\u0648\u0641\u0644\u0627\u064A\u0646: {0}", [e.message || e])
+                        });
+                        return;
+                    }
+                }
+
+                if (!Array.isArray(doc.payments) || !doc.payments.length) {
+                    frappe.show_alert({ message: __("No payment mode is configured for the POS Profile."), indicator: "orange" });
+                    return;
+                }
+
+                for (const row of doc.payments) {
+                    await frappe.model.set_value(row.doctype, row.name, "amount", 0);
+                    if (Object.prototype.hasOwnProperty.call(row, "base_amount")) {
+                        row.base_amount = 0;
+                    }
+                }
+
+                await this.frm.set_value("paid_amount", 0);
+                await this.frm.set_value("base_paid_amount", 0);
+                await this.frm.set_value("change_amount", 0);
+                await this.frm.set_value("base_change_amount", 0);
+
+                return await this.wmn_submit_online_invoice();
+            }
+
+            async wmn_submit_online_invoice() {
+                const doc = this.frm && this.frm.doc ? this.frm.doc : null;
+                if (!doc) return;
+
+                if (doc.doctype === "Sales Invoice") {
+                    const allowPartialPayment = await wmn_is_partial_payment_allowed(this);
+                    const payable = flt(doc.rounded_total || doc.grand_total || 0);
+                    const paid = (doc.payments || []).reduce((sum, row) => sum + flt(row.amount || 0), 0);
+
+                    if (
+                        !allowPartialPayment &&
+                        paid < payable &&
+                        flt(doc.additional_discount_percentage || 0) !== 100
+                    ) {
+                        frappe.msgprint({
+                            title: wmn_t("Payment Amount", "\u0645\u0628\u0644\u063A \u0627\u0644\u062F\u0641\u0639"),
+                            indicator: "orange",
+                            message: wmn_t("Payment amount is less than invoice total", "\u0645\u0628\u0644\u063A \u0627\u0644\u062F\u0641\u0639 \u0623\u0642\u0644 \u0645\u0646 \u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629")
+                        });
+                        return;
+                    }
+                }
+
+                try {
+                    await wmn_assign_receipt_number(doc);
+                    const receiptNo = doc.wmn_receipt_no || doc.__wmn_receipt_no || "";
+                    const r = await this.frm.savesubmit();
+
+                    let submittedDoc = (r && r.doc) || (this.frm && this.frm.doc) || {};
+                    const submittedDoctype = submittedDoc.doctype || doc.doctype;
+                    const submittedName = submittedDoc.name || doc.name;
+
+                    if (submittedDoctype && submittedName) {
+                        try {
+                            submittedDoc = await frappe.db.get_doc(submittedDoctype, submittedName);
+                        } catch (fetchError) {
+                            console.warn("WMN could not reload submitted invoice from server", fetchError);
+                        }
+                    }
+
+                    submittedDoc.wmn_receipt_no = submittedDoc.wmn_receipt_no || receiptNo;
+                    submittedDoc.__wmn_receipt_no = submittedDoc.__wmn_receipt_no || receiptNo;
+
+                    if (this.item_selector && typeof this.item_selector.wmn_refresh_available_stock === "function") {
+                        await this.item_selector.wmn_refresh_available_stock();
+                    }
+
+                    this.toggle_components(false);
+                    this.order_summary.toggle_component(true);
+                    this.order_summary.load_summary_of(submittedDoc, true);
+                    wmn_try_auto_silent_print_after_order(submittedDoc, "online");
+
+                    if (this.recent_order_list && this.recent_order_list.refresh_list) {
+                        this.recent_order_list.refresh_list();
+                    }
+
+                    frappe.show_alert({
+                        indicator: "green",
+                        message: __("POS invoice {0} created successfully", [submittedDoc.name])
+                    });
+
+                    return r;
+                } catch (e) {
+                    console.error("WMN online submit invoice failed", e);
+                    throw e;
+                }
+            }
+
             init_payments() {
                 super.init_payments();
 
@@ -1838,36 +2211,20 @@ set_pos_profile_data() {
                         return this.save_and_checkout();
                     }
 
-                    try {
-                        if (this.frm && this.frm.doc) {
-                            await wmn_assign_receipt_number(this.frm.doc);
-                        }
+                    return this.wmn_submit_online_invoice();
+                };
 
-                        const r = await this.frm.savesubmit();
-                        const submittedDoc = (r && r.doc) || (this.frm && this.frm.doc) || {};
+                this.wmn_install_sell_on_credit_button();
 
-                        submittedDoc.wmn_receipt_no = submittedDoc.wmn_receipt_no || (this.frm.doc && this.frm.doc.wmn_receipt_no) || (this.frm.doc && this.frm.doc.__wmn_receipt_no) || "";
-                        submittedDoc.__wmn_receipt_no = submittedDoc.__wmn_receipt_no || submittedDoc.wmn_receipt_no || "";
+                const originalCheckout = this.payment.checkout.bind(this.payment);
+                this.payment.checkout = (...args) => {
+                    const result = originalCheckout(...args);
 
-                        this.toggle_components(false);
-                        this.order_summary.toggle_component(true);
-                        this.order_summary.load_summary_of(submittedDoc, true);
-                        wmn_try_auto_silent_print_after_order(submittedDoc, "online");
+                    Promise.resolve(this.wmn_refresh_sell_on_credit_button()).catch((e) => {
+                        console.warn("WMN Sell on Credit visibility refresh skipped", e);
+                    });
 
-                        if (this.recent_order_list && this.recent_order_list.refresh_list) {
-                            this.recent_order_list.refresh_list();
-                        }
-
-                        frappe.show_alert({
-                            indicator: "green",
-                            message: __("POS invoice {0} created successfully", [submittedDoc.name])
-                        });
-
-                        return r;
-                    } catch (e) {
-                        console.error("WMN online submit invoice failed", e);
-                        throw e;
-                    }
+                    return result;
                 };
             }
             

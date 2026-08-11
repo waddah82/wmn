@@ -51,6 +51,60 @@
                 return (window.cur_pos && window.cur_pos.settings) || {};
             }
 
+            async wmn_enrich_item_tracking_meta(item) {
+                if (!item || !item.item_code) return item || {};
+
+                const batchValue = item.has_batch_no ?? item.item_data?.has_batch_no;
+                const serialValue = item.has_serial_no ?? item.item_data?.has_serial_no;
+                const stockUomValue = item.stock_uom ?? item.item_data?.stock_uom;
+
+                this.__wmn_item_tracking_meta_cache = this.__wmn_item_tracking_meta_cache || new Map();
+                const cacheKey = String(item.item_code || "").trim();
+                let meta = this.__wmn_item_tracking_meta_cache.get(cacheKey) || null;
+
+                if (!meta) {
+                    try {
+                        if (this.wmn_is_offline() && window.wmnPOSOffline) {
+                            const cachedItem = await window.wmnPOSOffline.get(
+                                window.wmnPOSOffline.STORES.items,
+                                cacheKey
+                            );
+                            if (cachedItem) {
+                                meta = {
+                                    has_batch_no: cint(cachedItem.has_batch_no || 0),
+                                    has_serial_no: cint(cachedItem.has_serial_no || 0),
+                                    stock_uom: cachedItem.stock_uom || cachedItem.uom || "",
+                                };
+                            }
+                        } else {
+                            const response = await frappe.db.get_value(
+                                "Item",
+                                cacheKey,
+                                ["has_batch_no", "has_serial_no", "stock_uom"]
+                            );
+                            const message = response?.message || {};
+                            meta = {
+                                has_batch_no: cint(message.has_batch_no || 0),
+                                has_serial_no: cint(message.has_serial_no || 0),
+                                stock_uom: message.stock_uom || "",
+                            };
+                        }
+                    } catch (e) {
+                        console.warn("WMN item tracking metadata lookup skipped", e);
+                    }
+
+                    if (meta) {
+                        this.__wmn_item_tracking_meta_cache.set(cacheKey, meta);
+                    }
+                }
+
+                return Object.assign({}, item, meta || {}, {
+                    has_batch_no: cint((meta?.has_batch_no ?? batchValue) || 0),
+                    has_serial_no: cint((meta?.has_serial_no ?? serialValue) || 0),
+                    stock_uom: meta?.stock_uom || stockUomValue || item.uom || "",
+                });
+            }
+
             async wmn_get_offline_parent_item_group() {
                 const settings = await this.wmn_get_cached_pos_settings();
                 const profile = await this.wmn_get_cached_pos_profile();
@@ -331,10 +385,289 @@
                 }
             }
 
+            async wmn_get_item_selection_context() {
+                const doc = this.events?.get_frm?.().doc || window.cur_pos?.frm?.doc || {};
+                const settings = await this.wmn_get_cached_pos_settings();
+                return {
+                    price_list:
+                        doc.selling_price_list ||
+                        this.price_list ||
+                        settings.selling_price_list ||
+                        window.cur_pos?.settings?.selling_price_list ||
+                        "",
+                    warehouse:
+                        doc.set_warehouse ||
+                        settings.warehouse ||
+                        window.cur_pos?.settings?.warehouse ||
+                        "",
+                    pos_profile:
+                        doc.pos_profile ||
+                        settings.pos_profile ||
+                        window.cur_pos?.pos_profile ||
+                        "",
+                    currency:
+                        doc.currency ||
+                        settings.currency ||
+                        window.cur_pos?.settings?.currency ||
+                        "",
+                };
+            }
+
+            async wmn_get_online_variant_metadata(items) {
+                const rows = Array.isArray(items) ? items : [];
+                const codes = rows.map(row => row && row.item_code).filter(Boolean);
+                if (!codes.length) return { variants: {}, templates: {}, uom_counts: {}, variant_counts: {} };
+
+                const context = await this.wmn_get_item_selection_context();
+                const priceList = context.price_list || "";
+                const warehouse = context.warehouse || "";
+                const posProfile = context.pos_profile || "";
+
+                this.__wmn_variant_map_cache = this.__wmn_variant_map_cache || {};
+                this.__wmn_template_cache = this.__wmn_template_cache || {};
+                this.__wmn_uom_count_cache = this.__wmn_uom_count_cache || {};
+                this.__wmn_variant_count_cache = this.__wmn_variant_count_cache || {};
+
+                const rowMap = new Map(rows.map(row => [row.item_code, row]));
+                const variantCountKey = template => `${priceList}::${warehouse}::${posProfile}::${template}`;
+
+                const missing = codes.filter(code => {
+                    const uomKey = `${priceList}::${code}`;
+                    const cachedTemplate = this.__wmn_variant_map_cache[code] || "";
+                    const row = rowMap.get(code) || {};
+                    const possibleTemplate = cachedTemplate || (cint(row.has_variants || 0) ? code : "");
+                    return !(code in this.__wmn_variant_map_cache) ||
+                        !(uomKey in this.__wmn_uom_count_cache) ||
+                        (possibleTemplate && !(variantCountKey(possibleTemplate) in this.__wmn_variant_count_cache));
+                });
+
+                if (missing.length) {
+                    const response = await frappe.call({
+                        method: "wmn.api.get_pos_item_variant_map",
+                        args: {
+                            item_codes: missing,
+                            price_list: priceList,
+                            warehouse,
+                            pos_profile: posProfile,
+                        },
+                        freeze: false,
+                    });
+                    const message = response?.message || {};
+                    const variants = message.variants || {};
+                    const templates = message.templates || {};
+                    const uomCounts = message.uom_counts || {};
+                    const variantCounts = message.variant_counts || {};
+
+                    missing.forEach(code => {
+                        this.__wmn_variant_map_cache[code] = variants[code] || "";
+                        this.__wmn_uom_count_cache[`${priceList}::${code}`] = cint(uomCounts[code] || 0);
+                    });
+                    Object.keys(templates).forEach(code => {
+                        this.__wmn_template_cache[code] = templates[code];
+                    });
+                    Object.keys(variantCounts).forEach(code => {
+                        this.__wmn_variant_count_cache[variantCountKey(code)] = cint(variantCounts[code] || 0);
+                    });
+                }
+
+                const variants = {};
+                const templates = {};
+                const uom_counts = {};
+                const variant_counts = {};
+
+                codes.forEach(code => {
+                    const row = rowMap.get(code) || {};
+                    const template = this.__wmn_variant_map_cache[code] || "";
+                    const uomKey = `${priceList}::${code}`;
+                    uom_counts[code] = cint(this.__wmn_uom_count_cache[uomKey] || 0);
+
+                    if (template) {
+                        variants[code] = template;
+                        variant_counts[template] = cint(this.__wmn_variant_count_cache[variantCountKey(template)] || 0);
+                        if (this.__wmn_template_cache[template]) {
+                            templates[template] = this.__wmn_template_cache[template];
+                        }
+                    } else if (cint(row.has_variants || 0)) {
+                        variant_counts[code] = cint(this.__wmn_variant_count_cache[variantCountKey(code)] || 0);
+                        if (this.__wmn_template_cache[code]) {
+                            templates[code] = this.__wmn_template_cache[code];
+                        }
+                    }
+                });
+
+                return { variants, templates, uom_counts, variant_counts };
+            }
+
+            async wmn_prepare_items_for_display(items, { direct_search = false } = {}) {
+                const rows = (Array.isArray(items) ? items : []).map(row => Object.assign({}, row));
+                if (!rows.length || direct_search) return rows;
+
+                let variantMap = {};
+                let templateMap = {};
+                let uomCounts = {};
+                let variantCounts = {};
+
+                if (this.wmn_is_offline()) {
+                    rows.forEach(row => {
+                        if (row.variant_of) variantMap[row.item_code] = row.variant_of;
+                    });
+
+                    if (window.wmnPOSOffline) {
+                        const context = await this.wmn_get_item_selection_context();
+                        const prices = await window.wmnPOSOffline.getAll(window.wmnPOSOffline.STORES.item_prices);
+                        const allItems = await window.wmnPOSOffline.getAll(window.wmnPOSOffline.STORES.items);
+                        const currentDate = frappe.datetime.get_today();
+                        const uomSets = {};
+
+                        (prices || []).forEach(price => {
+                            if (context.price_list && price.price_list !== context.price_list) return;
+                            if (price.valid_from && String(price.valid_from) > currentDate) return;
+                            if (price.valid_upto && String(price.valid_upto) < currentDate) return;
+                            if (!price.item_code) return;
+                            const uomKey = price.uom || "__stock_uom__";
+                            uomSets[price.item_code] = uomSets[price.item_code] || new Set();
+                            uomSets[price.item_code].add(uomKey);
+                        });
+
+                        rows.forEach(row => {
+                            uomCounts[row.item_code] = uomSets[row.item_code] ? uomSets[row.item_code].size : 0;
+                        });
+
+                        const relevantTemplateCodes = new Set();
+                        rows.forEach(row => {
+                            if (row.variant_of) relevantTemplateCodes.add(row.variant_of);
+                            if (cint(row.has_variants || 0)) relevantTemplateCodes.add(row.item_code);
+                        });
+
+                        const allItemMap = new Map((allItems || []).map(row => [row.item_code || row.name, row]));
+                        relevantTemplateCodes.forEach(code => {
+                            const template = allItemMap.get(code);
+                            if (template) templateMap[code] = template;
+                            variantCounts[code] = 0;
+                        });
+
+                        for (const variant of (allItems || [])) {
+                            const templateCode = variant.variant_of || "";
+                            if (!templateCode || !relevantTemplateCodes.has(templateCode)) continue;
+                            if (cint(variant.disabled || 0)) continue;
+                            if (!cint(variant.is_sales_item === undefined ? 1 : variant.is_sales_item)) continue;
+                            variantCounts[templateCode] = cint(variantCounts[templateCode] || 0) + 1;
+                        }
+                    }
+                } else {
+                    const metadata = await this.wmn_get_online_variant_metadata(rows);
+                    variantMap = metadata.variants || {};
+                    templateMap = metadata.templates || {};
+                    uomCounts = metadata.uom_counts || {};
+                    variantCounts = metadata.variant_counts || {};
+                }
+
+                rows.forEach(row => {
+                    row.__wmn_uom_count = cint(uomCounts[row.item_code] || 0);
+                    row.__wmn_multi_uom = row.__wmn_uom_count > 1 ? 1 : 0;
+                });
+
+                const grouped = [];
+                const byTemplate = new Map();
+                const seenStandaloneItems = new Set();
+
+                for (const row of rows) {
+                    const templateCode = row.variant_of || variantMap[row.item_code] || "";
+
+                    if (cint(row.has_variants || 0) && !templateCode) {
+                        if (!byTemplate.has(row.item_code)) {
+                            const templateRow = Object.assign({}, row, {
+                                __wmn_variant_template: 1,
+                                __wmn_variant_count: cint(variantCounts[row.item_code] || 0),
+                                __wmn_uom_count: 0,
+                                __wmn_multi_uom: 0,
+                                is_stock_item: 0,
+                                actual_qty: 0,
+                            });
+                            byTemplate.set(row.item_code, templateRow);
+                            grouped.push(templateRow);
+                        }
+                        continue;
+                    }
+
+                    if (!templateCode) {
+                        const standaloneKey = String(row.item_code || row.name || "").trim();
+
+                        if (standaloneKey && seenStandaloneItems.has(standaloneKey)) {
+                            continue;
+                        }
+
+                        if (standaloneKey) {
+                            seenStandaloneItems.add(standaloneKey);
+                        }
+
+                        grouped.push(row);
+                        continue;
+                    }
+
+                    if (byTemplate.has(templateCode)) {
+                        continue;
+                    }
+
+                    const template = templateMap[templateCode] || {};
+                    const templateRow = Object.assign({}, row, template, {
+                        item_code: templateCode,
+                        name: templateCode,
+                        item_name: template.item_name || templateCode,
+                        item_group: template.item_group || row.item_group || "",
+                        item_image: template.item_image || template.image || row.item_image || row.image || "",
+                        image: template.image || template.item_image || row.image || row.item_image || "",
+                        description: template.description || row.description || "",
+                        stock_uom: template.stock_uom || row.stock_uom || row.uom || "",
+                        uom: template.stock_uom || row.stock_uom || row.uom || "",
+                        variant_of: "",
+                        has_variants: 1,
+                        is_stock_item: 0,
+                        actual_qty: 0,
+                        __wmn_variant_template: 1,
+                        __wmn_variant_count: Math.max(1, cint(variantCounts[templateCode] || 0)),
+                        __wmn_uom_count: 0,
+                        __wmn_multi_uom: 0,
+                    });
+                    byTemplate.set(templateCode, templateRow);
+                    grouped.push(templateRow);
+                }
+
+                return grouped;
+            }
+
+            wmn_is_direct_search_result(items, search_term, message) {
+                if (message && (message.barcode || message.serial_no || message.batch_no)) return true;
+                const rows = Array.isArray(items) ? items : [];
+                if (!search_term || rows.length !== 1) return false;
+
+                const term = String(search_term || "").trim().toLowerCase();
+                const row = rows[0] || {};
+                return [row.barcode, row.serial_no, row.batch_no]
+                    .filter(Boolean)
+                    .some(value => String(value).trim().toLowerCase() === term);
+            }
+
             get_items({ start = 0, page_length = 40, search_term = "" } = {}) {
                 if (!this.wmn_is_offline()) {
-                    // Online must return ERPNext original frappe.call/jqXHR object.
-                    return super.get_items({ start, page_length, search_term });
+                    const originalCall = super.get_items({ start, page_length, search_term });
+                    const promise = Promise.resolve(originalCall).then(async response => {
+                        const message = response?.message || {};
+                        const items = Array.isArray(message.items) ? message.items : [];
+                        const directSearch = this.wmn_is_direct_search_result(items, search_term, message);
+                        message.items = await this.wmn_prepare_items_for_display(items, {
+                            direct_search: directSearch,
+                        });
+                        if (directSearch) {
+                            message.items = message.items.map(item => Object.assign({}, item, {
+                                __wmn_direct_selection: 1,
+                                __wmn_skip_uom_dialog: Boolean(item.uom),
+                            }));
+                        }
+                        response.message = message;
+                        return response;
+                    });
+                    return wmn_as_frappe_call_like(promise);
                 }
 
                 if (!window.wmnPOSOffline) {
@@ -353,11 +686,23 @@
                         price_list,
                         item_group,
                     })
-                    .then((items) => ({
-                        message: {
-                            items: items || [],
-                        },
-                    }));
+                    .then(async items => {
+                        const directSearch = this.wmn_is_direct_search_result(items, search_term, {});
+                        let prepared = await this.wmn_prepare_items_for_display(items, {
+                            direct_search: directSearch,
+                        });
+                        if (directSearch) {
+                            prepared = prepared.map(item => Object.assign({}, item, {
+                                __wmn_direct_selection: 1,
+                                __wmn_skip_uom_dialog: Boolean(item.uom),
+                            }));
+                        }
+                        return {
+                            message: {
+                                items: prepared || [],
+                            },
+                        };
+                    });
 
                 return wmn_as_frappe_call_like(promise);
             }
@@ -489,7 +834,8 @@
                     const price = await wmn_find_price_offline(
                         item.item_code,
                         priceList,
-                        uom
+                        uom,
+                        res.batch_no || ""
                     );
 
                     return Object.assign({}, item, {
@@ -655,6 +1001,403 @@
             
             
             
+            async wmn_get_variant_choices(templateItem) {
+                const context = await this.wmn_get_item_selection_context();
+                const templateCode = templateItem?.item_code || "";
+                if (!templateCode) return [];
+
+                if (!this.wmn_is_offline()) {
+                    const response = await frappe.call({
+                        method: "wmn.api.get_pos_item_variants",
+                        args: {
+                            template_code: templateCode,
+                            price_list: context.price_list,
+                            warehouse: context.warehouse,
+                            pos_profile: context.pos_profile,
+                        },
+                        freeze: false,
+                    });
+                    return Array.isArray(response?.message) ? response.message : [];
+                }
+
+                if (!window.wmnPOSOffline) return [];
+
+                const allItems = await window.wmnPOSOffline.getAll(window.wmnPOSOffline.STORES.items);
+                const variants = (allItems || []).filter(row =>
+                    String(row.variant_of || "") === String(templateCode) &&
+                    !cint(row.disabled || 0) &&
+                    cint(row.is_sales_item === undefined ? 1 : row.is_sales_item)
+                );
+                const settings = await this.wmn_get_cached_pos_settings();
+                const hideUnavailable = cint(
+                    settings.hide_unavailable_items ||
+                    settings.hide_out_of_stock_items ||
+                    settings.only_show_available_items ||
+                    settings.show_items_in_stock_only ||
+                    0
+                );
+
+                const result = [];
+                for (const variant of variants) {
+                    const hasBatch = cint(variant.has_batch_no || 0) === 1;
+                    const uomOptions = hasBatch ? [] : await this.wmn_get_uom_choices(variant);
+                    const preferred =
+                        uomOptions.find(row => row.uom === variant.sales_uom) ||
+                        uomOptions.find(row => row.uom === variant.stock_uom) ||
+                        uomOptions[0] || {
+                            uom: variant.sales_uom || variant.stock_uom || variant.uom || "",
+                            price_list_rate: 0,
+                            currency: context.currency || "",
+                            conversion_factor: 1,
+                        };
+                    const stock = context.warehouse
+                        ? await window.wmnPOSOffline.getStock(variant.item_code, context.warehouse)
+                        : null;
+                    const actualQty = flt(stock?.actual_qty || variant.actual_qty || 0);
+
+                    let selectionDisabled = 0;
+                    let selectionReason = "";
+                    if (!uomOptions.length && !hasBatch) {
+                        selectionDisabled = 1;
+                        selectionReason = __("No active price is available in the selected Price List");
+                    } else if (hideUnavailable && cint(variant.is_stock_item || 0) && actualQty <= 0) {
+                        selectionDisabled = 1;
+                        selectionReason = __("Out of stock");
+                    }
+
+                    result.push(Object.assign({}, variant, {
+                        actual_qty: actualQty,
+                        warehouse: context.warehouse || variant.warehouse || "",
+                        uom: preferred.uom || variant.stock_uom || "",
+                        price_list_rate: flt(preferred.price_list_rate || 0),
+                        rate: flt(preferred.price_list_rate || 0),
+                        currency: preferred.currency || context.currency || "",
+                        conversion_factor: flt(preferred.conversion_factor || 1),
+                        uom_options: uomOptions,
+                        __wmn_uom_deferred_until_batch: hasBatch ? 1 : 0,
+                        __wmn_selection_disabled: selectionDisabled,
+                        __wmn_selection_reason: selectionReason,
+                    }));
+                }
+                return result;
+            }
+
+            async wmn_get_uom_choices(item) {
+                if (!item?.item_code) return [];
+                if (Array.isArray(item.uom_options) && item.uom_options.length) {
+                    return item.uom_options.map(row => Object.assign({}, row));
+                }
+
+                const context = await this.wmn_get_item_selection_context();
+
+                if (!this.wmn_is_offline()) {
+                    const response = await frappe.call({
+                        method: "wmn.api.get_pos_item_uoms",
+                        args: {
+                            item_code: item.item_code,
+                            price_list: context.price_list,
+                            batch_no: item.batch_no || "",
+                        },
+                        freeze: false,
+                    });
+                    return Array.isArray(response?.message) ? response.message : [];
+                }
+
+                if (!window.wmnPOSOffline) return [];
+
+                const prices = await window.wmnPOSOffline.getAll(window.wmnPOSOffline.STORES.item_prices);
+                const conversions = Array.isArray(item.uom_conversions) ? item.uom_conversions : [];
+                const conversionMap = {};
+                conversions.forEach(row => {
+                    if (row?.uom) conversionMap[row.uom] = flt(row.conversion_factor || 1);
+                });
+                if (item.stock_uom) conversionMap[item.stock_uom] = conversionMap[item.stock_uom] || 1;
+
+                const today = frappe.datetime.get_today();
+                const selectedBatch = String(item.batch_no || "").trim();
+                const byUom = new Map();
+
+                const dateValue = value => String(value || "").slice(0, 10);
+                const isActive = row => {
+                    const validFrom = dateValue(row.valid_from);
+                    const validUpto = dateValue(row.valid_upto);
+                    if (validFrom && validFrom > today) return false;
+                    if (validUpto && validUpto < today) return false;
+                    return true;
+                };
+                const rowRank = row => {
+                    const rowBatch = String(row.batch_no || "").trim();
+                    const batchRank = selectedBatch && rowBatch === selectedBatch ? 2 : 1;
+                    return [
+                        batchRank,
+                        dateValue(row.valid_from) || "0000-00-00",
+                        String(row.modified || ""),
+                    ];
+                };
+                const isBetter = (candidateRow, existingRow) => {
+                    if (!existingRow) return true;
+                    const a = rowRank(candidateRow);
+                    const b = rowRank(existingRow);
+                    if (a[0] !== b[0]) return a[0] > b[0];
+                    if (a[1] !== b[1]) return a[1] > b[1];
+                    return a[2] > b[2];
+                };
+
+                (prices || []).forEach(row => {
+                    if (row.item_code !== item.item_code) return;
+                    if (context.price_list && row.price_list !== context.price_list) return;
+                    if (row.selling !== undefined && !cint(row.selling || 0)) return;
+                    if (!isActive(row)) return;
+
+                    const rowBatch = String(row.batch_no || "").trim();
+                    if (selectedBatch) {
+                        if (rowBatch && rowBatch !== selectedBatch) return;
+                    } else if (rowBatch) {
+                        return;
+                    }
+
+                    const uom = row.uom || item.stock_uom || item.uom || "";
+                    if (!uom) return;
+
+                    const existing = byUom.get(uom);
+                    if (!existing || isBetter(row, existing.__wmn_source_row)) {
+                        byUom.set(uom, {
+                            uom,
+                            price_list_rate: flt(row.price_list_rate || 0),
+                            currency: row.currency || context.currency || "",
+                            conversion_factor: flt(conversionMap[uom] || 1),
+                            batch_no: rowBatch,
+                            valid_from: row.valid_from || "",
+                            valid_upto: row.valid_upto || "",
+                            __wmn_source_row: row,
+                        });
+                    }
+                });
+
+                byUom.forEach(value => {
+                    delete value.__wmn_source_row;
+                });
+
+                if (!byUom.size && (item.uom || item.stock_uom)) {
+                    const uom = item.uom || item.stock_uom;
+                    byUom.set(uom, {
+                        uom,
+                        price_list_rate: flt(item.price_list_rate || item.rate || 0),
+                        currency: item.currency || context.currency || "",
+                        conversion_factor: flt(conversionMap[uom] || 1),
+                        batch_no: "",
+                    });
+                }
+
+                return Array.from(byUom.values());
+            }
+
+            wmn_show_choice_dialog({ title, rows, html }) {
+                return new Promise(resolve => {
+                    const dialog = new frappe.ui.Dialog({
+                        title,
+                        fields: [{ fieldtype: "HTML", fieldname: "wmn_choices" }],
+                    });
+                    let settled = false;
+
+                    const finish = value => {
+                        if (settled) return;
+                        settled = true;
+                        dialog.hide();
+                        resolve(value);
+                    };
+
+                    dialog.fields_dict.wmn_choices.$wrapper.html(html);
+                    dialog.$wrapper
+                        .off("click.wmnPosChoice", ".wmn-pos-choice-card")
+                        .on("click.wmnPosChoice", ".wmn-pos-choice-card", event => {
+                            event.preventDefault();
+                            const index = cint($(event.currentTarget).attr("data-index") || -1);
+                            if (index >= 0 && rows[index] && !cint(rows[index].__wmn_selection_disabled || 0)) {
+                                finish(rows[index]);
+                            }
+                        });
+                    dialog.$wrapper.one("hidden.bs.modal.wmnPosChoice", () => {
+                        if (!settled) {
+                            settled = true;
+                            resolve(null);
+                        }
+                    });
+                    dialog.show();
+                });
+            }
+
+            async wmn_choose_variant(templateItem) {
+                const variants = await this.wmn_get_variant_choices(templateItem);
+                if (!variants.length) {
+                    frappe.show_alert({
+                        message: __("No available variants were found for this item."),
+                        indicator: "orange",
+                    });
+                    return null;
+                }
+                if (variants.length === 1) {
+                    if (cint(variants[0].__wmn_selection_disabled || 0)) {
+                        frappe.show_alert({
+                            message: variants[0].__wmn_selection_reason || __("This variant is not available for sale."),
+                            indicator: "orange",
+                        });
+                        return null;
+                    }
+                    return variants[0];
+                }
+
+                const context = await this.wmn_get_item_selection_context();
+                const html = `<div class="wmn-pos-choice-list wmn-variant-choice-list">
+                    ${variants.map((variant, index) => {
+                        const attrs = (variant.variant_attributes || [])
+                            .map(row => `<span>${frappe.utils.escape_html(row.attribute || "")}: <strong>${frappe.utils.escape_html(row.attribute_value || "")}</strong></span>`)
+                            .join("");
+                        const price = format_currency(
+                            flt(variant.price_list_rate || variant.rate || 0),
+                            variant.currency || context.currency || ""
+                        );
+                        const stock = cint(variant.is_stock_item || 0)
+                            ? `<span class="wmn-choice-stock">${__("Stock")}: ${flt(variant.actual_qty || 0)}</span>`
+                            : "";
+                        const disabled = cint(variant.__wmn_selection_disabled || 0);
+                        const reason = variant.__wmn_selection_reason
+                            ? `<span class="wmn-choice-unavailable">${frappe.utils.escape_html(variant.__wmn_selection_reason)}</span>`
+                            : "";
+                        return `<button type="button" class="wmn-pos-choice-card${disabled ? " is-disabled" : ""}" data-index="${index}" ${disabled ? "disabled" : ""}>
+                            <span class="wmn-choice-title">${frappe.utils.escape_html(variant.item_name || variant.item_code)}</span>
+                            <span class="wmn-choice-code">${frappe.utils.escape_html(variant.item_code || "")}</span>
+                            ${attrs ? `<span class="wmn-choice-attributes">${attrs}</span>` : ""}
+                            ${reason}
+                            <span class="wmn-choice-footer"><strong>${price}</strong>${stock}</span>
+                        </button>`;
+                    }).join("")}
+                </div>`;
+
+                return this.wmn_show_choice_dialog({
+                    title: __("Select Variant"),
+                    rows: variants,
+                    html,
+                });
+            }
+
+            async wmn_choose_uom(item) {
+                if (!item) return null;
+                if (item.__wmn_skip_uom_dialog) return item;
+
+                const options = await this.wmn_get_uom_choices(item);
+                if (!options.length) {
+                    if (cint(item.has_batch_no || 0) && item.batch_no) {
+                        frappe.show_alert({
+                            message: __("No active price is available for the selected batch."),
+                            indicator: "orange",
+                        });
+                        return null;
+                    }
+                    return item;
+                }
+
+                const applyOption = option => Object.assign({}, item, {
+                    uom: option.uom || item.uom || item.stock_uom || "",
+                    price_list_rate: flt(option.price_list_rate || 0),
+                    rate: flt(option.price_list_rate || 0),
+                    currency: option.currency || item.currency || "",
+                    conversion_factor: flt(option.conversion_factor || 1),
+                    __wmn_uom_selected: 1,
+                });
+
+                if (options.length === 1) return applyOption(options[0]);
+
+                const context = await this.wmn_get_item_selection_context();
+                const html = `<div class="wmn-pos-choice-list wmn-uom-choice-list">
+                    ${options.map((option, index) => {
+                        const conversion = flt(option.conversion_factor || 1);
+                        const conversionText = item.stock_uom && option.uom !== item.stock_uom
+                            ? `<span class="wmn-choice-conversion">1 ${frappe.utils.escape_html(option.uom)} = ${conversion} ${frappe.utils.escape_html(item.stock_uom)}</span>`
+                            : `<span class="wmn-choice-conversion">${__("Stock UOM")}: ${frappe.utils.escape_html(item.stock_uom || option.uom || "")}</span>`;
+                        return `<button type="button" class="wmn-pos-choice-card" data-index="${index}">
+                            <span class="wmn-choice-title">${frappe.utils.escape_html(option.uom || "")}</span>
+                            ${conversionText}
+                            <span class="wmn-choice-footer"><strong>${format_currency(flt(option.price_list_rate || 0), option.currency || context.currency || "")}</strong></span>
+                        </button>`;
+                    }).join("")}
+                </div>`;
+
+                const selected = await this.wmn_show_choice_dialog({
+                    title: __("Select UOM"),
+                    rows: options,
+                    html,
+                });
+                return selected ? applyOption(selected) : null;
+            }
+
+            async wmn_handle_item_wrapper_click($item) {
+                const itemCode = unescape($item.attr("data-item-code"));
+                let item = (this.items || []).find(row => row && row.item_code === itemCode) || null;
+
+                if (!item) {
+                    let batch_no = unescape($item.attr("data-batch-no"));
+                    let serial_no = unescape($item.attr("data-serial-no"));
+                    let uom = unescape($item.attr("data-uom"));
+                    let rate = unescape($item.attr("data-rate"));
+                    let stock_uom = unescape($item.attr("data-stock-uom"));
+                    batch_no = batch_no === "undefined" ? undefined : batch_no;
+                    serial_no = serial_no === "undefined" ? undefined : serial_no;
+                    uom = uom === "undefined" ? undefined : uom;
+                    rate = rate === "undefined" ? undefined : rate;
+                    stock_uom = stock_uom === "undefined" ? undefined : stock_uom;
+                    item = { item_code: itemCode, batch_no, serial_no, uom, rate, price_list_rate: rate, stock_uom };
+                }
+
+                let selectedItem = item;
+                if (cint(item.__wmn_variant_template || 0)) {
+                    selectedItem = await this.wmn_choose_variant(item);
+                    if (!selectedItem) return;
+                }
+
+                selectedItem = await this.wmn_enrich_item_tracking_meta(selectedItem);
+
+                const hasBatch = cint(selectedItem.has_batch_no || 0) === 1;
+
+                if (hasBatch && !selectedItem.batch_no) {
+                    selectedItem = Object.assign({}, selectedItem, {
+                        __wmn_defer_uom_until_batch: 1,
+                        __wmn_skip_item_details_for_batch_flow: 1,
+                    });
+                } else {
+                    selectedItem = await this.wmn_choose_uom(selectedItem);
+                    if (!selectedItem) return;
+                }
+
+                this.events.item_selected({
+                    field: "qty",
+                    value: "+1",
+                    item: selectedItem,
+                });
+
+                if (this.search_field && typeof this.search_field.set_focus === "function") {
+                    this.search_field.set_focus();
+                }
+            }
+
+            bind_events() {
+                super.bind_events();
+                this.$component.off("click", ".item-wrapper");
+                this.$component
+                    .off("click.wmnItemSelection", ".item-wrapper")
+                    .on("click.wmnItemSelection", ".item-wrapper", event => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        this.wmn_handle_item_wrapper_click($(event.currentTarget)).catch(error => {
+                            console.error("WMN item selection failed", error);
+                            frappe.show_alert({
+                                message: error?.message || __("Unable to select item."),
+                                indicator: "red",
+                            });
+                        });
+                    });
+            }
+
             render_item_list(items) {
                 super.render_item_list(items);
 

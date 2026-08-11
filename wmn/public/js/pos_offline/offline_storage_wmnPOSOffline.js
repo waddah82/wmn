@@ -350,6 +350,18 @@ wmn_install_pos_pwa_app_css();
                 });
             }
 
+            async function replaceAll(storeName, rows) {
+                const db = await openDB();
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction(storeName, "readwrite");
+                    const store = tx.objectStore(storeName);
+                    store.clear();
+                    (rows || []).forEach(row => row && store.put(row));
+                    tx.oncomplete = () => resolve(true);
+                    tx.onerror = () => reject(tx.error);
+                });
+            }
+
             async function getAll(storeName) {
                 const db = await openDB();
                 return new Promise((resolve, reject) => {
@@ -545,14 +557,32 @@ wmn_install_pos_pwa_app_css();
                 const itemCode = row.item_code || row.name;
                 const priceList = row.price_list || "";
                 const uom = row.uom || "";
+                const batchNo = row.batch_no || "";
+                const validFrom = row.valid_from || "";
+                const validUpto = row.valid_upto || "";
+                const sourceName = row.name || "";
+                const modified = row.modified || "";
                 return {
-                    key: `${priceList}::${itemCode}::${uom}`,
+                    key: [
+                        priceList,
+                        itemCode,
+                        uom,
+                        batchNo,
+                        validFrom,
+                        validUpto,
+                        sourceName || modified || String(row.price_list_rate || row.rate || 0),
+                    ].join("::"),
+                    name: sourceName,
                     item_code: itemCode,
                     price_list: priceList,
                     price_list_rate: flt(row.price_list_rate || row.rate || 0),
                     currency: row.currency || "",
                     uom: uom,
-                    modified: row.modified || "",
+                    batch_no: batchNo,
+                    selling: row.selling === undefined ? 1 : cint(row.selling || 0),
+                    valid_from: validFrom,
+                    valid_upto: validUpto,
+                    modified: modified,
                 };
             }
 
@@ -906,7 +936,7 @@ wmn_install_pos_pwa_app_css();
 
                     await bulkPut(STORES.items, items);
                     await bulkPut(STORES.barcode_structures, barcodeStructures);
-                    await bulkPut(STORES.item_prices, prices);
+                    await replaceAll(STORES.item_prices, prices);
                     await bulkPut(STORES.customers, customers);
                     await bulkPut(STORES.stock, stock);
                     await bulkPut(STORES.batches, batches);
@@ -1043,15 +1073,50 @@ wmn_install_pos_pwa_app_css();
                 );
             }
 
-            function getPriceForItem(prices, itemCode, priceList, uom) {
-                return (prices || []).find(p =>
-                    p.item_code === itemCode &&
-                    (!priceList || p.price_list === priceList) &&
-                    (!uom || !p.uom || p.uom === uom)
-                ) || (prices || []).find(p =>
-                    p.item_code === itemCode &&
-                    (!priceList || p.price_list === priceList)
-                ) || null;
+            function getPriceForItem(prices, itemCode, priceList, uom, batchNo = "") {
+                const today = frappe.datetime.get_today();
+                const selectedBatch = String(batchNo || "").trim();
+                const selectedUom = String(uom || "").trim();
+                const dateValue = value => String(value || "").slice(0, 10);
+
+                const candidates = (prices || []).filter(p => {
+                    if (p.item_code !== itemCode) return false;
+                    if (priceList && p.price_list !== priceList) return false;
+                    if (p.selling !== undefined && !cint(p.selling || 0)) return false;
+
+                    const validFrom = dateValue(p.valid_from);
+                    const validUpto = dateValue(p.valid_upto);
+                    if (validFrom && validFrom > today) return false;
+                    if (validUpto && validUpto < today) return false;
+
+                    const rowBatch = String(p.batch_no || "").trim();
+                    if (selectedBatch) {
+                        if (rowBatch && rowBatch !== selectedBatch) return false;
+                    } else if (rowBatch) {
+                        return false;
+                    }
+
+                    if (selectedUom && p.uom && p.uom !== selectedUom) return false;
+                    return true;
+                });
+
+                candidates.sort((a, b) => {
+                    const aBatch = selectedBatch && String(a.batch_no || "").trim() === selectedBatch ? 2 : 1;
+                    const bBatch = selectedBatch && String(b.batch_no || "").trim() === selectedBatch ? 2 : 1;
+                    if (aBatch !== bBatch) return bBatch - aBatch;
+
+                    const aUom = selectedUom && String(a.uom || "") === selectedUom ? 2 : 1;
+                    const bUom = selectedUom && String(b.uom || "") === selectedUom ? 2 : 1;
+                    if (aUom !== bUom) return bUom - aUom;
+
+                    const aFrom = dateValue(a.valid_from) || "0000-00-00";
+                    const bFrom = dateValue(b.valid_from) || "0000-00-00";
+                    if (aFrom !== bFrom) return bFrom.localeCompare(aFrom);
+
+                    return String(b.modified || "").localeCompare(String(a.modified || ""));
+                });
+
+                return candidates[0] || null;
             }
 
             function getStockForItem(stockRows, itemCode, warehouse) {
@@ -1087,7 +1152,8 @@ wmn_install_pos_pwa_app_css();
 
                 if (ctx.priceList) {
                     const hasRateOnItem = flt(row.price_list_rate || row.rate || 0) > 0;
-                    if (!price && !hasRateOnItem) return false;
+                    const canResolveAfterBatch = cint(row.has_batch_no || 0) === 1;
+                    if (!price && !hasRateOnItem && !canResolveAfterBatch) return false;
                 }
 
                 if (profileRequiresAvailableStock(ctx.profile)) {
@@ -1553,6 +1619,9 @@ wmn_install_pos_pwa_app_css();
                             freeze: false,
                         });
                         const result = r.message || {};
+                        if (cint(result.docstatus || 0) !== 1) {
+                            throw new Error("Server invoice was not submitted");
+                        }
                         row.status = "synced";
                         row.synced_at = new Date().toISOString();
                         row.erpnext_name = result.name || result.erpnext_name || "";

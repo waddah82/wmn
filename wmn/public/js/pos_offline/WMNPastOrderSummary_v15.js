@@ -49,7 +49,180 @@
 
         load_summary_of(doc, after_submission = false) {
             this.after_submission = after_submission;
-            return super.load_summary_of(doc, after_submission);
+            const result = super.load_summary_of(doc, after_submission);
+            this.wmn_render_add_payment_button(doc, after_submission);
+            return result;
+        }
+
+        bind_events() {
+            super.bind_events();
+            this.$summary_container.on("click", ".wmn-add-payment-btn", async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                await this.wmn_open_add_payment_dialog();
+            });
+        }
+
+        wmn_render_add_payment_button(doc, after_submission = false) {
+            this.$summary_btns.find(".wmn-add-payment-btn").remove();
+
+            if (after_submission) return;
+            if (wmn_summary_is_offline()) return;
+            if (!doc || doc.doctype !== "Sales Invoice") return;
+            if (cint(doc.docstatus || 0) !== 1) return;
+            if (cint(doc.is_return || 0) === 1) return;
+            if (flt(doc.outstanding_amount || 0) <= 0) return;
+
+            this.$summary_btns.append(
+                `<div class="summary-btn btn btn-default wmn-add-payment-btn">${__("Add Payment")}</div>`
+            );
+        }
+
+        async wmn_open_add_payment_dialog() {
+            const doc = this.doc || {};
+            if (!doc.name || doc.doctype !== "Sales Invoice") return;
+            if (wmn_summary_is_offline()) {
+                frappe.show_alert({ message: __("Payment Entry is not available while offline."), indicator: "orange" });
+                return;
+            }
+
+            frappe.dom.freeze(__("Loading payment details..."));
+            let context;
+
+            try {
+                const response = await frappe.call({
+                    method: "wmn.api.get_sales_invoice_payment_context",
+                    args: { invoice_name: doc.name },
+                    freeze: false,
+                });
+                context = (response && response.message) || {};
+            } finally {
+                frappe.dom.unfreeze();
+            }
+
+            const methods = (context.payment_methods || []).filter((row) => row && row.mode_of_payment && row.account);
+            if (!methods.length) {
+                frappe.msgprint({
+                    title: __("Add Payment"),
+                    indicator: "orange",
+                    message: __("No POS Profile payment method with an account is available."),
+                });
+                return;
+            }
+
+            const defaultMethod = methods.find((row) => cint(row.default || 0) === 1) || methods[0];
+            const outstandingAmount = flt(context.outstanding_amount || 0);
+            const currency = context.currency || doc.currency || "";
+
+            const dialog = new frappe.ui.Dialog({
+                title: __("Add Payment"),
+                fields: [
+                    {
+                        fieldname: "invoice_name",
+                        fieldtype: "Data",
+                        label: __("Sales Invoice"),
+                        default: context.name,
+                        read_only: 1,
+                    },
+                    {
+                        fieldname: "customer_name",
+                        fieldtype: "Data",
+                        label: __("Customer"),
+                        default: context.customer_name || context.customer,
+                        read_only: 1,
+                    },
+                    {
+                        fieldname: "outstanding_amount",
+                        fieldtype: "Currency",
+                        label: __("Outstanding Amount"),
+                        default: outstandingAmount,
+                        read_only: 1,
+                    },
+                    {
+                        fieldname: "mode_of_payment",
+                        fieldtype: "Select",
+                        label: __("Mode of Payment"),
+                        options: methods.map((row) => row.mode_of_payment).join("\n"),
+                        default: defaultMethod.mode_of_payment,
+                        reqd: 1,
+                    },
+                    {
+                        fieldname: "amount",
+                        fieldtype: "Currency",
+                        label: __("Payment Amount"),
+                        default: outstandingAmount,
+                        reqd: 1,
+                        description: currency ? __("Currency: {0}", [currency]) : "",
+                    },
+                    {
+                        fieldname: "reference_no",
+                        fieldtype: "Data",
+                        label: __("Reference No"),
+                        default: context.name,
+                    },
+                    {
+                        fieldname: "reference_date",
+                        fieldtype: "Date",
+                        label: __("Reference Date"),
+                        default: frappe.datetime.get_today(),
+                    },
+                ],
+                primary_action_label: __("Add Payment"),
+                primary_action: async (values) => {
+                    const amount = flt(values.amount || 0);
+                    if (amount <= 0) {
+                        frappe.show_alert({ message: __("Payment amount must be greater than zero."), indicator: "orange" });
+                        return;
+                    }
+                    if (amount > outstandingAmount) {
+                        frappe.show_alert({
+                            message: __("Payment amount cannot exceed outstanding amount {0}.", [format_currency(outstandingAmount, currency)]),
+                            indicator: "orange",
+                        });
+                        return;
+                    }
+
+                    dialog.get_primary_btn().prop("disabled", true);
+                    frappe.dom.freeze(__("Adding payment..."));
+
+                    try {
+                        const response = await frappe.call({
+                            method: "wmn.api.add_payment_to_sales_invoice",
+                            args: {
+                                invoice_name: context.name,
+                                amount,
+                                mode_of_payment: values.mode_of_payment,
+                                reference_no: values.reference_no || context.name,
+                                reference_date: values.reference_date || frappe.datetime.get_today(),
+                            },
+                            freeze: false,
+                        });
+
+                        const result = (response && response.message) || {};
+                        dialog.hide();
+
+                        const freshDoc = await frappe.db.get_doc("Sales Invoice", context.name);
+                        this.load_summary_of(freshDoc, false);
+
+                        if (window.cur_pos && cur_pos.recent_order_list && cur_pos.recent_order_list.refresh_list) {
+                            await cur_pos.recent_order_list.refresh_list();
+                        }
+
+                        frappe.show_alert({
+                            message: __("Payment Entry {0} created successfully", [result.payment_entry || ""]),
+                            indicator: "green",
+                        });
+                    } catch (e) {
+                        console.error("WMN add payment failed", e);
+                        dialog.get_primary_btn().prop("disabled", false);
+                        throw e;
+                    } finally {
+                        frappe.dom.unfreeze();
+                    }
+                },
+            });
+
+            dialog.show();
         }
 
         get_condition_btn_map(after_submission) {

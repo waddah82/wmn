@@ -163,35 +163,9 @@
             window.__wmn_pos_offline_doctype_script_guard_installed = true;
         }
 
-        function wmn_emit_pos_connectivity_status(is_online, reason) {
-            window.__wmn_pos_server_online = is_online === true;
-            try {
-                window.dispatchEvent(new CustomEvent("wmn:pos-connectivity-status", {
-                    detail: {
-                        online: is_online === true,
-                        reason: reason || ""
-                    }
-                }));
-            } catch (e) {}
-        }
-
-        function wmn_notify_offline_queue_changed() {
-            try {
-                window.dispatchEvent(new CustomEvent("wmn:pos-offline-queue-changed"));
-            } catch (e) {}
-        }
-
-        window.wmn_notify_offline_queue_changed = wmn_notify_offline_queue_changed;
-
         function wmn_set_pos_effective_offline(reason) {
             window.__wmn_pos_effective_offline = true;
-            wmn_emit_pos_connectivity_status(false, reason || "effective offline");
             console.warn("WMN 15.27 OFFLINE:", reason || "effective offline");
-        }
-
-        function wmn_set_pos_effective_online(reason) {
-            window.__wmn_pos_effective_offline = false;
-            wmn_emit_pos_connectivity_status(true, reason || "health check ok");
         }
 
         function wmn_is_network_failure_text(value) {
@@ -267,7 +241,7 @@
                     return true;
                 }
 
-                wmn_set_pos_effective_online("wmn.api.pos_health_check ok");
+                window.__wmn_pos_effective_offline = false;
                 return false;
             } catch (e) {
                 clearTimeout(timer);
@@ -275,8 +249,6 @@
                 return true;
             }
         }
-
-        window.wmn_check_pos_server_connection = wmn_bootstrap_detect_effective_offline;
 
         function wmn_pos_cart_has_items() {
             const doc = window.cur_pos && window.cur_pos.frm && window.cur_pos.frm.doc ? window.cur_pos.frm.doc : null;
@@ -366,26 +338,6 @@
             });
         }
 
-        async function wmn_is_partial_payment_allowed(ctrl) {
-            if (typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline()) {
-                const cached = window.wmnPOSOffline && window.wmnPOSOffline.getSetting
-                    ? await window.wmnPOSOffline.getSetting("full_settings")
-                    : null;
-
-                if (cached && Object.prototype.hasOwnProperty.call(cached, "allow_partial_payment")) {
-                    return cint(cached.allow_partial_payment || 0) === 1;
-                }
-            }
-
-            const live = (ctrl && ctrl.settings) || (window.cur_pos && window.cur_pos.settings) || {};
-            if (Object.prototype.hasOwnProperty.call(live, "allow_partial_payment")) {
-                return cint(live.allow_partial_payment || 0) === 1;
-            }
-
-            const saved = await wmn_get_offline_settings();
-            return cint((saved && saved.allow_partial_payment) || 0) === 1;
-        }
-
         function wmn_current_doc_is_offline_pos() {
             const doc = window.cur_pos && window.cur_pos.frm && window.cur_pos.frm.doc ? window.cur_pos.frm.doc : null;
             return !!(doc && (doc.__offline_pos || doc.offline_pos || String(doc.name || "").startsWith("OFFLINE-")));
@@ -413,27 +365,22 @@
 
         function wmn_pos_runtime_state() {
             const in_pos_page = wmn_pos_is_page();
-            const browser_offline = navigator.onLine === false;
             const effective_offline = window.__wmn_pos_effective_offline === true;
-
             return {
                 in_pos_page,
-                browser_offline,
+                browser_offline: false,
                 forced_offline: false,
                 effective_offline,
-                offline_doc: effective_offline || browser_offline,
+                offline_doc: effective_offline,
                 has_offline_db: !!window.wmnPOSOffline,
-                is_offline: !!(in_pos_page && (effective_offline || browser_offline))
+                is_offline: !!(in_pos_page && effective_offline)
             };
         }
 
         window.__wmn_pos_effective_offline = window.__wmn_pos_effective_offline === true;
 
         window.wmn_is_pos_offline = function () {
-            return (
-                window.__wmn_pos_effective_offline === true ||
-                navigator.onLine === false
-            );
+            return window.__wmn_pos_effective_offline === true;
         };
 
         function wmn_is_pos_offline() {
@@ -459,52 +406,17 @@
             }
         }
 
-        async function wmn_find_price_offline(item_code, price_list, uom, batch_no = "") {
+        async function wmn_find_price_offline(item_code, price_list, uom) {
             try {
                 const rows = await window.wmnPOSOffline.getAll(window.wmnPOSOffline.STORES.item_prices);
-                const today = frappe.datetime.get_today();
-                const selectedBatch = String(batch_no || "").trim();
-                const selectedUom = String(uom || "").trim();
-                const dateValue = value => String(value || "").slice(0, 10);
-
-                const candidates = (rows || []).filter(p => {
-                    if (p.item_code !== item_code) return false;
-                    if (price_list && p.price_list !== price_list) return false;
-                    if (p.selling !== undefined && !cint(p.selling || 0)) return false;
-
-                    const validFrom = dateValue(p.valid_from);
-                    const validUpto = dateValue(p.valid_upto);
-                    if (validFrom && validFrom > today) return false;
-                    if (validUpto && validUpto < today) return false;
-
-                    const rowBatch = String(p.batch_no || "").trim();
-                    if (selectedBatch) {
-                        if (rowBatch && rowBatch !== selectedBatch) return false;
-                    } else if (rowBatch) {
-                        return false;
-                    }
-
-                    if (selectedUom && p.uom && p.uom !== selectedUom) return false;
-                    return true;
-                });
-
-                candidates.sort((a, b) => {
-                    const aBatch = selectedBatch && String(a.batch_no || "").trim() === selectedBatch ? 2 : 1;
-                    const bBatch = selectedBatch && String(b.batch_no || "").trim() === selectedBatch ? 2 : 1;
-                    if (aBatch !== bBatch) return bBatch - aBatch;
-
-                    const aUom = selectedUom && String(a.uom || "") === selectedUom ? 2 : 1;
-                    const bUom = selectedUom && String(b.uom || "") === selectedUom ? 2 : 1;
-                    if (aUom !== bUom) return bUom - aUom;
-
-                    const aFrom = dateValue(a.valid_from) || "0000-00-00";
-                    const bFrom = dateValue(b.valid_from) || "0000-00-00";
-                    if (aFrom !== bFrom) return bFrom.localeCompare(aFrom);
-
-                    return String(b.modified || "").localeCompare(String(a.modified || ""));
-                });
-
-                return candidates[0] || null;
+                return (rows || []).find(p =>
+                    p.item_code === item_code &&
+                    (!price_list || p.price_list === price_list) &&
+                    (!uom || !p.uom || p.uom === uom)
+                ) || (rows || []).find(p =>
+                    p.item_code === item_code &&
+                    (!price_list || p.price_list === price_list)
+                ) || null;
             } catch (e) {
                 return null;
             }
@@ -1229,16 +1141,6 @@ async function wmn_make_offline_invoice_doc(ctrl) {
                             wmn_register_offline_doc_locals(doc);
                             wmn_emit_offline_refresh_fields(frm);
 
-                            const pos = window.cur_pos;
-                            try {
-                                if (pos && pos.cart && pos.cart.update_totals_section) {
-                                    pos.cart.update_totals_section(frm);
-                                }
-                                if (pos && pos.payment && pos.payment.update_totals_section) {
-                                    pos.payment.update_totals_section(doc);
-                                }
-                            } catch (e) {}
-
                             return Promise.resolve({ message: target });
                         }
                     }
@@ -1458,12 +1360,7 @@ async function wmn_v9_direct_add_or_update(ctrl, args) {
 
             let price = null;
             if (found && typeof wmn_find_price_offline === "function") {
-                price = await wmn_find_price_offline(
-                    found.item_code,
-                    priceList,
-                    uom,
-                    found.batch_no || raw.batch_no || ""
-                );
+                price = await wmn_find_price_offline(found.item_code, priceList, uom);
             } else if (found && window.wmnPOSOffline && window.wmnPOSOffline.findPrice) {
                 price = await window.wmnPOSOffline.findPrice(found.item_code, priceList, uom);
             }
@@ -1584,12 +1481,6 @@ function wmn_recalc_offline_payment_doc(doc) {
             const total = flt(doc.rounded_total || doc.grand_total || 0);
             if (total <= 0) frappe.throw(wmn_t("Invoice total is zero", "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0635\u0641\u0631"));
 
-            const allowPartialPayment = await wmn_is_partial_payment_allowed(ctrl);
-            const canSellOnCredit = (
-                doc.doctype === "Sales Invoice" &&
-                cint(doc.is_return || 0) !== 1 &&
-                allowPartialPayment
-            );
             const payments = await wmn_ensure_offline_payment_rows(doc);
             const defaultPayment = payments.find(p => cint(p.default || 0) === 1) || payments[0];
 
@@ -1598,26 +1489,17 @@ function wmn_recalc_offline_payment_doc(doc) {
                 p.base_amount = flt(p.base_amount || p.amount || 0);
             });
 
-            /*
-             * Reconcile the default payment against the CURRENT invoice total
-             * every time the offline payment dialog opens.
-             *
-             * Other payment-method amounts are preserved; the default row covers
-             * only the remaining balance.
-             */
-            if (defaultPayment) {
-                const otherPaid = payments.reduce((sum, p) => {
-                    if (p === defaultPayment) return sum;
-                    return sum + flt(p.amount || 0);
-                }, 0);
-
-                const requiredDefaultAmount = Math.max(0, total - otherPaid);
-                defaultPayment.amount = requiredDefaultAmount;
-                defaultPayment.base_amount = requiredDefaultAmount;
+            const paidBefore = payments.reduce((s, p) => s + flt(p.amount || 0), 0);
+            const difference = Math.max(0, total - paidBefore);
+            
+            //if (defaultPayment && paidBefore <= 0)
+            if (defaultPayment && difference > 0 && !doc.__wmn_default_payment_autofilled ) {
+                //defaultPayment.amount = total;
+                //defaultPayment.base_amount = total;
+                defaultPayment.amount = flt(defaultPayment.amount || 0) + difference;
+                defaultPayment.base_amount = flt(defaultPayment.base_amount || 0) + difference;
+                doc.__wmn_default_payment_autofilled = 1;
             }
-
-            delete doc.__wmn_default_payment_autofilled;
-            wmn_recalc_offline_payment_doc(doc);
 
             const rowsHtml = payments.map((p, idx) => {
                 const mode = frappe.utils.escape_html(p.mode_of_payment || "");
@@ -1666,13 +1548,6 @@ function wmn_recalc_offline_payment_doc(doc) {
                                         ${rowsHtml || `<div class="text-muted">${wmn_t("No payment methods found", "\u0644\u0627 \u062A\u0648\u062C\u062F \u0637\u0631\u0642 \u062F\u0641\u0639")}</div>`}
                                     </div>
 
-                                    ${canSellOnCredit ? `
-                                        <button type="button" class="btn btn-default wmn-offline-sell-on-credit-btn"
-                                                style="width:100%;margin-top:12px;font-weight:700;">
-                                            ${__("Sell on Credit")}
-                                        </button>
-                                    ` : ""}
-
                                     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
                                         <div style="font-size:13px;color:#6b7280;">
                                             ${wmn_t("Complete Order will apply payment to the offline invoice then save it offline.", "\u0625\u0643\u0645\u0627\u0644 \u0627\u0644\u0637\u0644\u0628 \u0633\u064A\u0636\u064A\u0641 \u0627\u0644\u062F\u0641\u0639 \u0644\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646 \u062B\u0645 \u064A\u062D\u0641\u0638\u0647\u0627 \u0623\u0648\u0641\u0644\u0627\u064A\u0646.")}
@@ -1716,10 +1591,7 @@ function wmn_recalc_offline_payment_doc(doc) {
                             doc.payments = payments.filter(p => flt(p.amount || 0) > 0 || p.mode_of_payment);
                             wmn_recalc_offline_payment_doc(doc);
 
-                            if (
-                                !allowPartialPayment &&
-                                flt(doc.paid_amount || 0) < flt(doc.rounded_total || doc.grand_total || 0)
-                            ) {
+                            if (flt(doc.paid_amount || 0) < flt(doc.rounded_total || doc.grand_total || 0)) {
                                 frappe.msgprint({
                                     title: wmn_t("Payment Amount", "\u0645\u0628\u0644\u063A \u0627\u0644\u062F\u0641\u0639"),
                                     indicator: "orange",
@@ -1752,26 +1624,6 @@ function wmn_recalc_offline_payment_doc(doc) {
                 };
 
                 d.$wrapper.on("input", ".wmn-offline-payment-amount", updatePaidTotal);
-
-                d.$wrapper.on("click", ".wmn-offline-sell-on-credit-btn", function (e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-
-                    payments.forEach((row) => {
-                        row.amount = 0;
-                        row.base_amount = 0;
-                        row.parent = doc.name;
-                        row.parenttype = doc.doctype;
-                        row.parentfield = "payments";
-                    });
-
-                    doc.payments = payments;
-                    wmn_recalc_offline_payment_doc(doc);
-
-                    d.hide();
-                    resolve(doc);
-                });
-
                 updatePaidTotal();
             });
         }
@@ -1928,10 +1780,6 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                     if (doc && typeof wmn_restore_offline_available_qty_for_doc === "function") {
                         await wmn_restore_offline_available_qty_for_doc(doc);
                     }
-
-                    if (window.cur_pos?.item_selector && typeof window.cur_pos.item_selector.wmn_refresh_available_stock === "function") {
-                        await window.cur_pos.item_selector.wmn_refresh_available_stock();
-                    }
                 } catch (e) {
                     console.warn("WMN offline stock restore on delete skipped", e);
                 }
@@ -1950,8 +1798,6 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                     tx.onerror = () => reject(tx.error);
                     tx.onabort = () => reject(tx.error);
                 });
-
-                wmn_notify_offline_queue_changed();
             }
 
             function getInvoiceDoc(row) {
@@ -1990,7 +1836,6 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
             async function updateInvoiceQueueRow(row) {
                 if (!row || !row.offline_id) return row;
                 await window.wmnPOSOffline.bulkPut(window.wmnPOSOffline.STORES.invoice_queue, [row]);
-                wmn_notify_offline_queue_changed();
                 return row;
             }
 
@@ -2027,9 +1872,6 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                     });
 
                     const result = (r && r.message) || {};
-                    if (cint(result.docstatus || 0) !== 1) {
-                        throw new Error("Server invoice was not submitted");
-                    }
                     row.status = "synced";
                     row.synced_at = new Date().toISOString();
                     row.erpnext_name = result.name || result.erpnext_name || row.erpnext_name || "";
@@ -2429,14 +2271,12 @@ function wmn_user_lang() {
 
 
         window.getAvailableBatchesForItem = function(batches, itemCode, warehouse = "") {
-            const today = frappe.datetime.get_today();
             return (batches || [])
                 .filter(b => {
                     if (String(b.item_code || "") !== String(itemCode || "")) return false;
                     if (cint(b.disabled || 0)) return false;
                     if (warehouse && b.warehouse && String(b.warehouse) !== String(warehouse)) return false;
                     if (flt(b.actual_qty || 0) <= 0) return false;
-                    if (b.expiry_date && String(b.expiry_date).slice(0, 10) < today) return false;
                     return true;
                 })
                 .sort((a, b) => {
