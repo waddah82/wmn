@@ -1402,6 +1402,25 @@ body:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {
 	color: #fff !important;
 }
 
+.wmn-mamsek-shell .payment-container .wmn-sell-on-credit-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 44px;
+	margin-top: 10px;
+	margin-bottom: 8px;
+	border: 1px solid var(--wmn-teal);
+	border-radius: 8px;
+	background: #fff;
+	color: var(--wmn-teal);
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.wmn-mamsek-shell .payment-container .wmn-sell-on-credit-btn:hover {
+	background: var(--wmn-soft);
+}
+
 /* --------------------------------------------------------------------------
  * WMN v7: restored item Button View + single category bar
  * -------------------------------------------------------------------------- */
@@ -3915,3 +3934,318 @@ label {
     min-width: 0 !important;
 }
 
+/* Item Details link dropdown visibility */
+
+.wmn-item-details-modal
+.wmn-item-details-host
+.form-container {
+    overflow: visible !important;
+}
+
+.wmn-item-details-modal
+.wmn-item-details-host
+.form-container
+> *,
+
+.wmn-item-details-modal
+.wmn-item-details-host
+.form-container
+.frappe-control,
+
+.wmn-item-details-modal
+.wmn-item-details-host
+.form-container
+.form-group,
+
+.wmn-item-details-modal
+.wmn-item-details-host
+.form-container
+.control-input-wrapper,
+
+.wmn-item-details-modal
+.wmn-item-details-host
+.form-container
+.control-input,
+
+.wmn-item-details-modal
+.wmn-item-details-host
+.form-container
+.awesomplete {
+    overflow: visible !important;
+}
+
+.wmn-item-details-modal
+.wmn-item-details-host
+.awesomplete {
+    position: relative !important;
+}
+
+.wmn-item-details-modal
+.wmn-item-details-host
+.frappe-control:focus-within {
+    position: relative !important;
+    z-index: 2100 !important;
+}
+
+.wmn-item-details-modal
+.wmn-item-details-host
+.awesomplete
+> ul {
+    z-index: 2200 !important;
+    max-height: 220px !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+}
+
+
+/* Batch and Serial controls */
+
+.wmn-item-details-modal
+.wmn-item-details-host
+.serial-batch-container,
+
+.wmn-item-details-modal
+.wmn-item-details-host
+.serial-batch-container
+.frappe-control,
+
+.wmn-item-details-modal
+.wmn-item-details-host
+.serial-batch-container
+.form-group,
+
+.wmn-item-details-modal
+.wmn-item-details-host
+.serial-batch-container
+.control-input-wrapper,
+
+.wmn-item-details-modal
+.wmn-item-details-host
+.serial-batch-container
+.control-input,
+
+.wmn-item-details-modal
+.wmn-item-details-host
+.serial-batch-container
+.awesomplete {
+    position: relative !important;
+    overflow: visible !important;
+}
+
+
+/* Open Batch No suggestions upward */
+
+.wmn-item-details-modal
+.wmn-item-details-host
+.batch_no-control
+.awesomplete
+> ul {
+    top: auto !important;
+    bottom: calc(100% + 4px) !important;
+
+    width: 100% !important;
+    max-height: 220px !important;
+
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+
+    z-index: 2300 !important;
+}
+
+
+/* Keep Warehouse suggestions above surrounding controls */
+
+.wmn-item-details-modal
+.wmn-item-details-host
+[data-fieldname="warehouse"]:focus-within,
+
+.wmn-item-details-modal
+.wmn-item-details-host
+.warehouse-control:focus-within {
+    position: relative !important;
+    z-index: 2250 !important;
+}
+
+
+.wmn-mamsek-shell
+.past-order-list
+.wmn-recent-orders-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    min-width: 0;
+    gap: 12px;
+}
+
+.wmn-mamsek-shell
+.past-order-list
+.wmn-recent-orders-title {
+    min-width: 0;
+}
+
+.wmn-mamsek-shell
+.past-order-list
+.wmn-recent-orders-title
+.label {
+    margin: 0 !important;
+}
+
+.wmn-mamsek-shell
+.past-order-list
+.wmn-recent-orders-back {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    height: 36px;
+    padding: 0 12px;
+    gap: 6px;
+    border: 1px solid var(--wmn-border-strong);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--wmn-ink);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.wmn-mamsek-shell
+.past-order-list
+.wmn-recent-orders-back:hover {
+    border-color: var(--wmn-teal);
+    background: var(--wmn-teal-soft);
+    color: var(--wmn-teal);
+}
+
+.wmn-variant-template-card .wmn-card-media {
+    position: relative;
+}
+
+.wmn-variant-pill {
+    position: absolute;
+    inset-inline-end: 8px;
+    top: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 24px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--bg-color, #fff);
+    border: 1px solid var(--border-color, #d1d8dd);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.wmn-variant-select-label {
+    font-weight: 600;
+}
+
+.wmn-pos-choice-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    max-height: min(62vh, 520px);
+    overflow-y: auto;
+    padding: 2px;
+}
+
+.wmn-pos-choice-card {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    width: 100%;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid var(--border-color, #d1d8dd);
+    border-radius: 10px;
+    background: var(--card-bg, #fff);
+    color: var(--text-color, #1f272e);
+    text-align: start;
+    cursor: pointer;
+}
+
+.wmn-pos-choice-card:hover,
+.wmn-pos-choice-card:focus-visible {
+    border-color: var(--primary, #2490ef);
+    box-shadow: 0 0 0 1px var(--primary, #2490ef);
+    outline: none;
+}
+
+.wmn-choice-title {
+    font-size: 14px;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.wmn-choice-code,
+.wmn-choice-conversion,
+.wmn-choice-stock {
+    font-size: 12px;
+    color: var(--text-muted, #687178);
+}
+
+.wmn-choice-attributes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px 10px;
+    font-size: 12px;
+}
+
+.wmn-choice-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: auto;
+    padding-top: 4px;
+}
+
+@media (max-width: 640px) {
+    .wmn-pos-choice-list {
+        grid-template-columns: 1fr;
+    }
+}
+
+.wmn-multi-uom-card .wmn-card-media {
+    position: relative;
+}
+
+.wmn-uom-pill {
+    position: absolute;
+    inset-inline-start: 8px;
+    top: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 24px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--bg-color, #fff);
+    border: 1px solid var(--border-color, #d1d8dd);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.wmn-pos-choice-card.is-disabled,
+.wmn-pos-choice-card:disabled {
+    opacity: 0.58;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.wmn-pos-choice-card.is-disabled:hover,
+.wmn-pos-choice-card:disabled:hover {
+    border-color: var(--border-color, #d1d8dd);
+    box-shadow: none;
+}
+
+.wmn-choice-unavailable {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted, #687178);
+}
