@@ -3,7 +3,7 @@ from frappe import _
 import json
 
 
-from frappe.utils import flt, now_datetime, cint
+from frappe.utils import flt, now_datetime, cint, getdate, today
 from erpnext.stock.doctype.batch.batch import get_batch_qty
 
 
@@ -88,6 +88,7 @@ def pos_health_check(ts=None, source=None):
     }
 
 
+
 @frappe.whitelist()
 def get_pos_item_batches(item_code, warehouse=None, price_list=None, uom=None):
     if not item_code:
@@ -106,8 +107,6 @@ def get_pos_item_batches(item_code, warehouse=None, price_list=None, uom=None):
     if not item.has_batch_no:
         return []
 
-    stock_uom = uom or item.stock_uom
-
     batches = frappe.get_all(
         "Batch",
         filters={
@@ -123,9 +122,13 @@ def get_pos_item_batches(item_code, warehouse=None, price_list=None, uom=None):
         order_by="expiry_date asc, name asc",
     )
 
+    current_date = getdate(today())
     result = []
 
     for b in batches:
+        if b.expiry_date and getdate(b.expiry_date) < current_date:
+            continue
+
         batch_no = b.name
 
         try:
@@ -145,58 +148,18 @@ def get_pos_item_batches(item_code, warehouse=None, price_list=None, uom=None):
             continue
 
         price = None
-
         if price_list:
-            price = frappe.db.get_value(
-                "Item Price",
-                {
-                    "item_code": item_code,
-                    "price_list": price_list,
-                    "selling": 1,
-                    "batch_no": batch_no,
-                    "uom": stock_uom,
-                },
-                ["price_list_rate", "currency", "uom", "batch_no"],
-                as_dict=True,
+            options = _wmn_item_uom_options(
+                item_code,
+                price_list,
+                batch_no=batch_no,
             )
-
+            if uom:
+                price = next((row for row in options if row.get("uom") == uom), None)
             if not price:
-                price = frappe.db.get_value(
-                    "Item Price",
-                    {
-                        "item_code": item_code,
-                        "price_list": price_list,
-                        "selling": 1,
-                        "batch_no": batch_no,
-                    },
-                    ["price_list_rate", "currency", "uom", "batch_no"],
-                    as_dict=True,
-                )
-
-            if not price:
-                price = frappe.db.get_value(
-                    "Item Price",
-                    {
-                        "item_code": item_code,
-                        "price_list": price_list,
-                        "selling": 1,
-                        "uom": stock_uom,
-                    },
-                    ["price_list_rate", "currency", "uom", "batch_no"],
-                    as_dict=True,
-                )
-
-            if not price:
-                price = frappe.db.get_value(
-                    "Item Price",
-                    {
-                        "item_code": item_code,
-                        "price_list": price_list,
-                        "selling": 1,
-                    },
-                    ["price_list_rate", "currency", "uom", "batch_no"],
-                    as_dict=True,
-                )
+                price = next((row for row in options if row.get("uom") == item.stock_uom), None)
+            if not price and options:
+                price = options[0]
 
         result.append({
             "batch_no": batch_no,
@@ -204,23 +167,346 @@ def get_pos_item_batches(item_code, warehouse=None, price_list=None, uom=None):
             "actual_qty": qty,
             "expiry_date": b.expiry_date,
             "manufacturing_date": b.manufacturing_date,
-            "price_list_rate": flt(price.price_list_rate) if price else 0,
-            "rate": flt(price.price_list_rate) if price else 0,
-            "currency": price.currency if price else "",
-            "uom": price.uom if price and price.uom else stock_uom,
+            "price_list_rate": flt(price.get("price_list_rate") or 0) if price else 0,
+            "rate": flt(price.get("price_list_rate") or 0) if price else 0,
+            "currency": price.get("currency") if price else "",
+            "uom": price.get("uom") if price else (uom or item.stock_uom),
+        })
+
+    return result
+
+
+def _wmn_parse_item_code_list(item_codes):
+    if isinstance(item_codes, str):
+        try:
+            parsed = frappe.parse_json(item_codes)
+            if isinstance(parsed, list):
+                item_codes = parsed
+            else:
+                item_codes = [item_codes]
+        except Exception:
+            item_codes = [item_codes]
+    return [str(code).strip() for code in (item_codes or []) if str(code).strip()]
+
+
+
+def _wmn_active_item_price_rows(item_code, price_list, batch_no=None):
+    if not item_code or not price_list:
+        return []
+
+    current_date = getdate(today())
+    rows = frappe.get_all(
+        "Item Price",
+        filters={
+            "item_code": item_code,
+            "price_list": price_list,
+            "selling": 1,
+        },
+        fields=[
+            "name", "item_code", "price_list", "price_list_rate", "currency",
+            "uom", "batch_no", "valid_from", "valid_upto", "modified",
+        ],
+        order_by="valid_from desc, modified desc",
+        limit_page_length=0,
+    )
+
+    result = []
+    selected_batch = str(batch_no or "").strip()
+
+    for row in rows:
+        valid_from = row.get("valid_from")
+        valid_upto = row.get("valid_upto")
+        if valid_from and getdate(valid_from) > current_date:
+            continue
+        if valid_upto and getdate(valid_upto) < current_date:
+            continue
+
+        row_batch = str(row.get("batch_no") or "").strip()
+        if selected_batch:
+            if row_batch and row_batch != selected_batch:
+                continue
+        elif row_batch:
+            continue
+
+        result.append(row)
+
+    if selected_batch:
+        result.sort(
+            key=lambda row: (
+                1 if str(row.get("batch_no") or "").strip() == selected_batch else 0,
+                getdate(row.get("valid_from")) if row.get("valid_from") else getdate("1900-01-01"),
+                str(row.get("modified") or ""),
+            ),
+            reverse=True,
+        )
+
+    return result
+
+
+
+def _wmn_item_uom_options(item_code, price_list, batch_no=None):
+    item = frappe.db.get_value(
+        "Item",
+        item_code,
+        ["name", "stock_uom", "sales_uom"],
+        as_dict=True,
+    )
+    if not item:
+        return []
+
+    conversion_rows = frappe.get_all(
+        "UOM Conversion Detail",
+        filters={"parent": item_code},
+        fields=["uom", "conversion_factor"],
+        limit_page_length=0,
+    )
+    conversion_map = {
+        row.uom: flt(row.conversion_factor or 1)
+        for row in conversion_rows
+        if row.get("uom")
+    }
+    if item.stock_uom:
+        conversion_map.setdefault(item.stock_uom, 1.0)
+
+    selected_batch = str(batch_no or "").strip()
+    price_rows = _wmn_active_item_price_rows(
+        item_code,
+        price_list,
+        batch_no=selected_batch or None,
+    )
+
+    grouped = {}
+    for row in price_rows:
+        uom = row.get("uom") or item.stock_uom
+        if not uom:
+            continue
+
+        row_batch = str(row.get("batch_no") or "").strip()
+        priority = 2 if selected_batch and row_batch == selected_batch else 1
+
+        candidate = {
+            "uom": uom,
+            "price_list_rate": flt(row.get("price_list_rate") or 0),
+            "currency": row.get("currency") or "",
+            "conversion_factor": flt(conversion_map.get(uom) or 1),
+            "batch_no": row_batch,
+            "valid_from": row.get("valid_from"),
+            "valid_upto": row.get("valid_upto"),
+            "__wmn_price_priority": priority,
+        }
+
+        existing = grouped.get(uom)
+        if existing is None or priority > cint(existing.get("__wmn_price_priority") or 0):
+            grouped[uom] = candidate
+
+    result = []
+    for row in grouped.values():
+        row.pop("__wmn_price_priority", None)
+        result.append(row)
+
+    return result
+
+
+@frappe.whitelist()
+def get_pos_item_variant_map(item_codes=None, price_list=None, warehouse=None, pos_profile=None):
+    codes = _wmn_parse_item_code_list(item_codes)
+    if not codes:
+        return {"variants": {}, "templates": {}, "uom_counts": {}, "variant_counts": {}}
+
+    hide_unavailable = 0
+    if pos_profile:
+        profile_values = frappe.db.get_value(
+            "POS Profile",
+            pos_profile,
+            ["selling_price_list", "warehouse", "hide_unavailable_items"],
+            as_dict=True,
+        ) or {}
+        price_list = price_list or profile_values.get("selling_price_list")
+        warehouse = warehouse or profile_values.get("warehouse")
+        hide_unavailable = cint(profile_values.get("hide_unavailable_items") or 0)
+
+    rows = frappe.get_all(
+        "Item",
+        filters={"name": ["in", codes]},
+        fields=[
+            "name", "item_name", "variant_of", "has_variants", "stock_uom",
+            "image", "is_stock_item",
+        ],
+        limit_page_length=0,
+    )
+
+    variants = {}
+    template_codes = set()
+    for row in rows:
+        if row.get("variant_of"):
+            variants[row.name] = row.variant_of
+            template_codes.add(row.variant_of)
+        elif cint(row.get("has_variants") or 0):
+            template_codes.add(row.name)
+
+    templates = {}
+    if template_codes:
+        for row in frappe.get_all(
+            "Item",
+            filters={"name": ["in", list(template_codes)]},
+            fields=["name", "item_name", "item_group", "stock_uom", "image", "description", "brand"],
+            limit_page_length=0,
+        ):
+            templates[row.name] = row
+
+    uom_sets = {code: set() for code in codes}
+    if price_list:
+        current_date = getdate(today())
+        price_rows = frappe.get_all(
+            "Item Price",
+            filters={
+                "item_code": ["in", codes],
+                "price_list": price_list,
+                "selling": 1,
+            },
+            fields=["item_code", "uom", "batch_no", "valid_from", "valid_upto"],
+            limit_page_length=0,
+        )
+        for row in price_rows:
+            if row.get("valid_from") and getdate(row.valid_from) > current_date:
+                continue
+            if row.get("valid_upto") and getdate(row.valid_upto) < current_date:
+                continue
+            uom_sets.setdefault(row.item_code, set()).add(row.get("uom") or "__stock_uom__")
+
+    uom_counts = {code: len(values) for code, values in uom_sets.items()}
+
+    variant_counts = {code: 0 for code in template_codes}
+    if template_codes:
+        variant_rows = frappe.get_all(
+            "Item",
+            filters={
+                "variant_of": ["in", list(template_codes)],
+                "disabled": 0,
+                "is_sales_item": 1,
+            },
+            fields=["name", "variant_of"],
+            limit_page_length=0,
+        )
+        for row in variant_rows:
+            variant_counts[row.variant_of] = cint(variant_counts.get(row.variant_of) or 0) + 1
+
+    return {
+        "variants": variants,
+        "templates": templates,
+        "uom_counts": uom_counts,
+        "variant_counts": variant_counts,
+    }
+
+
+@frappe.whitelist()
+def get_pos_item_variants(template_code, price_list=None, warehouse=None, pos_profile=None):
+    if not template_code:
+        frappe.throw(_("Item Template is required"))
+
+    if pos_profile:
+        profile_values = frappe.db.get_value(
+            "POS Profile",
+            pos_profile,
+            ["selling_price_list", "warehouse", "hide_unavailable_items"],
+            as_dict=True,
+        ) or {}
+        price_list = price_list or profile_values.get("selling_price_list")
+        warehouse = warehouse or profile_values.get("warehouse")
+        hide_unavailable = cint(profile_values.get("hide_unavailable_items") or 0)
+    else:
+        hide_unavailable = 0
+
+    rows = frappe.get_all(
+        "Item",
+        filters={
+            "variant_of": template_code,
+            "disabled": 0,
+            "is_sales_item": 1,
+        },
+        fields=[
+            "name", "item_code", "item_name", "item_group", "stock_uom", "sales_uom",
+            "image", "description", "is_stock_item", "has_batch_no", "has_serial_no",
+            "brand", "variant_of",
+        ],
+        order_by="item_name asc, name asc",
+        limit_page_length=0,
+    )
+
+    codes = [row.name for row in rows]
+    attribute_map = {}
+    if codes:
+        for row in frappe.get_all(
+            "Item Variant Attribute",
+            filters={"parent": ["in", codes]},
+            fields=["parent", "attribute", "attribute_value", "idx"],
+            order_by="parent asc, idx asc",
+            limit_page_length=0,
+        ):
+            attribute_map.setdefault(row.parent, []).append({
+                "attribute": row.attribute,
+                "attribute_value": row.attribute_value,
+            })
+
+    result = []
+    for row in rows:
+        uom_options = _wmn_item_uom_options(row.name, price_list)
+        preferred = next((d for d in uom_options if d.get("uom") == row.sales_uom), None)
+        preferred = preferred or next((d for d in uom_options if d.get("uom") == row.stock_uom), None)
+        preferred = preferred or (uom_options[0] if uom_options else {
+            "uom": row.sales_uom or row.stock_uom,
+            "price_list_rate": 0,
+            "currency": "",
+            "conversion_factor": 1,
+        })
+
+        actual_qty = 0
+        if cint(row.is_stock_item or 0) and warehouse:
+            actual_qty = flt(frappe.db.get_value(
+                "Bin",
+                {"item_code": row.name, "warehouse": warehouse},
+                "actual_qty",
+            ) or 0)
+
+        selection_disabled = 0
+        selection_reason = ""
+        if not uom_options and not cint(row.has_batch_no or 0):
+            selection_disabled = 1
+            selection_reason = _("No active price is available in the selected Price List")
+        elif hide_unavailable and cint(row.is_stock_item or 0) and actual_qty <= 0:
+            selection_disabled = 1
+            selection_reason = _("Out of stock")
+
+        result.append({
+            **row,
+            "item_code": row.name,
+            "item_image": row.image,
+            "variant_attributes": attribute_map.get(row.name, []),
+            "actual_qty": actual_qty,
+            "uom": preferred.get("uom") or row.stock_uom,
+            "price_list_rate": flt(preferred.get("price_list_rate") or 0),
+            "rate": flt(preferred.get("price_list_rate") or 0),
+            "currency": preferred.get("currency") or "",
+            "conversion_factor": flt(preferred.get("conversion_factor") or 1),
+            "uom_options": uom_options,
+            "__wmn_uom_deferred_until_batch": 1 if cint(row.has_batch_no or 0) else 0,
+            "__wmn_selection_disabled": selection_disabled,
+            "__wmn_selection_reason": selection_reason,
         })
 
     return result
 
 
 
-
-
-
-
-
-
-
+@frappe.whitelist()
+def get_pos_item_uoms(item_code, price_list=None, batch_no=None):
+    if not item_code:
+        frappe.throw(_("Item Code is required"))
+    return _wmn_item_uom_options(
+        item_code,
+        price_list,
+        batch_no=batch_no,
+    )
 
 
 @frappe.whitelist()
@@ -307,7 +593,7 @@ def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
         item_defaults[row.parent] = row
 
     item_fields = [
-        "name", "item_code", "item_name", "item_group", "stock_uom", "description",
+        "name", "item_code", "item_name", "item_group", "stock_uom", "sales_uom", "description",
         "image", "disabled", "is_stock_item", "has_batch_no", "has_serial_no",
         "brand", "variant_of", "has_variants", "default_item_manufacturer",
         "default_manufacturer_part_no",
@@ -352,6 +638,40 @@ def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
             for r in rows:
                 it["offline_item_tax_map"][r.tax_type] = flt(r.tax_rate or 0)
         
+    item_codes = [it.name for it in items]
+    uom_conversion_map = {}
+    variant_attribute_map = {}
+
+    if item_codes:
+        for row in frappe.get_all(
+            "UOM Conversion Detail",
+            filters={"parent": ["in", item_codes]},
+            fields=["parent", "uom", "conversion_factor"],
+            limit_page_length=0,
+        ):
+            uom_conversion_map.setdefault(row.parent, []).append({
+                "uom": row.uom,
+                "conversion_factor": flt(row.conversion_factor or 1),
+            })
+
+        for row in frappe.get_all(
+            "Item Variant Attribute",
+            filters={"parent": ["in", item_codes]},
+            fields=["parent", "attribute", "attribute_value"],
+            limit_page_length=0,
+        ):
+            variant_attribute_map.setdefault(row.parent, []).append({
+                "attribute": row.attribute,
+                "attribute_value": row.attribute_value,
+            })
+
+    for it in items:
+        conversions = list(uom_conversion_map.get(it.name, []))
+        if it.stock_uom and not any(d.get("uom") == it.stock_uom for d in conversions):
+            conversions.insert(0, {"uom": it.stock_uom, "conversion_factor": 1.0})
+        it["uom_conversions"] = conversions
+        it["variant_attributes"] = variant_attribute_map.get(it.name, [])
+
     barcode_rows = frappe.get_all(
         "Item Barcode",
         fields=["parent", "barcode", "uom", "barcode_type"],
@@ -374,14 +694,18 @@ def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
     for it in items:
         it["barcode"] = first_barcode.get(it.name, "")
 
-    price_filters = {}
+    price_filters = {"selling": 1}
     if selling_price_list:
         price_filters["price_list"] = selling_price_list
 
     item_prices = frappe.get_all(
         "Item Price",
         filters=price_filters,
-        fields=["name", "item_code", "price_list", "price_list_rate", "currency", "uom", "valid_from", "valid_upto"],
+        fields=[
+            "name", "item_code", "price_list", "price_list_rate", "currency",
+            "uom", "batch_no", "selling", "valid_from", "valid_upto", "modified",
+        ],
+        order_by="item_code asc, uom asc, valid_from desc, modified desc",
         limit_page_length=0,
     )
 
@@ -431,7 +755,15 @@ def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
         pos_settings = frappe.get_single("POS Settings").as_dict()
     except Exception:
         pos_settings = {}
+    try:
+        stock_settings_doc = frappe.get_single("Stock Settings")
+        stock_settings = stock_settings_doc.as_dict()
+    except Exception:
+        stock_settings = {}
 
+    stock_settings["doctype"] = "Stock Settings"
+    stock_settings["name"] = "Stock Settings"
+    stock_settings["allow_negative_stock"] = cint(stock_settings.get("allow_negative_stock") or 0)
     return {
         "server_time": str(now_datetime()),
         "pos_profile_name": profile.name,
@@ -458,6 +790,9 @@ def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
         "doctype_meta": doctype_meta,
         "barcode_structures": get_barcode_structures(),
         "wmn_print_format": wmn_print_format_doc,
+        "stock_settings": stock_settings,
+        "stock_settings_doc": stock_settings,
+        "allow_negative_stock": cint(stock_settings.get("allow_negative_stock") or 0),
     }
 
 def get_barcode_structures():
@@ -556,34 +891,32 @@ def get_offline_batches(default_warehouse=None, price_list=None ):
             })
 
     return batches
+
 def get_batch_price(item_code, batch_no, price_list, uom=None):
-    filters = {
-        "item_code": item_code,
-        "price_list": price_list,
-        "selling": 1,
-        "batch_no": batch_no,
-    }
+    if not item_code or not batch_no or not price_list:
+        return None
 
-    if uom:
-        filters["uom"] = uom
-
-    price = frappe.db.get_value(
-        "Item Price",
-        filters,
-        ["price_list_rate", "currency", "uom"],
-        as_dict=True,
+    options = _wmn_item_uom_options(
+        item_code,
+        price_list,
+        batch_no=batch_no,
     )
 
-    if not price and uom:
-        filters.pop("uom", None)
-        price = frappe.db.get_value(
-            "Item Price",
-            filters,
-            ["price_list_rate", "currency", "uom"],
-            as_dict=True,
-        )
+    selected = None
+    if uom:
+        selected = next((row for row in options if row.get("uom") == uom), None)
+    if not selected and options:
+        selected = options[0]
 
-    return price
+    if not selected:
+        return None
+
+    return frappe._dict({
+        "price_list_rate": flt(selected.get("price_list_rate") or 0),
+        "currency": selected.get("currency") or "",
+        "uom": selected.get("uom") or uom or "",
+    })
+
 
 def get_erpnext_batch_qty(batch_no, warehouse=None, item_code=None):
     if not batch_no:
@@ -1455,11 +1788,7 @@ def get_pos_offline_data1(pos_profile, price_list=None, warehouse=None):
 
 @frappe.whitelist()
 def sync_offline_pos_invoice(invoice):
-    """Create an ERPNext invoice from a browser offline queue row.
-
-    Add a Custom Field named custom_offline_id to POS Invoice and Sales Invoice.
-    Make it unique if your ERPNext version allows it.
-    """
+    """Create or finalize an ERPNext invoice from the browser offline queue."""
     if isinstance(invoice, str):
         invoice = frappe.parse_json(invoice)
 
@@ -1476,9 +1805,24 @@ def sync_offline_pos_invoice(invoice):
 
     existing = frappe.db.exists(doctype, {"custom_offline_id": offline_id})
     if existing:
-        return {"status": "already_synced", "name": existing}
+        doc = frappe.get_doc(doctype, existing)
 
-    # Remove browser/local flags that can break insert.
+        if doc.docstatus == 2:
+            frappe.throw(_("Offline invoice {0} is cancelled").format(existing))
+
+        if doc.docstatus == 0:
+            doc.submit()
+
+        doc.reload()
+        return {
+            "status": "already_synced" if doc.docstatus == 1 else "existing",
+            "name": doc.name,
+            "docstatus": doc.docstatus,
+            "invoice_status": doc.get("status"),
+            "paid_amount": flt(doc.get("paid_amount") or 0),
+            "outstanding_amount": flt(doc.get("outstanding_amount") or 0),
+        }
+
     clean_invoice = dict(invoice)
     for key in list(clean_invoice.keys()):
         if key.startswith("__"):
@@ -1490,13 +1834,174 @@ def sync_offline_pos_invoice(invoice):
     doc = frappe.get_doc(clean_invoice)
     doc.flags.ignore_permissions = False
     doc.insert()
-
-    # Submit only if you want offline invoices to be finalized immediately.
-    # Keep disabled until taxes, payments, warehouse and stock behavior are fully verified.
     doc.submit()
+    doc.reload()
 
-    return {"status": "created", "name": doc.name}
+    return {
+        "status": "submitted",
+        "name": doc.name,
+        "docstatus": doc.docstatus,
+        "invoice_status": doc.get("status"),
+        "paid_amount": flt(doc.get("paid_amount") or 0),
+        "outstanding_amount": flt(doc.get("outstanding_amount") or 0),
+    }
 
+
+def _wmn_get_pos_payment_methods_for_invoice(invoice):
+    methods = []
+    pos_profile = invoice.get("pos_profile")
+
+    if not pos_profile:
+        return methods
+
+    profile = frappe.get_doc("POS Profile", pos_profile)
+    for row in getattr(profile, "payments", []) or []:
+        mode_of_payment = row.get("mode_of_payment") if hasattr(row, "get") else getattr(row, "mode_of_payment", None)
+        if not mode_of_payment:
+            continue
+
+        account = row.get("account") if hasattr(row, "get") else getattr(row, "account", None)
+        if not account:
+            account = frappe.db.get_value(
+                "Mode of Payment Account",
+                {"parent": mode_of_payment, "company": invoice.company},
+                "default_account",
+            )
+
+        methods.append({
+            "mode_of_payment": mode_of_payment,
+            "default": cint(row.get("default") if hasattr(row, "get") else getattr(row, "default", 0)),
+            "account": account or "",
+        })
+
+    return methods
+
+
+@frappe.whitelist()
+def get_sales_invoice_payment_context(invoice_name):
+    if not invoice_name:
+        frappe.throw(_("Sales Invoice is required"))
+
+    invoice = frappe.get_doc("Sales Invoice", invoice_name)
+    invoice.check_permission("read")
+
+    if invoice.docstatus != 1:
+        frappe.throw(_("Sales Invoice {0} is not submitted").format(invoice.name))
+
+    if cint(invoice.get("is_return") or 0):
+        frappe.throw(_("Payment cannot be added to a return invoice from POS"))
+
+    outstanding_amount = flt(invoice.get("outstanding_amount") or 0)
+    if outstanding_amount <= 0:
+        frappe.throw(_("Sales Invoice {0} has no outstanding amount").format(invoice.name))
+
+    payment_methods = _wmn_get_pos_payment_methods_for_invoice(invoice)
+
+    return {
+        "name": invoice.name,
+        "customer": invoice.customer,
+        "customer_name": invoice.customer_name,
+        "company": invoice.company,
+        "currency": invoice.currency,
+        "status": invoice.status,
+        "grand_total": flt(invoice.grand_total or 0),
+        "paid_amount": flt(invoice.paid_amount or 0),
+        "outstanding_amount": outstanding_amount,
+        "pos_profile": invoice.pos_profile,
+        "payment_methods": payment_methods,
+    }
+
+
+@frappe.whitelist()
+def add_payment_to_sales_invoice(
+    invoice_name,
+    amount,
+    mode_of_payment,
+    reference_no=None,
+    reference_date=None,
+):
+    if not invoice_name:
+        frappe.throw(_("Sales Invoice is required"))
+    if not mode_of_payment:
+        frappe.throw(_("Mode of Payment is required"))
+
+    frappe.has_permission("Payment Entry", "create", throw=True)
+
+    invoice = frappe.get_doc("Sales Invoice", invoice_name)
+    invoice.check_permission("read")
+
+    if invoice.docstatus != 1:
+        frappe.throw(_("Sales Invoice {0} is not submitted").format(invoice.name))
+    if cint(invoice.get("is_return") or 0):
+        frappe.throw(_("Payment cannot be added to a return invoice from POS"))
+
+    outstanding_amount = flt(invoice.get("outstanding_amount") or 0)
+    payment_amount = flt(amount or 0)
+
+    if outstanding_amount <= 0:
+        frappe.throw(_("Sales Invoice {0} has no outstanding amount").format(invoice.name))
+    if payment_amount <= 0:
+        frappe.throw(_("Payment amount must be greater than zero"))
+
+    precision = invoice.precision("outstanding_amount") or 2
+    if flt(payment_amount, precision) > flt(outstanding_amount, precision):
+        frappe.throw(
+            _("Payment amount cannot exceed outstanding amount {0}").format(
+                frappe.utils.fmt_money(outstanding_amount, currency=invoice.currency)
+            )
+        )
+
+    payment_methods = _wmn_get_pos_payment_methods_for_invoice(invoice)
+    selected_method = next(
+        (row for row in payment_methods if row.get("mode_of_payment") == mode_of_payment),
+        None,
+    )
+
+    if not selected_method:
+        frappe.throw(
+            _("Mode of Payment {0} is not configured in POS Profile {1}").format(
+                mode_of_payment,
+                invoice.pos_profile or "",
+            )
+        )
+
+    payment_account = selected_method.get("account")
+    if not payment_account:
+        frappe.throw(
+            _("No account is configured for Mode of Payment {0} in company {1}").format(
+                mode_of_payment,
+                invoice.company,
+            )
+        )
+
+    from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
+    from frappe.utils import nowdate
+
+    payment_entry = get_payment_entry(
+        "Sales Invoice",
+        invoice.name,
+        party_amount=payment_amount,
+        bank_account=payment_account,
+        reference_date=reference_date or nowdate(),
+    )
+
+    payment_entry.mode_of_payment = mode_of_payment
+    payment_entry.reference_no = reference_no or invoice.name
+    payment_entry.reference_date = reference_date or nowdate()
+
+    payment_entry.insert()
+    payment_entry.submit()
+
+    invoice.reload()
+
+    return {
+        "payment_entry": payment_entry.name,
+        "payment_entry_docstatus": payment_entry.docstatus,
+        "invoice": invoice.name,
+        "invoice_status": invoice.status,
+        "paid_amount": flt(invoice.paid_amount or 0),
+        "outstanding_amount": flt(invoice.outstanding_amount or 0),
+    }
 
 
 
@@ -1506,31 +2011,69 @@ def sync_offline_pos_invoice(invoice):
 
 @frappe.whitelist()
 def get_past_order_list(search_term, status, limit=20):
-	fields = ["name", "grand_total", "currency", "customer", "posting_time", "posting_date"]
-	invoice_list = []
+    fields = [
+        "name",
+        "grand_total",
+        "currency",
+        "customer",
+        "customer_name",
+        "posting_time",
+        "posting_date",
+        "status",
+        "paid_amount",
+        "outstanding_amount",
+        "docstatus",
+        "is_return",
+    ]
+    filters = {"is_pos": 1}
 
-	if search_term and status:
-		invoices_by_customer = frappe.db.get_all(
-			"Sales Invoice",
-			filters={"customer": ["like", f"%{search_term}%"], "status": status, "is_pos": 1},
-			fields=fields,
-			page_length=limit,
-		)
-		invoices_by_name = frappe.db.get_all(
-			"Sales Invoice",
-			filters={"name": ["like", f"%{search_term}%"], "status": status, "is_pos": 1},
-			fields=fields,
-			page_length=limit,
-		)
+    if status:
+        filters["status"] = status
 
-		invoice_list = invoices_by_customer + invoices_by_name
-	elif status:
-		invoice_list = frappe.db.get_all(
-			"Sales Invoice", filters={"status": status, "is_pos": 1}, fields=fields, page_length=limit
-		)
+    if not status:
+        return []
 
-	return invoice_list
+    invoice_list = []
 
+    if search_term:
+        by_customer_filters = dict(filters)
+        by_customer_filters["customer"] = ["like", f"%{search_term}%"]
+        by_name_filters = dict(filters)
+        by_name_filters["name"] = ["like", f"%{search_term}%"]
+
+        invoices_by_customer = frappe.db.get_all(
+            "Sales Invoice",
+            filters=by_customer_filters,
+            fields=fields,
+            page_length=limit,
+            order_by="posting_date desc, posting_time desc",
+        )
+        invoices_by_name = frappe.db.get_all(
+            "Sales Invoice",
+            filters=by_name_filters,
+            fields=fields,
+            page_length=limit,
+            order_by="posting_date desc, posting_time desc",
+        )
+
+        seen = set()
+        for row in invoices_by_customer + invoices_by_name:
+            if row.name in seen:
+                continue
+            seen.add(row.name)
+            invoice_list.append(row)
+            if len(invoice_list) >= cint(limit or 20):
+                break
+    else:
+        invoice_list = frappe.db.get_all(
+            "Sales Invoice",
+            filters=filters,
+            fields=fields,
+            page_length=limit,
+            order_by="posting_date desc, posting_time desc",
+        )
+
+    return invoice_list
 
 
 
