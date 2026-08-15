@@ -1,0 +1,63 @@
+{
+ "actions": [],
+ "creation": "2026-08-15 19:05:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "doctype_name",
+  "section",
+  "display_order",
+  "custom_label",
+  "icon"
+ ],
+ "fields": [
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "doctype_name",
+   "fieldtype": "Link",
+   "label": "DocType",
+   "options": "DocType",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "section",
+   "fieldtype": "Data",
+   "label": "Section",
+   "default": "Setup",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "display_order",
+   "fieldtype": "Int",
+   "label": "Order",
+   "default": "100",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "custom_label",
+   "fieldtype": "Data",
+   "label": "Custom Label",
+   "description": "Optional label used only in the WMN POS menu."
+  },
+  {
+   "fieldname": "icon",
+   "fieldtype": "Data",
+   "label": "Icon",
+   "description": "Optional Frappe icon name."
+  }
+ ],
+ "modified": "2026-08-15 19:05:00.000000",
+ "modified_by": "Administrator",
+ "module": "Wmn",
+ "name": "WMN POS Menu Item",
+ "istable": 1
+}

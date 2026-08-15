@@ -1,0 +1,59 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-08-15 19:05:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "menu_section",
+  "menu_items",
+  "initialized"
+ ],
+ "fields": [
+  {
+   "fieldname": "menu_section",
+   "fieldtype": "Section Break",
+   "label": "POS Menu Configuration",
+   "description": "Controls which DocTypes appear in the WMN POS management menu. Frappe permissions are still enforced at runtime."
+  },
+  {
+   "fieldname": "menu_items",
+   "fieldtype": "Table",
+   "label": "Menu Items",
+   "options": "WMN POS Menu Item"
+  },
+  {
+   "fieldname": "initialized",
+   "fieldtype": "Check",
+   "label": "Initialized",
+   "default": "0",
+   "hidden": 1,
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-08-15 19:05:00.000000",
+ "modified_by": "Administrator",
+ "module": "Wmn",
+ "name": "WMN POS Menu Settings",
+ "owner": "Administrator",
+ "track_changes": 1,
+ "issingle": 1,
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}
