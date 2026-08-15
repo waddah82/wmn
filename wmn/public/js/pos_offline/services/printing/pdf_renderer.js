@@ -283,6 +283,9 @@ function wmn_get_printer_ws_url() {
 }
 
 function wmn_show_printer_settings_dialog() {
+    const service = window.WMN_POS?.Services?.Printing?.PrintService;
+    if (service?.showSettings) return service.showSettings();
+
     frappe.prompt(
         [{
             fieldname: "ws_url",
@@ -304,7 +307,7 @@ function wmn_show_printer_settings_dialog() {
     );
 }
 
-function wmn_send_to_printer(payload, printType, wsUrl = null) {
+function wmn_send_to_legacy_bridge(payload, printType, wsUrl = null) {
     payload = payload || {};
     const finalWsUrl = (wsUrl && String(wsUrl).trim()) || wmn_get_printer_ws_url();
 
@@ -331,23 +334,32 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         });
     });
 }
+
+window.wmn_send_to_legacy_bridge = wmn_send_to_legacy_bridge;
+
+// Backward-compatible legacy bridge entry point for external callers.
+function wmn_send_to_printer(payload, printType, wsUrl = null) {
+    return wmn_send_to_legacy_bridge(payload, printType, wsUrl);
+}
         
         function wmn_send_pdf_to_printer(pdfBase64, printType) {
-            return wmn_send_to_printer({
-                url: "receipt.pdf",
-                file_content: wmn_clean_base64_for_printer(pdfBase64)
-            }, printType);
+            const clean = wmn_clean_base64_for_printer(pdfBase64);
+            const service = window.WMN_POS?.Services?.Printing?.PrintService;
+            if (service?.sendPdf) return service.sendPdf(clean, { printType: printType || "RECEIPT" });
+            return wmn_send_to_legacy_bridge({ url: "receipt.pdf", file_content: clean }, printType);
         }
 
         function wmn_send_png_to_printer(pngBase64, printType) {
-            return wmn_send_to_printer({
-                url: "receipt.png",
-                file_content: wmn_clean_base64_for_printer(pngBase64)
-            }, printType);
+            const clean = wmn_clean_base64_for_printer(pngBase64);
+            const service = window.WMN_POS?.Services?.Printing?.PrintService;
+            if (service?.sendPng) return service.sendPng(clean, { printType: printType || "RECEIPT" });
+            return wmn_send_to_legacy_bridge({ url: "receipt.png", file_content: clean }, printType);
         }
 
         function wmn_send_raw_text_to_printer(rawText, printType) {
-            return wmn_send_to_printer({
+            const service = window.WMN_POS?.Services?.Printing?.PrintService;
+            if (service?.sendRaw) return service.sendRaw(String(rawText || ""), { printType: printType || "RECEIPT" });
+            return wmn_send_to_legacy_bridge({
                 raw_content: btoa(unescape(encodeURIComponent(String(rawText || ""))))
             }, printType);
         }
