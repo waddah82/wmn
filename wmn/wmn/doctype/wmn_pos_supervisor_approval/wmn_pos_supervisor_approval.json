@@ -1,0 +1,185 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-08-13 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-08-13 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Wmn",
+ "owner": "Administrator",
+ "states": [],
+ "track_changes": 1,
+ "autoname": "format:SUP-APP-{#####}",
+ "field_order": [
+  "posting_datetime",
+  "status",
+  "action",
+  "cashier_user",
+  "supervisor_user",
+  "pos_profile",
+  "reference_section",
+  "invoice_doctype",
+  "invoice_name",
+  "offline_invoice_id",
+  "offline_approval_id",
+  "item_code",
+  "row_name",
+  "value_section",
+  "before_value",
+  "after_value",
+  "reason",
+  "offline_approval"
+ ],
+ "fields": [
+  {
+   "fieldname": "posting_datetime",
+   "fieldtype": "Datetime",
+   "label": "Posting Datetime",
+   "reqd": 1,
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Approved\nRejected",
+   "default": "Approved",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "action",
+   "fieldtype": "Select",
+   "label": "Action",
+   "options": "ITEM_DISCOUNT\nTRANSACTION_DISCOUNT\nCHANGE_RATE\nRETURN\nCASH_IN\nCASH_EXPENSE\nCASH_WITHDRAWAL",
+   "reqd": 1,
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "cashier_user",
+   "fieldtype": "Link",
+   "label": "Cashier User",
+   "options": "User",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "supervisor_user",
+   "fieldtype": "Link",
+   "label": "Supervisor User",
+   "options": "User",
+   "reqd": 1,
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "pos_profile",
+   "fieldtype": "Link",
+   "label": "POS Profile",
+   "options": "POS Profile",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reference_section",
+   "fieldtype": "Section Break",
+   "label": "Reference"
+  },
+  {
+   "fieldname": "invoice_doctype",
+   "fieldtype": "Data",
+   "label": "Invoice DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "invoice_name",
+   "fieldtype": "Data",
+   "label": "Invoice Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "offline_invoice_id",
+   "fieldtype": "Data",
+   "label": "Offline Invoice ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "offline_approval_id",
+   "fieldtype": "Data",
+   "label": "Offline Approval ID",
+   "read_only": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "label": "Item",
+   "options": "Item",
+   "read_only": 1
+  },
+  {
+   "fieldname": "row_name",
+   "fieldtype": "Data",
+   "label": "Item Row",
+   "read_only": 1
+  },
+  {
+   "fieldname": "value_section",
+   "fieldtype": "Section Break",
+   "label": "Approved Change"
+  },
+  {
+   "fieldname": "before_value",
+   "fieldtype": "Data",
+   "label": "Before Value",
+   "read_only": 1
+  },
+  {
+   "fieldname": "after_value",
+   "fieldtype": "Data",
+   "label": "After Value",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "label": "Reason",
+   "read_only": 1
+  },
+  {
+   "fieldname": "offline_approval",
+   "fieldtype": "Check",
+   "label": "Approved Offline",
+   "default": "0",
+   "read_only": 1
+  }
+ ],
+ "name": "WMN POS Supervisor Approval",
+ "naming_rule": "Expression",
+ "permissions": [
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1
+  }
+ ],
+ "sort_field": "posting_datetime",
+ "sort_order": "DESC"
+}

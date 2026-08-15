@@ -1,0 +1,234 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-08-13 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-08-13 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Wmn",
+ "owner": "Administrator",
+ "states": [],
+ "track_changes": 1,
+ "autoname": "field:supervisor_user",
+ "field_order": [
+  "supervisor_user",
+  "display_name",
+  "enabled",
+  "pos_profile",
+  "permission_section",
+  "allow_item_discount",
+  "max_item_discount_percentage",
+  "allow_transaction_discount",
+  "max_transaction_discount_percentage",
+  "allow_rate_change",
+  "allow_return",
+  "cash_movement_section",
+  "allow_cash_in",
+  "max_cash_in_amount",
+  "allow_cash_expense",
+  "max_cash_expense_amount",
+  "allow_cash_withdrawal",
+  "max_cash_withdrawal_amount",
+  "security_section",
+  "pin_configured",
+  "last_pin_change",
+  "pin_salt",
+  "pin_hash",
+  "pin_iterations"
+ ],
+ "fields": [
+  {
+   "fieldname": "supervisor_user",
+   "fieldtype": "Link",
+   "label": "Supervisor User",
+   "options": "User",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "display_name",
+   "fieldtype": "Data",
+   "label": "Display Name",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "pos_profile",
+   "fieldtype": "Link",
+   "label": "POS Profile",
+   "options": "POS Profile",
+   "description": "Leave empty to allow this supervisor on all POS Profiles."
+  },
+  {
+   "fieldname": "permission_section",
+   "fieldtype": "Section Break",
+   "label": "Supervisor Override Permissions"
+  },
+  {
+   "fieldname": "allow_item_discount",
+   "fieldtype": "Check",
+   "label": "Override Item Discount",
+   "default": "1"
+  },
+  {
+   "fieldname": "max_item_discount_percentage",
+   "fieldtype": "Percent",
+   "label": "Maximum Item Discount %",
+   "default": "100",
+   "description": "Zero means no additional limit."
+  },
+  {
+   "fieldname": "allow_transaction_discount",
+   "fieldtype": "Check",
+   "label": "Override Transaction Discount",
+   "default": "1"
+  },
+  {
+   "fieldname": "max_transaction_discount_percentage",
+   "fieldtype": "Percent",
+   "label": "Maximum Transaction Discount %",
+   "default": "100",
+   "description": "Zero means no additional limit."
+  },
+  {
+   "fieldname": "allow_rate_change",
+   "fieldtype": "Check",
+   "label": "Override Rate Change",
+   "default": "1"
+  },
+  {
+   "fieldname": "allow_return",
+   "fieldtype": "Check",
+   "label": "Override Return",
+   "default": "1"
+  },
+  {
+   "fieldname": "cash_movement_section",
+   "fieldtype": "Section Break",
+   "label": "Cash Movement Override Permissions"
+  },
+  {
+   "fieldname": "allow_cash_in",
+   "fieldtype": "Check",
+   "label": "Override Cash In",
+   "default": "1"
+  },
+  {
+   "fieldname": "max_cash_in_amount",
+   "fieldtype": "Currency",
+   "label": "Maximum Cash In Amount",
+   "default": "0",
+   "description": "Zero means no additional limit."
+  },
+  {
+   "fieldname": "allow_cash_expense",
+   "fieldtype": "Check",
+   "label": "Override Cash Expense",
+   "default": "1"
+  },
+  {
+   "fieldname": "max_cash_expense_amount",
+   "fieldtype": "Currency",
+   "label": "Maximum Cash Expense Amount",
+   "default": "0",
+   "description": "Zero means no additional limit."
+  },
+  {
+   "fieldname": "allow_cash_withdrawal",
+   "fieldtype": "Check",
+   "label": "Override Cash Withdrawal",
+   "default": "1"
+  },
+  {
+   "fieldname": "max_cash_withdrawal_amount",
+   "fieldtype": "Currency",
+   "label": "Maximum Cash Withdrawal Amount",
+   "default": "0",
+   "description": "Zero means no additional limit."
+  },
+  {
+   "fieldname": "security_section",
+   "fieldtype": "Section Break",
+   "label": "Security"
+  },
+  {
+   "fieldname": "pin_configured",
+   "fieldtype": "Check",
+   "label": "PIN Configured",
+   "default": "0",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_pin_change",
+   "fieldtype": "Datetime",
+   "label": "Last PIN Change",
+   "read_only": 1
+  },
+  {
+   "fieldname": "pin_salt",
+   "fieldtype": "Data",
+   "label": "PIN Salt",
+   "hidden": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "pin_hash",
+   "fieldtype": "Data",
+   "label": "PIN Hash",
+   "hidden": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "pin_iterations",
+   "fieldtype": "Int",
+   "label": "PIN Iterations",
+   "hidden": 1,
+   "read_only": 1,
+   "default": "200000"
+  }
+ ],
+ "name": "WMN POS Supervisor",
+ "naming_rule": "By fieldname",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Sales User"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}

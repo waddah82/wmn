@@ -1,0 +1,144 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-08-13 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-08-13 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Wmn",
+ "owner": "Administrator",
+ "states": [],
+ "track_changes": 1,
+ "issingle": 1,
+ "field_order": [
+  "enabled",
+  "approval_section",
+  "require_item_discount",
+  "require_transaction_discount",
+  "require_rate_change",
+  "require_return",
+  "require_cash_in",
+  "require_cash_expense",
+  "require_cash_withdrawal",
+  "require_reason",
+  "security_section",
+  "min_pin_length",
+  "pin_iterations"
+ ],
+ "fields": [
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enable POS Cashier / Supervisor Control",
+   "default": "0",
+   "description": "Cashier permissions are checked first. Supervisor PIN is requested only when the cashier is not allowed or exceeds a configured limit."
+  },
+  {
+   "fieldname": "approval_section",
+   "fieldtype": "Section Break",
+   "label": "Controlled Actions"
+  },
+  {
+   "fieldname": "require_item_discount",
+   "fieldtype": "Check",
+   "label": "Control Item Discount",
+   "default": "1"
+  },
+  {
+   "fieldname": "require_transaction_discount",
+   "fieldtype": "Check",
+   "label": "Control Transaction Discount",
+   "default": "1"
+  },
+  {
+   "fieldname": "require_rate_change",
+   "fieldtype": "Check",
+   "label": "Control Rate Change",
+   "default": "1"
+  },
+  {
+   "fieldname": "require_return",
+   "fieldtype": "Check",
+   "label": "Control Return",
+   "default": "1"
+  },
+  {
+   "fieldname": "require_cash_in",
+   "fieldtype": "Check",
+   "label": "Control Cash In",
+   "default": "1"
+  },
+  {
+   "fieldname": "require_cash_expense",
+   "fieldtype": "Check",
+   "label": "Control Cash Expense",
+   "default": "1"
+  },
+  {
+   "fieldname": "require_cash_withdrawal",
+   "fieldtype": "Check",
+   "label": "Control Cash Withdrawal",
+   "default": "1"
+  },
+  {
+   "fieldname": "require_reason",
+   "fieldtype": "Check",
+   "label": "Require Reason for Supervisor Override",
+   "default": "0"
+  },
+  {
+   "fieldname": "security_section",
+   "fieldtype": "Section Break",
+   "label": "Security"
+  },
+  {
+   "fieldname": "min_pin_length",
+   "fieldtype": "Int",
+   "label": "Minimum PIN Length",
+   "default": "4",
+   "description": "Supervisor PINs are numeric."
+  },
+  {
+   "fieldname": "pin_iterations",
+   "fieldtype": "Int",
+   "label": "PBKDF2 Iterations",
+   "default": "200000",
+   "description": "Used for both server and offline PIN verification."
+  }
+ ],
+ "name": "WMN POS Supervisor Settings",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Sales User"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}

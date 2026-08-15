@@ -1,0 +1,122 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-08-15 19:05:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "target_doctype",
+  "enabled",
+  "offline_mode",
+  "conflict_policy",
+  "load_strategy",
+  "sync_order",
+  "cache_limit",
+  "filters_json",
+  "fields_section",
+  "offline_fields"
+ ],
+ "fields": [
+  {
+   "fieldname": "target_doctype",
+   "fieldtype": "Link",
+   "label": "DocType",
+   "options": "DocType",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "offline_mode",
+   "fieldtype": "Select",
+   "label": "Offline Mode",
+   "options": "Read Only\nRead + Create\nRead + Create + Edit",
+   "default": "Read Only",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "conflict_policy",
+   "fieldtype": "Select",
+   "label": "Conflict Policy",
+   "options": "Block on Conflict\nServer Wins",
+   "default": "Block on Conflict",
+   "reqd": 1,
+   "description": "Controls what happens when a cached document changed on the server before offline edits are synchronized."
+  },
+  {
+   "fieldname": "load_strategy",
+   "fieldtype": "Select",
+   "label": "Load Strategy",
+   "options": "On First Use\nOn POS Load",
+   "default": "On First Use",
+   "reqd": 1
+  },
+  {
+   "fieldname": "sync_order",
+   "fieldtype": "Int",
+   "label": "Sync Order",
+   "default": "100"
+  },
+  {
+   "fieldname": "cache_limit",
+   "fieldtype": "Int",
+   "label": "Cache Limit",
+   "default": "200",
+   "description": "Maximum documents to cache for this DocType. Zero uses the safe default of 500 rows; the runtime hard limit is 1000."
+  },
+  {
+   "fieldname": "filters_json",
+   "fieldtype": "Code",
+   "label": "Cache Filters (JSON)",
+   "options": "JSON",
+   "description": "Optional Frappe filters used when caching documents for this DocType."
+  },
+  {
+   "fieldname": "fields_section",
+   "fieldtype": "Section Break",
+   "label": "Offline Fields",
+   "description": "Only the fields listed below are planned for offline storage. name and modified are always implicit."
+  },
+  {
+   "fieldname": "offline_fields",
+   "fieldtype": "Table",
+   "label": "Fields",
+   "options": "WMN POS Offline Field",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-08-15 19:05:00.000000",
+ "modified_by": "Administrator",
+ "module": "Wmn",
+ "name": "WMN POS Offline DocType",
+ "owner": "Administrator",
+ "track_changes": 1,
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "autoname": "field:target_doctype",
+ "title_field": "target_doctype"
+}

@@ -1,0 +1,43 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-08-12 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "redemption_key", "promotion", "promotion_code", "reference_section",
+  "reference_doctype", "reference_name", "customer", "company",
+  "discount_amount", "applications", "redeemed_on", "offline_id", "is_cancelled"
+ ],
+ "fields": [
+  {"fieldname":"redemption_key","fieldtype":"Data","label":"Redemption Key","hidden":1,"read_only":1,"unique":1},
+  {"fieldname":"promotion","fieldtype":"Link","label":"Promotion","options":"WMN POS Promotion","reqd":1,"read_only":1,"in_list_view":1},
+  {"fieldname":"promotion_code","fieldtype":"Data","label":"Promotion Code","read_only":1,"in_list_view":1},
+  {"fieldname":"reference_section","fieldtype":"Section Break","label":"Invoice Reference"},
+  {"fieldname":"reference_doctype","fieldtype":"Link","label":"Reference DocType","options":"DocType","reqd":1,"read_only":1},
+  {"fieldname":"reference_name","fieldtype":"Dynamic Link","label":"Reference Name","options":"reference_doctype","reqd":1,"read_only":1,"in_list_view":1},
+  {"fieldname":"customer","fieldtype":"Link","label":"Customer","options":"Customer","read_only":1,"in_list_view":1},
+  {"fieldname":"company","fieldtype":"Link","label":"Company","options":"Company","read_only":1},
+  {"fieldname":"discount_amount","fieldtype":"Currency","label":"Discount Amount","default":"0","read_only":1},
+  {"fieldname":"applications","fieldtype":"Int","label":"Applications","default":"1","read_only":1},
+  {"fieldname":"redeemed_on","fieldtype":"Datetime","label":"Redeemed On","read_only":1,"in_list_view":1},
+  {"fieldname":"offline_id","fieldtype":"Data","label":"Offline ID","read_only":1},
+  {"fieldname":"is_cancelled","fieldtype":"Check","label":"Cancelled","default":"0","read_only":1}
+ ],
+ "index_web_pages_for_search": 0,
+ "is_submittable": 0,
+ "modified": "2026-08-12 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Wmn",
+ "name": "WMN POS Promotion Redemption",
+ "owner": "Administrator",
+ "permissions": [
+  {"export":1,"print":1,"read":1,"report":1,"role":"System Manager"},
+  {"export":1,"print":1,"read":1,"report":1,"role":"Sales Manager"}
+ ],
+ "sort_field":"redeemed_on",
+ "sort_order":"DESC",
+ "states":[],
+ "track_changes":0
+}

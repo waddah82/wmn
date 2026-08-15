@@ -1,0 +1,40 @@
+{
+ "actions": [],
+ "creation": "2026-08-15 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "sales_invoice",
+  "receipt_no",
+  "posting_date",
+  "posting_time",
+  "customer",
+  "is_return",
+  "return_against",
+  "total_qty",
+  "net_total",
+  "tax_amount",
+  "grand_total",
+  "paid_amount",
+  "outstanding_amount"
+ ],
+ "fields": [
+  {"fieldname": "sales_invoice", "fieldtype": "Link", "in_list_view": 1, "label": "Sales Invoice", "options": "Sales Invoice", "read_only": 1, "reqd": 1},
+  {"fieldname": "receipt_no", "fieldtype": "Data", "in_list_view": 1, "label": "Receipt No", "read_only": 1},
+  {"fieldname": "posting_date", "fieldtype": "Date", "in_list_view": 1, "label": "Posting Date", "read_only": 1},
+  {"fieldname": "posting_time", "fieldtype": "Time", "label": "Posting Time", "read_only": 1},
+  {"fieldname": "customer", "fieldtype": "Link", "in_list_view": 1, "label": "Customer", "options": "Customer", "read_only": 1},
+  {"default": "0", "fieldname": "is_return", "fieldtype": "Check", "label": "Is Return", "read_only": 1},
+  {"fieldname": "return_against", "fieldtype": "Link", "label": "Return Against", "options": "Sales Invoice", "read_only": 1},
+  {"fieldname": "total_qty", "fieldtype": "Float", "label": "Total Qty", "read_only": 1},
+  {"fieldname": "net_total", "fieldtype": "Currency", "label": "Net Total", "read_only": 1},
+  {"fieldname": "tax_amount", "fieldtype": "Currency", "label": "Tax Amount", "read_only": 1},
+  {"fieldname": "grand_total", "fieldtype": "Currency", "in_list_view": 1, "label": "Grand Total", "read_only": 1},
+  {"fieldname": "paid_amount", "fieldtype": "Currency", "label": "Paid Amount", "read_only": 1},
+  {"fieldname": "outstanding_amount", "fieldtype": "Currency", "label": "Outstanding Amount", "read_only": 1}
+ ],
+ "istable": 1,
+ "module": "Wmn",
+ "name": "WMN POS Closing Sales Invoice"
+}

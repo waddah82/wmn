@@ -1,0 +1,62 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-08-07 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enable_themes",
+  "active_theme"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "enable_themes",
+   "fieldtype": "Check",
+   "label": "Enable Themes"
+  },
+  {
+   "depends_on": "eval:doc.enable_themes == 1",
+   "fieldname": "active_theme",
+   "fieldtype": "Link",
+   "label": "Active Theme",
+   "options": "UI Theme"
+  },
+  {
+   "fieldname": "fixed_css",
+   "fieldtype": "Code",
+   "label": "Fixed CSS",
+   "options": "CSS",
+   "description": "Base CSS applied globally. When themes are enabled, the selected theme CSS is appended after this CSS."
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-08-07 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Wmn",
+ "name": "UI Theme Setting",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "All"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
