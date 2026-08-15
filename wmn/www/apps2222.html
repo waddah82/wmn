@@ -1,0 +1,756 @@
+{% extends "templates/web.html" %}
+
+{% block page_content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/all.min.css">
+<div id="apps" class="dashboard-wrapper">
+    <div class="dashboard-header">
+        <button class="toggle-header-btn" onclick="toggleHeader(event)">
+            <svg id="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);">
+                <polyline points="7 13 12 8 17 13"></polyline>
+                <polyline points="7 18 12 13 17 18"></polyline>
+            </svg>
+        </button>
+        
+        <div id="workspace-menu">
+            <div style="font-size: 11px; color: #888;">...</div>
+        </div>
+        
+        <div id="dropdown-panel" class="custom-dropdown">
+            <div id="tabs-content" class="cards-grid-container"></div>
+        </div>
+    </div>
+    
+    <div class="dashboard-body">
+        <iframe id="content-frame" name="content-frame" src="about:blank"></iframe>
+    </div>
+</div>
+
+
+
+<style>
+:root {
+    --primary-color: #1b65fb;
+    --bg-light: #f8fafc;
+    --border-color: #d1d9e0;
+    --text-main: #1e293b;
+    --text-muted: #64748b;
+    --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+body, html {
+    margin: 0; padding: 0;
+    height: 100vh; width: 100vw;
+    font-family: -apple-system, sans-serif;
+    overflow: hidden; 
+}
+
+.page-head, header, footer, .web-footer, .navbar {
+    display: none !important;
+}
+
+.dashboard-wrapper {
+    display: flex;
+    flex-direction: column;
+    width: 100vw;
+    height: 100vh;
+    position: fixed;
+    top: 0; left: 0;
+    background: #fff;
+}
+
+.dashboard-header {
+    flex: 0 0 auto;
+    row-gap:0;
+    column-gap: 9px !important;
+    padding:0  !important;
+    margin:0 !important;
+    background: #ffffff;
+    border-bottom: 1px solid var(--border-color);
+    position: relative;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+}
+
+#workspace-menu {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+   
+    
+    width: 100%;
+    height: auto;
+    min-height: min-content; 
+    row-gap:0;
+    column-gap: 12px !important;
+    padding:0  !important;
+    margin:0 !important;
+
+    overflow-x: visible; 
+    overflow-y: visible;
+    white-space: normal; 
+}
+
+
+.workspace-btn {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    row-gap:0;
+    column-gap: 12px !important;
+    padding:0  !important;
+    margin:0 !important;
+    
+    font-size: 13px !important;
+    font-weight: 600;
+    color: #555b6b !important;
+    cursor: pointer;
+    transition: color 0.2s ease;
+    position: relative;
+}
+
+.workspace-btn:hover {
+    color: #ba9f63 !important;
+}
+
+.workspace-btn.active {
+    color: #ba9f63 !important;
+    background: transparent !important;
+}
+
+.workspace-btn.active::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background-color: #ba9f63;
+}
+
+.custom-dropdown {
+    display: block; 
+    position: absolute;
+    top: 100%; left: 0; right: 0;
+    width: 100%;
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-height 0.4s ease, opacity 0.3s ease, padding 0.4s ease;
+    background: white;
+    box-shadow: 0 15px 30px rgba(0,0,0,0.1);
+    padding: 0 40px;
+    z-index: 1999;
+    box-sizing: border-box;
+}
+
+.custom-dropdown.active {
+    max-height: 90vh;
+    opacity: 1;
+    padding: 35px 40px;
+    overflow-y: auto;
+}
+
+.cards-grid-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 35px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.card-group { 
+    display: flex; 
+    flex-direction: column; 
+    background: #fafafa;
+    padding: 15px;
+    border-radius: 8px;
+}
+
+.card-title { 
+    font-weight: 700;
+    padding-bottom: 10px;
+    margin-bottom: 12px;
+    font-size: 14px;
+    color: #555b6b;
+    text-transform: uppercase;
+    border-bottom: 2px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.link-item { 
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    color: #555b6b;
+    text-decoration: none;
+    font-size: 13.5px;
+    transition: var(--transition);
+    border-radius: 6px;
+}
+
+.link-item:hover { 
+    color: #ba9f63;
+    background: #fff;
+    padding-right: 15px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+.dashboard-body {
+    flex: 1;
+    position: relative;
+    background: #f1f5f9;
+}
+
+#content-frame {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: transparent;
+}
+
+.custom-dropdown::-webkit-scrollbar { width: 6px; }
+.custom-dropdown::-webkit-scrollbar-track { background: transparent; }
+.custom-dropdown::-webkit-scrollbar-thumb { 
+    background: #cbd5e1; 
+    border-radius: 10px; 
+}
+.custom-dropdown::-webkit-scrollbar-thumb:hover { background: var(--primary-color); }
+
+.dashboard-header.collapsed {
+    height: 0 !important;
+    min-height: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    overflow: visible !important; /* هذا هو السر: السماح للزر بالظهور بالخارج */
+    border-bottom: none !important;
+}
+
+/* 3. إخفاء المحتويات الداخلية فقط عند الطي لكي لا تتداخل مع الإيفريم */
+.dashboard-header.collapsed > *:not(.toggle-header-btn) {
+    display: none !important;
+}
+
+/* 4. تنسيق الزر ليبقى ثابتاً في المنتصف أسفل الحافة */
+.toggle-header-btn {
+    position: absolute;
+    bottom: -22px; /* يخرجه لأسفل الهيدر بـ 22 بكسل */
+    left: 50%;
+    transform: translateX(-50%);
+    width: 30px;
+    height: 22px;
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-top: none;
+    cursor: pointer;
+    z-index: 3000; /* أعلى من كل شيء */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    color: var(--primary-color);
+   
+}
+
+.toggle-header-btn:hover {
+    background: #f8fafc;
+}
+</style>
+{% endblock %}
+
+{% block script %}
+<script src="/assets/frappe/js/lib/jquery/jquery.min.js"></script>
+<script>
+(function() {
+    console.log("Checking for Frappe existence...");
+    let attempts = 0;
+    const maxAttempts = 50;
+    function startInitialization() {
+        if (window.frappe && window.frappe.call) {
+            console.log("Frappe is ready. Initializing Dashboard...");
+            initDashboard();
+            initNativeSearch();
+        } else if (attempts < maxAttempts) {
+            attempts++;
+            setTimeout(startInitialization, 100);
+        } else {
+            console.error("Critical Error: Frappe framework did not load in time.");
+        }
+    }
+
+  
+    if (document.readyState === "complete" || document.readyState === "interactive") {
+        startInitialization();
+    } else {
+        document.addEventListener("DOMContentLoaded", startInitialization);
+    }
+})();
+
+
+function toggleHeader(e) {
+    if (e) e.stopPropagation();
+
+    const header = document.querySelector('.dashboard-header');
+    const icon = document.getElementById('toggle-icon');
+
+    if (!header || !icon) return;
+
+    header.classList.toggle('collapsed');
+
+    if (header.classList.contains('collapsed')) {
+        // تدوير السهمين للأسفل عند الإغلاق
+        icon.style.transform = 'rotate(180deg)';
+    } else {
+        // إعادة السهمين للأعلى عند الفتح
+        icon.style.transform = 'rotate(0deg)';
+    }
+}
+function toggleHeader444(e) {
+    if (e) e.stopPropagation();
+
+    const header = document.querySelector('.dashboard-header');
+    const icon = document.getElementById('toggle-icon');
+
+    if (!header || !icon) return;
+
+    header.classList.toggle('collapsed');
+
+    if (header.classList.contains('collapsed')) {
+        // تدوير السهم ليشير للأسفل
+        icon.style.transform = 'rotate(180deg)';
+    } else {
+        // إعادة السهم لوضعه الطبيعي (للأعلى)
+        icon.style.transform = 'rotate(0deg)';
+    }
+}
+function toggleHeader333(e) {
+    if (e) e.stopPropagation();
+
+    const header = document.querySelector('.dashboard-header');
+    const icon = document.querySelector('#toggle-icon');
+
+    if (!header) return;
+
+    // تنفيذ عملية الطي/الفتح
+    header.classList.toggle('collapsed');
+
+    // تغيير شكل الأيقونة
+    if (icon) {
+        if (header.classList.contains('collapsed')) {
+            // إذا كان مغلقاً -> السهم يشير للأسفل لفتحه
+            icon.classList.remove('fa-chevron-up');
+            icon.classList.add('fa-chevron-down');
+        } else {
+            // إذا كان مفتوحاً -> السهم يشير للأعلى لغلقه
+            icon.classList.remove('fa-chevron-down');
+            icon.classList.add('fa-chevron-up');
+        }
+    }
+}
+
+function toggleHeader222(e) {
+    if (e) e.stopPropagation();
+
+    // البحث باستخدام الكلاسات لضمان الوصول للعناصر
+    const header = document.querySelector('.dashboard-header');
+    const wrapper = document.querySelector('.dashboard-wrapper');
+    const icon = document.querySelector('#toggle-icon');
+
+    // فحص الأمان
+    if (!header || !wrapper) {
+        console.error("تعذر العثور على .dashboard-header أو .dashboard-wrapper");
+        return;
+    }
+
+    // تنفيذ عملية الطي
+    header.classList.toggle('collapsed');
+    wrapper.classList.toggle('header-collapsed');
+
+    // تغيير شكل الأيقونة
+    if (icon) {
+        if (header.classList.contains('collapsed')) {
+            icon.classList.remove('fa-chevron-up');
+            icon.classList.add('fa-chevron-down');
+        } else {
+            icon.classList.remove('fa-chevron-down');
+            icon.classList.add('fa-chevron-up');
+        }
+    }
+}
+function toggleHeader1(e) {
+    if (e) e.stopPropagation();
+
+    const header = document.getElementById('dashboard-header');
+    const wrapper = document.querySelector('.dashboard-header');
+    const icon = document.getElementById('toggle-icon');
+
+    if (!header || !wrapper) {
+        console.error("Required elements for toggle not found");
+        return;
+    }
+
+    header.classList.toggle('collapsed');
+    wrapper.classList.toggle('header-collapsed');
+
+    if (icon) {
+        icon.className = header.classList.contains('collapsed')
+            ? 'fa fa-chevron-down'
+            : 'fa fa-chevron-up';
+    }
+}
+
+function initDashboard() {
+    const dropdownPanel = document.getElementById('dropdown-panel');
+    const menu = document.getElementById('workspace-menu');
+    if (!menu) return;
+
+    frappe.call({
+        method: 'wmn.api.get_translated_workspaces',
+        callback: function(r) {
+            const workspaces = r.message || [];
+            menu.innerHTML = '';
+            
+            workspaces.forEach(ws => {
+                const btn = document.createElement('button');
+                btn.className = "workspace-btn";
+                
+                const displayName = ws.translated_label || ws.label || ws.name;
+                
+                btn.innerHTML = `<i class="${ws.icon || 'fa fa-th-large'}"></i> ${displayName}`;
+
+               btn.onclick = function(e) {
+                    e.stopPropagation();
+                    const isActive = this.classList.contains('active');
+                    
+                    document.querySelectorAll('.workspace-btn').forEach(b => b.classList.remove('active'));
+
+                    if (isActive && dropdownPanel.classList.contains('active')) {
+                        dropdownPanel.classList.remove('active');
+                    } else {
+                        this.classList.add('active');
+                        dropdownPanel.classList.add('active');
+                        loadWorkspace(ws.name);
+                    }
+                };
+                
+                menu.appendChild(btn);
+            });
+        }
+    });
+}
+
+
+
+
+
+const workspaceCache = {};
+
+function loadWorkspace11111(ws_name) {
+    const dropdownPanel = document.getElementById('dropdown-panel');
+    const mainIframe = document.getElementById('content-frame');
+    if (!dropdownPanel || !mainIframe) return;
+
+    Object.values(workspaceCache).forEach(ifrm => ifrm.style.display = 'none');
+    const slug = ws_name.toLowerCase().replace(/ /g, '-');
+    const targetPath = `/app/${slug}`;
+
+    if (workspaceCache[slug]) {
+        workspaceCache[slug].style.display = 'block';
+    } else {
+        const iframe = document.createElement('iframe');
+        iframe.src = targetPath;
+        iframe.style.width = '100%'; 
+        iframe.style.height = '80vh';
+        iframe.style.border = 'none'; 
+        iframe.style.display = 'block';
+
+        iframe.onload = function() {
+            try {
+                const frameWin = iframe.contentWindow;
+                const frameDoc = iframe.contentDocument || frameWin.document;
+
+                const style = frameDoc.createElement('style');
+                style.innerHTML = `
+                    .navbar, .page-head, .sidebar-left, .layout-side-section, .header-inner, .sticky-top { display: none !important; }
+                    .layout-main-section-wrapper, .page-container { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+                    body { overflow-y: auto !important; }
+                `;
+                frameDoc.head.appendChild(style);
+                let lastPath = frameWin.location.pathname + frameWin.location.hash;
+                
+                setInterval(() => {
+                    const currentPath = frameWin.location.pathname + frameWin.location.hash;
+                    if (currentPath !== targetPath && currentPath !== lastPath && currentPath !== '/app') {
+                        mainIframe.src = currentPath;
+
+                        dropdownPanel.classList.remove('active');
+                        const newUrl = `/apps?route=${encodeURIComponent(currentPath)}`;
+                        window.history.pushState({ path: newUrl }, '', newUrl);
+                        frameWin.history.replaceState(null, null, targetPath);
+                        frameWin.location.replace(targetPath);
+                        
+                        lastPath = targetPath;
+                    }
+                }, 100);
+
+                frameDoc.addEventListener('click', function(e) {
+                    const link = e.target.closest('a[href^="/app"]');
+                    if (link) {
+                        e.preventDefault();
+                        e.stopImmediatePropagation();
+                        const href = link.getAttribute('href');
+                        mainIframe.src = href;
+                        dropdownPanel.classList.remove('active');
+                    }
+                }, true);
+
+            } catch (err) { console.warn("Security Block:", err); }
+        };
+
+        workspaceCache[slug] = iframe;
+        dropdownPanel.appendChild(iframe);
+    }
+
+    dropdownPanel.classList.add('active');
+}
+function loadWorkspace(ws_name) {
+    const dropdownPanel = document.getElementById('dropdown-panel');
+    const mainIframe = document.getElementById('content-frame');
+    if (!dropdownPanel || !mainIframe) return;
+
+    Object.values(workspaceCache).forEach(ifrm => ifrm.style.display = 'none');
+    const slug = ws_name.toLowerCase().replace(/ /g, '-');
+    const targetPath = `/app/${slug}`;
+
+    if (workspaceCache[slug]) {
+        workspaceCache[slug].style.display = 'block';
+    } else {
+        const iframe = document.createElement('iframe');
+        iframe.src = targetPath;
+        iframe.style.width = '100%'; iframe.style.height = '80vh';
+        iframe.style.border = 'none'; iframe.style.display = 'block';
+
+        iframe.onload = function () {
+            try {
+                const frameWin = iframe.contentWindow;
+                const frameDoc = iframe.contentDocument || frameWin.document;
+
+                // 1. تنظيف الواجهة (CSS)
+                const style = frameDoc.createElement('style');
+                style.innerHTML = `
+                    .navbar, .page-head, .sidebar-left, .layout-side-section, .header-inner, .sticky-top { display: none !important; }
+                    .layout-main-section-wrapper, .page-container { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+                    body { overflow-y: auto !important; }
+                `;
+                frameDoc.head.appendChild(style);
+
+                // 2. اعتراض الروابط العادية
+                frameDoc.addEventListener('click', function (e) {
+                    const link = e.target.closest('a[href^="/app"]');
+                    if (link) {
+                        e.preventDefault(); e.stopImmediatePropagation();
+                        redirectNavigation(link.getAttribute('href'));
+                    }
+                }, true);
+
+                // 3. السحر الحقيقي: اعتراض التنقل البرمجي (Shortcuts & Charts)
+                // نقوم بإعادة تعريف دالة set_route داخل الفريم الصغير
+                if (frameWin.frappe) {
+                    frameWin.frappe.set_route = function () {
+                        const newRoute = frameWin.frappe.get_route_str();
+                        // ننتظر قليلاً حتى يتشكل الرابط ثم نرسله للكبير
+                        setTimeout(() => {
+                            const fullPath = "/app/" + frameWin.frappe.get_route().join('/');
+                            redirectNavigation(fullPath);
+                        }, 10);
+                        return false; // منع التنقل داخلياً
+                    };
+                }
+
+                // اعتراض أي تغيير في تاريخ المتصفح (pushState)
+                const originalPush = frameWin.history.pushState;
+                frameWin.history.pushState = function (state, title, url) {
+                    if (url && url.startsWith('/app') && url !== targetPath) {
+                        redirectNavigation(url);
+                        return; // منع الإضافة للتاريخ الداخلي
+                    }
+                    return originalPush.apply(frameWin.history, arguments);
+                };
+
+            } catch (err) { console.warn("Security Block:", err); }
+        };
+
+        workspaceCache[slug] = iframe;
+        dropdownPanel.appendChild(iframe);
+    }
+
+    // الدالة الموحدة لإرسال المستخدم للإطار الكبير
+    function redirectNavigation(href) {
+        if (!href || href === targetPath) return;
+
+        // إرسال الرابط للإطار الكبير
+        mainIframe.src = href;
+
+        // إغلاق القائمة المنسدلة
+        dropdownPanel.classList.remove('active');
+
+        // تحديث رابط المتصفح الرئيسي
+        const newUrl = `/appss?route=${encodeURIComponent(href)}`;
+        window.history.pushState({ path: newUrl }, '', newUrl);
+    }
+
+    dropdownPanel.classList.add('active');
+}
+function loadWorkspacebest(ws_name) {
+    const dropdownPanel = document.getElementById('dropdown-panel');
+    const mainIframe = document.getElementById('content-frame'); // الإطار الكبير الخلفي
+
+    if (!dropdownPanel || !mainIframe) return;
+
+    // 2. إخفاء جميع الـ iframes المخزنة حالياً
+    Object.values(workspaceCache).forEach(ifrm => {
+        ifrm.style.display = 'none';
+    });
+
+    const slug = ws_name.toLowerCase().replace(/ /g, '-');
+
+    // 3. التحقق من وجود النسخة المخزنة
+    if (workspaceCache[slug]) {
+        workspaceCache[slug].style.display = 'block';
+    } else {
+        // 4. إنشاء iframe جديد لمساحة العمل هذه لأول مرة
+        const iframe = document.createElement('iframe');
+        iframe.src = `/app/${slug}`;
+        iframe.style.width = '100%';
+        iframe.style.height = '80vh';
+        iframe.style.border = 'none';
+        iframe.style.display = 'block';
+
+        iframe.onload = function () {
+            try {
+                const frameWin = iframe.contentWindow;
+                const frameDoc = iframe.contentDocument || frameWin.document;
+
+                // حقن الـ CSS لتنظيف الواجهة
+                const style = frameDoc.createElement('style');
+                style.innerHTML = `
+                    .navbar, .page-head, .sidebar-left, .layout-side-section, .header-inner, .sticky-top {
+                        display: none !important;
+                    }
+                    .layout-main-section-wrapper, .page-container {
+                        margin: 0 !important; padding: 0 !important; width: 100% !important;
+                    }
+                    body { overflow-y: auto !important; height: auto !important; }
+                `;
+                frameDoc.head.appendChild(style);
+
+                // 5. السيطرة على الروابط لمنع التحميل داخل الدروب داون
+                frameDoc.addEventListener('click', function (e) {
+                    const link = e.target.closest('a[href^="/app"]');
+
+                    if (link) {
+                        // إيقاف أي إجراء افتراضي أو سكربتات فرابي الداخلية فوراً
+                        e.preventDefault();
+                        e.stopImmediatePropagation();
+
+                        const href = link.getAttribute('href');
+
+                        // فتح الرابط في الإطار الرئيسي الكبير فقط
+                        mainIframe.src = href;
+
+                        // إغلاق الدروب داون وتحديث الرابط العلوي
+                        dropdownPanel.classList.remove('active');
+                        const newUrl = `/appss?route=${encodeURIComponent(href)}`;
+                        window.history.pushState({ path: newUrl }, '', newUrl);
+
+                        // إجبار الفريم الصغير على التوقف عن أي حركة داخلية
+                        frameWin.stop();
+                    }
+                }, true); // استخدام الـ Capture Mode لضمان الأولوية
+
+            } catch (err) {
+                console.warn('Iframe security restriction:', err);
+            }
+        };
+
+        // تخزين وإضافة الفريم للوحة
+        workspaceCache[slug] = iframe;
+        dropdownPanel.appendChild(iframe);
+    }
+
+    // تفعيل ظهور اللوحة
+    dropdownPanel.classList.add('active');
+}
+
+function initNativeSearch() {
+    const iframe = document.getElementById('content-frame');
+    if (!iframe) return;
+
+    const makeDashboardUrl = (url) => {
+        if (!url || url.includes('apps')) return url;
+        return `/apps?route=${encodeURIComponent(url)}`;
+    };
+
+    setInterval(() => {
+        document.querySelectorAll('a[href^="/app"]').forEach(link => {
+            const currentHref = link.getAttribute('href');
+            if (currentHref && !currentHref.includes('apps')) {
+                link.setAttribute('href', makeDashboardUrl(currentHref));
+            }
+        });
+    }, 2000);
+
+    const params = new URLSearchParams(window.location.search);
+    const route = params.get('route');
+    if (route) iframe.src = decodeURIComponent(route);
+
+    document.addEventListener('click', function (e) {
+        const target = e.target.closest('a[href^="/app"]');
+        if (target && !target.closest('#content-frame') && !target.closest('.link-item')) {
+            const href = target.getAttribute('href');
+            let realRoute = href;
+            if (href.includes('route=')) {
+                realRoute = decodeURIComponent(href.split('route=')[1]);
+            }
+            
+            e.preventDefault();
+            iframe.src = realRoute;
+            const smartUrl = makeDashboardUrl(realRoute);
+            window.history.pushState({ path: smartUrl }, '', smartUrl);
+            document.getElementById('dropdown-panel').classList.remove('active');
+            document.querySelectorAll('.workspace-btn').forEach(b => b.classList.remove('active'));
+        }
+    }, true);
+}
+
+document.addEventListener('click', function(e) {
+    const iframe = document.getElementById('content-frame');
+    const link = e.target.closest('a[href^="/app"]');
+    
+    if (link && !link.closest('#content-frame') && !link.closest('.link-item')) {
+        e.preventDefault();
+        const href = link.getAttribute('href');
+        iframe.src = href;
+        document.getElementById('dropdown-panel').classList.remove('active');
+        document.querySelectorAll('.workspace-btn').forEach(b => b.classList.remove('active'));
+        
+        const newUrl = `/apps?route=${encodeURIComponent(href)}`;
+        window.history.pushState({ path: newUrl }, '', newUrl);
+    }
+}, true);
+
+window.addEventListener('popstate', function() {
+    const params = new URLSearchParams(window.location.search);
+    const route = params.get('route');
+    if (route) {
+        document.getElementById('content-frame').src = decodeURIComponent(route);
+    }
+});
+</script>
+
+{% endblock %}

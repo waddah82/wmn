@@ -4,7 +4,7 @@
   "id": "/app/point-of-sale",
   "description": "ERPNext Point of Sale with offline cache and IndexedDB invoice queue",
   "start_url": "/app/point-of-sale",
-  "scope": "/",
+  "scope": "/app/point-of-sale",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#4F46E5",
