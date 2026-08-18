@@ -19,6 +19,10 @@
             return methods.FinalMethods.bind_events.apply(this, args);
         }
 
+        wmn_handle_invoice_barcode(...args) {
+            return methods.FinalMethods.wmn_handle_invoice_barcode.apply(this, args);
+        }
+
         refresh_list(...args) {
             return methods.FinalMethods.refresh_list.apply(this, args);
         }

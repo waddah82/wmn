@@ -3,6 +3,7 @@ window.wmn_pos_boot = async function wmn_pos_boot(wrapper) {
     if (!wrapper) throw new Error("WMN POS wrapper is required");
     const ns = window.WMN_POS;
 
+    await ns.Services?.Settings?.DevicePreferences?.initialize?.();
     await wmn_bootstrap_detect_effective_offline();
     ns.UI.Mamsek?.setup?.();
     ns.UI.Dialogs?.setup?.();

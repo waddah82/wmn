@@ -7,7 +7,16 @@
         show_item_cart_counter: false,
     });
 
+    function devicePreferences() {
+        return window.WMN_POS?.Services?.Settings?.DevicePreferences || null;
+    }
+
+    devicePreferences()?.register?.(STORAGE_KEY, DEFAULTS);
+
     function readAll() {
+        const service = devicePreferences();
+        if (service?.readSync) return service.readSync(STORAGE_KEY, DEFAULTS);
+
         try {
             const raw = window.localStorage.getItem(STORAGE_KEY);
             const stored = raw ? JSON.parse(raw) : {};
@@ -19,6 +28,9 @@
 
     function writeAll(values) {
         const next = Object.assign({}, DEFAULTS, values || {});
+        const service = devicePreferences();
+        if (service?.write) return service.write(STORAGE_KEY, next, DEFAULTS);
+
         try {
             window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
         } catch (e) {

@@ -187,6 +187,51 @@
                     });
                 },
 
+        wmn_setup_send_to_cashier_button() {
+                    const handoff = window.WMN_POS?.Features?.InvoiceHandoff?.Common;
+                    const frm = this.events?.get_frm?.();
+                    const doc = frm?.doc || {};
+                    const $submit = this.$component?.find?.(".submit-order-btn").first();
+                    if (!$submit?.length) return;
+
+                    let $button = this.$component.find(".wmn-send-to-cashier-btn").first();
+                    if (!$button.length) {
+                        $button = $(
+                            `<button type="button" class="btn btn-default wmn-send-to-cashier-btn" style="margin-inline-end:8px;font-weight:700;">${wmn_t("Send to Cashier", "إرسال إلى الكاشير")}</button>`
+                        );
+                        $button.insertBefore($submit);
+                    }
+
+                    const canShow = !!(
+                        handoff?.canSendToCashier?.(doc) &&
+                        window.cur_pos?.__wmn_cashier_resume !== true
+                    );
+                    $button.toggle(canShow);
+                    if (!canShow) return;
+
+                    $button.off("click.wmnSendToCashier").on("click.wmnSendToCashier", async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (this.validate_reqd_invoice_fields && !this.validate_reqd_invoice_fields()) return;
+                        if (!this.events?.send_to_cashier) return;
+
+                        $button.prop("disabled", true);
+                        try {
+                            await this.events.send_to_cashier();
+                        } catch (error) {
+                            console.error("WMN Send to Cashier failed", error);
+                            if (!String(error?.message || "").includes("printing")) {
+                                frappe.show_alert({
+                                    message: error?.message || wmn_t("Send to Cashier failed", "تعذر الإرسال إلى الكاشير"),
+                                    indicator: "red",
+                                });
+                            }
+                        } finally {
+                            $button.prop("disabled", false);
+                        }
+                    });
+                },
+
         make_invoice_fields_control() {
                     this.reqd_invoice_fields = [];
 
@@ -246,6 +291,7 @@
 
         checkout() {
                     const result = super.checkout();
+                    this.wmn_setup_send_to_cashier_button();
                     if (this.events && typeof this.events.after_checkout === "function") {
                         Promise.resolve(this.events.after_checkout()).catch((e) => {
                             console.warn("WMN Payment after_checkout skipped", e);
@@ -261,6 +307,7 @@
 
     const FinalMethods = Object.create(null);
     FinalMethods.bind_events = UIMethods.bind_events || CoreMethods.bind_events;
+    FinalMethods.wmn_setup_send_to_cashier_button = UIMethods.wmn_setup_send_to_cashier_button || CoreMethods.wmn_setup_send_to_cashier_button;
     FinalMethods.make_invoice_fields_control = UIMethods.make_invoice_fields_control || CoreMethods.make_invoice_fields_control;
     FinalMethods.checkout = UIMethods.checkout || CoreMethods.checkout;
 

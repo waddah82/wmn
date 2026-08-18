@@ -423,10 +423,14 @@
 
         const applied = [];
         for (const rule of rules) {
-            if (applied.length && !toInt(rule.stackable)) continue;
             const result = evaluateRule(rule, state, doc, context);
             if (!result) continue;
+
             applied.push(result);
+
+            // Stackable belongs to the promotion that has just been applied:
+            // when enabled, lower-priority promotions may continue; when disabled,
+            // this promotion becomes the last applied promotion in the chain.
             if (!toInt(rule.stackable)) break;
         }
 

@@ -19,12 +19,28 @@
             return methods.FinalMethods.load_summary_of.apply(this, args);
         }
 
+        get_upper_section_html(...args) {
+            return methods.FinalMethods.get_upper_section_html.apply(this, args);
+        }
+
+        wmn_get_receipt_identity_html(...args) {
+            return methods.FinalMethods.wmn_get_receipt_identity_html.apply(this, args);
+        }
+
         bind_events(...args) {
             return methods.FinalMethods.bind_events.apply(this, args);
         }
 
         wmn_render_discount_summary(...args) {
             return methods.FinalMethods.wmn_render_discount_summary.apply(this, args);
+        }
+
+        wmn_can_add_payment(...args) {
+            return methods.FinalMethods.wmn_can_add_payment.apply(this, args);
+        }
+
+        wmn_open_from_invoice_barcode(...args) {
+            return methods.FinalMethods.wmn_open_from_invoice_barcode.apply(this, args);
         }
 
         wmn_render_add_payment_button(...args) {

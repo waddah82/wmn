@@ -117,25 +117,27 @@
                                 }
 
                                 if (!seed && !offline) {
+                                    // The selector only owns the currently rendered page (normally 40 rows).
+                                    // Use it as a fast path, but never treat it as the complete online catalog.
                                     seed = (this.item_selector?.items || []).find((item) => String(item.item_code || "") === target.item_code) || null;
                                 }
 
-                                if (!seed) {
+                                if (!seed && offline) {
                                     frappe.show_alert({
-                                        message: __("Free item {0} is not available in the current POS data", [target.item_code]),
+                                        message: __("Free item {0} is not available in the offline POS cache", [target.item_code]),
                                         indicator: "orange",
                                     });
                                     continue;
                                 }
 
-                                if (cint(seed.has_serial_no || 0)) {
+                                if (seed && cint(seed.has_serial_no || 0)) {
                                     frappe.show_alert({
                                         message: __("Free item {0} requires Serial No selection", [target.item_code]),
                                         indicator: "orange",
                                     });
                                     continue;
                                 }
-                                if (cint(seed.has_batch_no || 0) && !seed.batch_no) {
+                                if (seed && cint(seed.has_batch_no || 0) && !seed.batch_no) {
                                     frappe.show_alert({
                                         message: __("Free item {0} requires Batch selection", [target.item_code]),
                                         indicator: "orange",
@@ -143,8 +145,9 @@
                                     continue;
                                 }
 
-                                const conversion = Math.max(0.000001, flt(seed.conversion_factor || 1));
-                                const rawItemTaxRate = seed.item_tax_rate || seed.offline_item_tax_map || {};
+                                const seedData = seed || {};
+                                const conversion = Math.max(0.000001, flt(seedData.conversion_factor || 1));
+                                const rawItemTaxRate = seedData.item_tax_rate || seedData.offline_item_tax_map || {};
                                 let freeItemTaxMap = {};
                                 if (typeof rawItemTaxRate === "string") {
                                     try {
@@ -165,16 +168,16 @@
                                         parent: doc.name,
                                         parentfield: "items",
                                         item_code: target.item_code,
-                                        item_name: seed.item_name || target.item_code,
-                                        description: seed.description || seed.item_name || target.item_code,
-                                        image: seed.image || "",
-                                        item_group: seed.item_group || "",
-                                        brand: seed.brand || "",
-                                        warehouse: seed.warehouse || doc.set_warehouse || this.settings?.warehouse || "",
-                                        batch_no: seed.batch_no || "",
+                                        item_name: seedData.item_name || target.item_code,
+                                        description: seedData.description || seedData.item_name || target.item_code,
+                                        image: seedData.image || "",
+                                        item_group: seedData.item_group || "",
+                                        brand: seedData.brand || "",
+                                        warehouse: seedData.warehouse || doc.set_warehouse || this.settings?.warehouse || "",
+                                        batch_no: seedData.batch_no || "",
                                         serial_no: "",
-                                        uom: seed.uom || seed.stock_uom || "Nos",
-                                        stock_uom: seed.stock_uom || seed.uom || "Nos",
+                                        uom: seedData.uom || seedData.stock_uom || "Nos",
+                                        stock_uom: seedData.stock_uom || seedData.uom || "Nos",
                                         conversion_factor: conversion,
                                         qty: target.qty,
                                         stock_qty: target.qty * conversion,
@@ -189,13 +192,13 @@
                                         base_net_amount: 0,
                                         discount_percentage: 0,
                                         is_free_item: 1,
-                                        has_batch_no: cint(seed.has_batch_no || 0),
+                                        has_batch_no: cint(seedData.has_batch_no || 0),
                                         has_serial_no: 0,
-                                        allow_negative_stock: cint(seed.allow_negative_stock || 0),
-                                        income_account: seed.income_account || this.settings?.income_account || "",
-                                        expense_account: seed.expense_account || "",
-                                        cost_center: seed.cost_center || this.settings?.cost_center || "",
-                                        item_tax_template: seed.item_tax_template || "",
+                                        allow_negative_stock: cint(seedData.allow_negative_stock || 0),
+                                        income_account: seedData.income_account || this.settings?.income_account || "",
+                                        expense_account: seedData.expense_account || "",
+                                        cost_center: seedData.cost_center || this.settings?.cost_center || "",
+                                        item_tax_template: seedData.item_tax_template || "",
                                         offline_item_tax_map: freeItemTaxMap,
                                         item_tax_rate: freeItemTaxRateJson,
                                         __wmn_promotion_free_row: 1,
@@ -212,11 +215,11 @@
                                         parent: doc.name,
                                         parentfield: "items",
                                         item_code: target.item_code,
-                                        warehouse: seed.warehouse || doc.set_warehouse || this.settings?.warehouse || "",
-                                        batch_no: seed.batch_no || "",
+                                        warehouse: seedData.warehouse || doc.set_warehouse || this.settings?.warehouse || "",
+                                        batch_no: seedData.batch_no || "",
                                         serial_no: "",
-                                        uom: seed.uom || seed.stock_uom || "Nos",
-                                        stock_uom: seed.stock_uom || seed.uom || "Nos",
+                                        uom: seedData.uom || seedData.stock_uom || "Nos",
+                                        stock_uom: seedData.stock_uom || seedData.uom || "Nos",
                                         conversion_factor: conversion,
                                         qty: target.qty,
                                         use_serial_batch_fields: 1,
@@ -225,20 +228,59 @@
                                         __wmn_promotion_code: target.code,
                                     });
 
-                                    // Use ERPNext's normal item events so mandatory accounting,
-                                    // tax, warehouse and item defaults are populated exactly like
-                                    // a normal POS row. The promotion fields are forced back to
-                                    // free-item values immediately afterwards.
-                                    await this.trigger_new_item_events(row);
+                                    // Hydrate the free row without triggering the normal qty/item
+                                    // pricing lifecycle. A promotion free row is already a commercial
+                                    // result and must not start a second ERPNext pricing cycle.
+                                    try {
+                                        row = await this.wmn_prepare_online_promotion_free_item_row(row, seed);
+                                    } catch (error) {
+                                        doc.items = (doc.items || []).filter((candidate) => candidate !== row);
+                                        try {
+                                            if (frappe.locals?.[row.doctype] && row.name) delete frappe.locals[row.doctype][row.name];
+                                        } catch (e) {}
+                                        console.error("WMN failed to load promotion free item", target.item_code, error);
+                                        frappe.show_alert({
+                                            message: __("Unable to load free item {0} from ERPNext", [target.item_code]),
+                                            indicator: "orange",
+                                        });
+                                        continue;
+                                    }
+
+                                    if (cint(row.has_serial_no || 0)) {
+                                        doc.items = (doc.items || []).filter((candidate) => candidate !== row);
+                                        try {
+                                            if (frappe.locals?.[row.doctype] && row.name) delete frappe.locals[row.doctype][row.name];
+                                        } catch (e) {}
+                                        frappe.show_alert({
+                                            message: __("Free item {0} requires Serial No selection", [target.item_code]),
+                                            indicator: "orange",
+                                        });
+                                        continue;
+                                    }
+                                    if (cint(row.has_batch_no || 0) && !row.batch_no) {
+                                        doc.items = (doc.items || []).filter((candidate) => candidate !== row);
+                                        try {
+                                            if (frappe.locals?.[row.doctype] && row.name) delete frappe.locals[row.doctype][row.name];
+                                        } catch (e) {}
+                                        frappe.show_alert({
+                                            message: __("Free item {0} requires Batch selection", [target.item_code]),
+                                            indicator: "orange",
+                                        });
+                                        continue;
+                                    }
                                 }
                             } else {
                                 row.qty = target.qty;
                                 row.stock_qty = target.qty * flt(row.conversion_factor || 1);
                             }
 
-                            row.rate = row.price_list_rate = row.amount = row.net_rate = row.net_amount = 0;
+                            row.stock_qty = flt(row.qty || 0) * flt(row.conversion_factor || 1);
+                            row.rate = row.price_list_rate = row.base_price_list_rate = 0;
+                            row.stock_uom_rate = row.amount = row.net_rate = row.net_amount = 0;
                             row.base_rate = row.base_net_rate = row.base_amount = row.base_net_amount = 0;
-                            row.discount_percentage = 0;
+                            row.rate_with_margin = row.base_rate_with_margin = 0;
+                            row.discount_percentage = row.discount_amount = 0;
+                            row.pricing_rules = "";
                             row.is_free_item = 1;
                             kept.add(row);
                             this.update_cart_html?.(row, false);

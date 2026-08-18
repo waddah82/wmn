@@ -6,6 +6,8 @@
 function wmn_init_offline_invoice_manager_dialog(pos) {
             if (!window.wmnPOSOffline || window.wmnPOSOffline.__wmn_invoice_manager_dialog_v5) return;
 
+            let syncAllRunning = false;
+
             async function deleteInvoiceQueueRow(row) {
                 if (!row) return;
 
@@ -46,6 +48,14 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
 
             function rowStatus(row) {
                 const status = String(row.status || "").toLowerCase();
+                const doc = getInvoiceDoc(row) || {};
+                const queueKind = String(row.queue_kind || "").toLowerCase();
+                const stage = String(doc.wmn_pos_stage || "").trim();
+                const isDraft = queueKind === "draft" || stage === "AWAITING_CASHIER";
+
+                if (isDraft && (row.erpnext_name || row.server_name || status === "draft_synced")) {
+                    return "draft_synced";
+                }
                 if (row.erpnext_name || row.server_name || row.synced || row.synced_at || status === "synced" || status === "submitted" || status === "success") {
                     return "synced";
                 }
@@ -56,6 +66,7 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
             function statusBadge(status) {
                 const map = {
                     synced: ["green", wmn_t("Synced", "\u062A\u0645\u062A \u0627\u0644\u0645\u0632\u0627\u0645\u0646\u0629")],
+                    draft_synced: ["blue", wmn_t("Draft Synced", "\u062A\u0645\u062A \u0645\u0632\u0627\u0645\u0646\u0629 \u0627\u0644\u0645\u0633\u0648\u062F\u0629")],
                     pending: ["orange", wmn_t("Pending", "\u0642\u064A\u062F \u0627\u0644\u0627\u0646\u062A\u0638\u0627\u0631")],
                     error: ["red", wmn_t("Error", "\u062E\u0637\u0623")],
                     failed: ["red", wmn_t("Failed", "\u0641\u0634\u0644")],
@@ -81,55 +92,26 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
             }
 
             async function syncOne(row) {
-                if (!row) return;
+                if (!row) return row;
 
-                const invoice = getInvoiceDoc(row);
-                if (!invoice) {
-                    throw new Error("Offline invoice data is missing");
-                }
-
-                if (!window.wmnPOSOffline || !window.wmnPOSOffline.bulkPut) {
-                    throw new Error("Offline invoice store is not available");
-                }
-
-                if (!frappe || !frappe.call) {
-                    throw new Error("Server call is not available");
-                }
-
-                try {
-                    if (typeof wmn_clean_doc_batch_serial_for_save === "function") {
-                        await wmn_clean_doc_batch_serial_for_save(invoice);
+                const status = rowStatus(row);
+                if (status === "draft_synced") return row;
+                if (status === "synced") {
+                    if (window.wmnPOSOffline?.syncPaymentEntries && row.offline_id) {
+                        await window.wmnPOSOffline.syncPaymentEntries(row.offline_id);
                     }
-
-                    row.status = "syncing";
-                    row.last_try_at = new Date().toISOString();
-                    row.invoice = invoice;
-                    await updateInvoiceQueueRow(row);
-
-                    const r = await frappe.call({
-                        method: "wmn.api.sync_offline_pos_invoice",
-                        args: { invoice: invoice },
-                        freeze: false,
-                    });
-
-                    const result = (r && r.message) || {};
-                    if (cint(result.docstatus || 0) !== 1) {
-                        throw new Error("Server invoice was not submitted");
-                    }
-                    row.status = "synced";
-                    row.synced_at = new Date().toISOString();
-                    row.erpnext_name = result.name || result.erpnext_name || row.erpnext_name || "";
-                    row.last_error = "";
-                    await updateInvoiceQueueRow(row);
                     return row;
-                } catch (e) {
-                    row.status = "pending";
-                    row.last_error = e.message || String(e);
-                    row.last_try_at = new Date().toISOString();
-                    row.invoice = invoice;
-                    await updateInvoiceQueueRow(row);
-                    throw e;
                 }
+
+                if (!window.wmnPOSOffline?.syncInvoice) {
+                    throw new Error("Offline invoice sync service is not available");
+                }
+
+                const syncedInvoice = await window.wmnPOSOffline.syncInvoice(row);
+                if (window.wmnPOSOffline.syncPaymentEntries && syncedInvoice?.offline_id) {
+                    await window.wmnPOSOffline.syncPaymentEntries(syncedInvoice.offline_id);
+                }
+                return syncedInvoice;
             }
 
             async function editOfflineInvoice(row, dialog) {
@@ -146,7 +128,14 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                 }
 
                 const doc = JSON.parse(JSON.stringify(sourceDoc || {}));
-                doc.custom_offline_id = doc.custom_offline_id || row.offline_id || row.id || row.name || "";
+                const syncId = doc.wmn_offline_sync_id
+                    || doc.custom_offline_id
+                    || row.offline_id
+                    || row.id
+                    || row.name
+                    || "";
+                doc.wmn_offline_sync_id = syncId;
+                doc.custom_offline_id = syncId;
                 doc.__islocal = 1;
                 doc.docstatus = 0;
                 doc.__offline_pos = 1;
@@ -204,6 +193,16 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
 
             async function renderRows(dialog) {
                 const rows = await window.wmnPOSOffline.getAll(window.wmnPOSOffline.STORES.invoice_queue);
+                const pendingPayments = window.wmnPOSOffline.getPendingPaymentEntries
+                    ? await window.wmnPOSOffline.getPendingPaymentEntries()
+                    : [];
+                const pendingPaymentCounts = new Map();
+                for (const paymentRow of pendingPayments || []) {
+                    const key = String(paymentRow.invoice_offline_id || "");
+                    if (!key) continue;
+                    pendingPaymentCounts.set(key, (pendingPaymentCounts.get(key) || 0) + 1);
+                }
+
                 rows.sort((a, b) => String(b.created_at || b.modified || b.offline_id || "").localeCompare(String(a.created_at || a.modified || a.offline_id || "")));
 
                 const html = rows.length ? rows.map((row, idx) => {
@@ -215,6 +214,16 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                     const created = row.created_at || row.creation || doc.posting_date || "";
                     const status = rowStatus(row);
                     const erpName = row.erpnext_name || row.server_name || "";
+                    const pendingPaymentCount = pendingPaymentCounts.get(String(row.offline_id || "")) || 0;
+                    const syncAction = status === "draft_synced"
+                        ? `<span class="text-muted" style="display:inline-block;padding:4px 8px;">${wmn_t("Draft Synced", "تمت مزامنة المسودة")}</span>`
+                        : status === "synced"
+                            ? (pendingPaymentCount > 0
+                                ? `<button class="btn btn-xs btn-primary wmn-sync-one" data-idx="${idx}">${wmn_t("Sync Payment", "مزامنة الدفع")}</button>`
+                                : `<span class="text-muted" style="display:inline-block;padding:4px 8px;">${wmn_t("Synced", "تمت المزامنة")}</span>`)
+                        : status === "syncing"
+                            ? `<button class="btn btn-xs btn-primary wmn-sync-one" data-idx="${idx}" disabled>${wmn_t("Syncing...", "جاري المزامنة...")}</button>`
+                            : `<button class="btn btn-xs btn-primary wmn-sync-one" data-idx="${idx}">${wmn_t("Sync", "مزامنة")}</button>`;
 
                     return `
                         <tr data-offline-id="${frappe.utils.escape_html(id)}">
@@ -224,12 +233,13 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                             </td>
                             <td>${frappe.utils.escape_html(customer)}</td>
                             <td style="white-space:nowrap;">${frappe.utils.escape_html(money(total, currency))}</td>
-                            <td style="white-space:nowrap;">${statusBadge(status)}</td>
+                            <td style="white-space:nowrap;">
+                                ${statusBadge(status)}
+                                ${pendingPaymentCount > 0 ? `<div style="margin-top:4px;font-size:11px;color:#b45309;">${wmn_t("Pending payment", "دفع معلق")}: ${pendingPaymentCount}</div>` : ""}
+                            </td>
                             <td style="white-space:nowrap;font-size:12px;color:#6b7280;">${frappe.utils.escape_html(created)}</td>
                             <td style="white-space:nowrap;text-align:left;">
-                                <button class="btn btn-xs btn-primary wmn-sync-one" data-idx="${idx}">
-                                    ${wmn_t("Sync", "\u0645\u0632\u0627\u0645\u0646\u0629")}
-                                </button>
+                                ${syncAction}
                                 <button class="btn btn-xs btn-default wmn-edit-one" data-idx="${idx}">
                                     ${wmn_t("Edit", "تعديل")}
                                 </button>
@@ -306,24 +316,32 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                     await renderRows(d);
                 });
 
-                d.$wrapper.on("click", ".wmn-sync-all", async () => {
+                d.$wrapper.on("click", ".wmn-sync-all", async function () {
+                    if (syncAllRunning) return;
+
+                    const $button = $(this);
+                    syncAllRunning = true;
+                    $button.prop("disabled", true);
+
                     try {
-                        frappe.dom.freeze(wmn_t("Syncing offline invoices...", "\u062C\u0627\u0631\u064A \u0645\u0632\u0627\u0645\u0646\u0629 \u0641\u0648\u0627\u062A\u064A\u0631 \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646..."));
+                        frappe.dom.freeze(wmn_t("Syncing offline invoices...", "جاري مزامنة فواتير الأوفلاين..."));
                         await syncAll();
-                        frappe.dom.unfreeze();
-                        frappe.show_alert({ message: wmn_t("Available invoices synced", "\u062A\u0645\u062A \u0645\u0632\u0627\u0645\u0646\u0629 \u0627\u0644\u0641\u0648\u0627\u062A\u064A\u0631 \u0627\u0644\u0645\u062A\u0627\u062D\u0629"), indicator: "green" });
+                        frappe.show_alert({ message: wmn_t("Available invoices synced", "تمت مزامنة الفواتير المتاحة"), indicator: "green" });
                         await renderRows(d);
                         if (window.cur_pos && window.cur_pos.recent_order_list && window.cur_pos.recent_order_list.refresh_list) {
                             window.cur_pos.recent_order_list.refresh_list();
                         }
                     } catch (e) {
-                        frappe.dom.unfreeze();
                         console.error("WMN sync all offline invoices failed", e);
                         frappe.msgprint({
-                            title: wmn_t("Sync Failed", "\u0641\u0634\u0644\u062A \u0627\u0644\u0645\u0632\u0627\u0645\u0646\u0629"),
+                            title: wmn_t("Sync Failed", "فشلت المزامنة"),
                             indicator: "red",
-                            message: __("\u062A\u0639\u0630\u0631\u062A \u0645\u0632\u0627\u0645\u0646\u0629 \u0627\u0644\u0643\u0644: {0}", [e.message || e])
+                            message: __("تعذرت مزامنة الكل: {0}", [e.message || e])
                         });
+                    } finally {
+                        frappe.dom.unfreeze();
+                        syncAllRunning = false;
+                        $button.prop("disabled", false);
                     }
                 });
 
@@ -366,26 +384,40 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                 });
 
                 d.$wrapper.on("click", ".wmn-sync-one", async function () {
-                    const idx = cint($(this).attr("data-idx"));
+                    const $button = $(this);
+                    if ($button.prop("disabled")) return;
+
+                    const idx = cint($button.attr("data-idx"));
                     const row = (d.__wmn_rows || [])[idx];
-                    if (!row) return;
+                    if (!row) {
+                        await renderRows(d);
+                        return;
+                    }
+
+                    $button.prop("disabled", true).text(wmn_t("Syncing...", "جاري المزامنة..."));
 
                     try {
                         frappe.dom.freeze(__("Syncing invoice..."));
-                        await syncOne(row);
-                        frappe.dom.unfreeze();
-                        frappe.show_alert({ message: wmn_t("Invoice sync attempted", "\u062A\u0645\u062A \u0645\u062D\u0627\u0648\u0644\u0629 \u0645\u0632\u0627\u0645\u0646\u0629 \u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629"), indicator: "green" });
+                        const result = await syncOne(row);
+                        frappe.show_alert({
+                            message: wmn_t("Invoice synced", "تمت مزامنة الفاتورة"),
+                            indicator: rowStatus(result) === "synced" ? "green" : "orange"
+                        });
                         await renderRows(d);
                         if (window.cur_pos && window.cur_pos.recent_order_list && window.cur_pos.recent_order_list.refresh_list) {
                             window.cur_pos.recent_order_list.refresh_list();
                         }
                     } catch (e) {
-                        frappe.dom.unfreeze();
                         frappe.msgprint({
-                            title: wmn_t("Sync Failed", "\u0641\u0634\u0644\u062A \u0627\u0644\u0645\u0632\u0627\u0645\u0646\u0629"),
+                            title: wmn_t("Sync Failed", "فشلت المزامنة"),
                             indicator: "red",
-                            message: wmn_msg("Failed to sync invoice: {0}", "\u062A\u0639\u0630\u0631\u062A \u0645\u0632\u0627\u0645\u0646\u0629 \u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629: {0}", [e.message || e])
+                            message: wmn_msg("Failed to sync invoice: {0}", "تعذرت مزامنة الفاتورة: {0}", [e.message || e])
                         });
+                    } finally {
+                        frappe.dom.unfreeze();
+                        if ($button.closest("body").length) {
+                            $button.prop("disabled", false).text(wmn_t("Sync", "مزامنة"));
+                        }
                     }
                 });
 

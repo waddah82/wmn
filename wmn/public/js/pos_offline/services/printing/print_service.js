@@ -13,6 +13,12 @@
         webserial: "Direct WebSerial / ESC-POS",
         qz: "QZ Tray",
     };
+    const QZ_CONNECTOR_MODE_LABELS = {
+        legacy: "Current / Legacy",
+        managed: "Managed Bundle",
+        auto: "Auto (Managed then Legacy)",
+        custom: "Custom URL",
+    };
 
     const DEFAULTS = {
         method: "legacy_bridge",
@@ -36,21 +42,42 @@
         webserial_flow_control: "none",
         qz_printer_name: "",
         qz_host: "",
-        qz_connector_url: "",
         qz_encoding: "UTF8",
+        qz_connector_mode: "legacy",
+        qz_connector_url: "",
+        show_invoice_barcode: 1,
+        invoice_barcode_height: 56,
+        invoice_barcode_module_width: 2,
+        invoice_barcode_human_readable: 1,
     };
+
+    function devicePreferences() {
+        return ns.Services?.Settings?.DevicePreferences || null;
+    }
+
+    devicePreferences()?.register?.(STORAGE_KEY, DEFAULTS);
 
     function readConfig() {
         let stored = {};
-        try { stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); } catch (e) {}
-        const legacyUrl = String(localStorage.getItem("whb_websocket_url") || "").trim();
+        const service = devicePreferences();
+        if (service?.readSync) {
+            stored = service.readSync(STORAGE_KEY, DEFAULTS);
+        } else {
+            try { stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); } catch (e) {}
+        }
+        let legacyUrl = "";
+        try { legacyUrl = String(localStorage.getItem("whb_websocket_url") || "").trim(); } catch (e) {}
         return Object.assign({}, DEFAULTS, stored, legacyUrl && !stored.bridge_ws_url ? { bridge_ws_url: legacyUrl } : {});
     }
 
     function saveConfig(config) {
         const normalized = Object.assign({}, DEFAULTS, config || {});
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
-        if (normalized.bridge_ws_url) localStorage.setItem("whb_websocket_url", normalized.bridge_ws_url);
+        const service = devicePreferences();
+        if (service?.write) service.write(STORAGE_KEY, normalized, DEFAULTS);
+        else localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+        if (normalized.bridge_ws_url) {
+            try { localStorage.setItem("whb_websocket_url", normalized.bridge_ws_url); } catch (e) {}
+        }
         return normalized;
     }
 
@@ -127,9 +154,70 @@
         return labels.join("\n");
     }
 
+    function qzConnectorModeId(value) {
+        const text = String(value || "").trim();
+        if (QZ_CONNECTOR_MODE_LABELS[text]) return text;
+        const found = Object.entries(QZ_CONNECTOR_MODE_LABELS).find(([, label]) => label === text);
+        return found ? found[0] : "legacy";
+    }
+
+    function qzConnectorModeLabel(value) {
+        return QZ_CONNECTOR_MODE_LABELS[qzConnectorModeId(value)] || QZ_CONNECTOR_MODE_LABELS.legacy;
+    }
+
+    function qzConnectorModeOptions() {
+        return Object.values(QZ_CONNECTOR_MODE_LABELS).join("\n");
+    }
+
+    function normalizeDialogConfig(values) {
+        return Object.assign({}, values || {}, {
+            method: methodId(values?.method, false),
+            fallback_method: methodId(values?.fallback_method, true),
+            qz_connector_mode: qzConnectorModeId(values?.qz_connector_mode),
+        });
+    }
+
     function setDialogValue(dialog, fieldname, value) {
         if (!dialog.get_field(fieldname)) return;
         dialog.set_value(fieldname, value == null ? "" : value);
+    }
+
+    async function refreshQZPrinterOptions(dialog, options) {
+        const cfg = Object.assign(readConfig(), normalizeDialogConfig(dialog.get_values(true) || {}));
+        const list = await adapters().qz.printers(cfg);
+        if (!list.length) throw new Error("QZ Tray did not return any printers.");
+
+        const field = dialog.get_field("qz_printer_name");
+        if (!field) return list;
+
+        const current = String(dialog.get_value("qz_printer_name") || cfg.qz_printer_name || "").trim();
+        field.df.options = [""].concat(list).join("\n");
+        field.refresh();
+
+        if (current && list.includes(current)) {
+            setDialogValue(dialog, "qz_printer_name", current);
+        } else if (options?.selectFirst && list.length === 1) {
+            setDialogValue(dialog, "qz_printer_name", list[0]);
+        } else {
+            setDialogValue(dialog, "qz_printer_name", "");
+        }
+
+        return list;
+    }
+
+    function validateQZPrinterSelection(values) {
+        const method = methodId(values?.method, false);
+        if (method !== "qz") return;
+
+        const mode = qzConnectorModeId(values?.qz_connector_mode);
+        if (mode === "custom" && !String(values?.qz_connector_url || "").trim()) {
+            throw new Error("QZ Connector URL is required in Custom URL mode.");
+        }
+
+        const printerName = String(values?.qz_printer_name || "").trim();
+        if (!printerName) {
+            throw new Error("Select a QZ printer before saving or printing.");
+        }
     }
 
     function renderActionButtons(dialog) {
@@ -162,23 +250,15 @@
             }, true);
         } else if (method === "qz") {
             button(__("Detect QZ Printers"), async () => {
-                const cfg = Object.assign(readConfig(), dialog.get_values(true) || {});
-                const list = await adapters().qz.printers(cfg);
-                if (!list.length) throw new Error("QZ Tray did not return any printers.");
-                const field = dialog.get_field("qz_printer_name");
-                field.df.options = [""].concat(list).join("\n");
-                field.refresh();
-                if (!dialog.get_value("qz_printer_name")) setDialogValue(dialog, "qz_printer_name", list[0]);
-                frappe.show_alert({ message: __("Found {0} printers.", [list.length]), indicator: "green" });
+                const list = await refreshQZPrinterOptions(dialog, { selectFirst: true });
+                frappe.show_alert({ message: __("Found {0} printers. Select the printer to use.", [list.length]), indicator: "green" });
             }, true);
         }
 
         button(__("Test Print"), async () => {
             const rawValues = dialog.get_values(true) || {};
-            const cfg = saveConfig(Object.assign(readConfig(), rawValues, {
-                method: methodId(rawValues.method, false),
-                fallback_method: methodId(rawValues.fallback_method, true),
-            }));
+            validateQZPrinterSelection(rawValues);
+            const cfg = saveConfig(Object.assign(readConfig(), normalizeDialogConfig(rawValues)));
             const test = "WMN POS\nPrinter Test\n------------------------------\n" + new Date().toLocaleString() + "\n";
             await dispatch("raw", test, { method: cfg.method, printType: "RECEIPT", jobName: "WMN POS Printer Test" });
             frappe.show_alert({ message: __("Test print sent."), indicator: "green" });
@@ -200,6 +280,13 @@
                 { fieldtype: "Column Break" },
                 { fieldname: "copies", label: __("Copies"), fieldtype: "Int", default: cfg.copies },
 
+                { fieldtype: "Section Break", label: __("Invoice Barcode") },
+                { fieldname: "show_invoice_barcode", label: __("Show Invoice Barcode"), fieldtype: "Check", default: cfg.show_invoice_barcode },
+                { fieldname: "invoice_barcode_height", label: __("Barcode Height"), fieldtype: "Int", default: cfg.invoice_barcode_height, depends_on: "eval:doc.show_invoice_barcode==1" },
+                { fieldtype: "Column Break" },
+                { fieldname: "invoice_barcode_module_width", label: __("ESC/POS Module Width"), fieldtype: "Int", default: cfg.invoice_barcode_module_width, depends_on: "eval:doc.show_invoice_barcode==1" },
+                { fieldname: "invoice_barcode_human_readable", label: __("Print Barcode Value"), fieldtype: "Check", default: cfg.invoice_barcode_human_readable, depends_on: "eval:doc.show_invoice_barcode==1" },
+
                 { fieldtype: "Section Break", label: __("WMN Windows Bridge"), depends_on: "eval:doc.method=='WMN Windows Bridge'" },
                 { fieldname: "bridge_ws_url", label: __("Printer WebSocket URL"), fieldtype: "Data", default: cfg.bridge_ws_url, depends_on: "eval:doc.method=='WMN Windows Bridge'" },
 
@@ -219,9 +306,10 @@
                 { fieldname: "webserial_product_id", label: __("Serial USB Product ID"), fieldtype: "Data", read_only: 1, default: cfg.webserial_product_id, depends_on: "eval:doc.method=='Direct WebSerial / ESC-POS'" },
 
                 { fieldtype: "Section Break", label: __("QZ Tray"), depends_on: "eval:doc.method=='QZ Tray'" },
-                { fieldname: "qz_printer_name", label: __("QZ Printer"), fieldtype: "Select", options: ["", cfg.qz_printer_name].filter(Boolean).join("\n"), default: cfg.qz_printer_name, depends_on: "eval:doc.method=='QZ Tray'" },
+                { fieldname: "qz_connector_mode", label: __("QZ Connector Mode"), fieldtype: "Select", options: qzConnectorModeOptions(), default: qzConnectorModeLabel(cfg.qz_connector_mode), depends_on: "eval:doc.method=='QZ Tray'", description: __("Current / Legacy keeps the existing connector behavior. Managed Bundle uses the QZ client bundled with WMN. Auto tries Managed first and falls back to Legacy.") },
+                { fieldname: "qz_connector_url", label: __("QZ Connector URL"), fieldtype: "Data", default: cfg.qz_connector_url, depends_on: "eval:doc.method=='QZ Tray' && doc.qz_connector_mode=='Custom URL'", description: __("Used only in Custom URL mode.") },
+                { fieldname: "qz_printer_name", label: __("Printer Name"), fieldtype: "Select", options: ["", cfg.qz_printer_name].filter(Boolean).join("\n"), default: cfg.qz_printer_name, depends_on: "eval:doc.method=='QZ Tray'", description: __("Required for QZ Tray. Use Detect QZ Printers, then select the exact printer name.") },
                 { fieldname: "qz_host", label: __("QZ Host"), fieldtype: "Data", default: cfg.qz_host, depends_on: "eval:doc.method=='QZ Tray'", description: __("Leave empty for local QZ Tray.") },
-                { fieldname: "qz_connector_url", label: __("QZ Connector URL"), fieldtype: "Data", default: cfg.qz_connector_url, depends_on: "eval:doc.method=='QZ Tray'", description: __("Optional. Local /assets/wmn/js/vendor/qz-tray.js is tried first, then the official online demo connector while online.") },
                 { fieldname: "qz_encoding", label: __("QZ Raw Encoding"), fieldtype: "Data", default: cfg.qz_encoding, depends_on: "eval:doc.method=='QZ Tray'", description: __("Examples: UTF8, IBM864. This is used for RAW printing only and must be supported by the printer.") },
 
                 { fieldtype: "Section Break" },
@@ -229,10 +317,13 @@
             ],
             primary_action_label: __("Save"),
             primary_action(values) {
-                const normalizedValues = Object.assign({}, values || {}, {
-                    method: methodId(values?.method, false),
-                    fallback_method: methodId(values?.fallback_method, true),
-                });
+                try {
+                    validateQZPrinterSelection(values || {});
+                } catch (error) {
+                    frappe.msgprint({ title: __("Printer"), indicator: "red", message: error.message || String(error) });
+                    return;
+                }
+                const normalizedValues = normalizeDialogConfig(values || {});
                 saveConfig(Object.assign(cfg, normalizedValues));
                 dialog.hide();
                 frappe.show_alert({ message: __("Printer settings saved on this device."), indicator: "green" });
@@ -242,14 +333,28 @@
         dialog.show();
         dialog.set_value("method", methodLabel(cfg.method));
         dialog.set_value("fallback_method", cfg.fallback_method === "none" ? "No fallback" : methodLabel(cfg.fallback_method));
-        dialog.get_field("method").$input.on("change.wmn-print", () => setTimeout(() => renderActionButtons(dialog), 0));
-        setTimeout(() => renderActionButtons(dialog), 0);
+        dialog.set_value("qz_connector_mode", qzConnectorModeLabel(cfg.qz_connector_mode));
+        dialog.get_field("method").$input.on("change.wmn-print", () => {
+            setTimeout(async () => {
+                renderActionButtons(dialog);
+                if (methodId(dialog.get_value("method"), false) === "qz") {
+                    try { await refreshQZPrinterOptions(dialog, { selectFirst: false }); } catch (e) {}
+                }
+            }, 0);
+        });
+        setTimeout(async () => {
+            renderActionButtons(dialog);
+            if (methodId(dialog.get_value("method"), false) === "qz") {
+                try { await refreshQZPrinterOptions(dialog, { selectFirst: false }); } catch (e) {}
+            }
+        }, 0);
         return dialog;
     }
 
     ns.Services.Printing.PrintService = {
         STORAGE_KEY,
         METHODS: Object.freeze(Object.assign({}, METHOD_LABELS)),
+        QZ_CONNECTOR_MODES: Object.freeze(Object.assign({}, QZ_CONNECTOR_MODE_LABELS)),
         getConfig: readConfig,
         saveConfig,
         showSettings,

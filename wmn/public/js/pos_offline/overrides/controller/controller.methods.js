@@ -34,6 +34,11 @@
                 doc.customer = doc.customer || settings.customer || "";
                 doc.doctype = doc.doctype || invoiceDoctype;
 
+                const invoiceBarcode = ns.Services?.Barcode?.InvoiceBarcode;
+                if (invoiceBarcode?.ensureInvoiceUID) {
+                    invoiceBarcode.ensureInvoiceUID(doc);
+                }
+
                 const itemDoctype = wmn_pos_item_doctype(doc.doctype);
                 wmn_ensure_pos_cart_items_data(doc);
                 doc.items.forEach((row) => {
@@ -477,14 +482,6 @@
                         setTimeout(retry, 1000);
                     },
 
-        wmn_detach_current_frm_refresh_fields() {
-                        try {
-                            if (this.frm && this.frm.wrapper && window.jQuery) {
-                                $(this.frm.wrapper).off("refresh-fields");
-                            }
-                        } catch (e) {}
-                    },
-
         get_item_from_frm(item) {
                         if (!wmn_controller_uses_offline_flow(this)) {
                             const doc = this.frm && this.frm.doc ? this.frm.doc : null;
@@ -608,7 +605,7 @@
 
         async make_new_invoice() {
                         this.__wmn_return_against_credit = false;
-                        this.wmn_detach_current_frm_refresh_fields();
+                        this.__wmn_cashier_resume = false;
                         if (window.__wmn_pos_effective_offline !== true) {
                             await wmn_bootstrap_detect_effective_offline();
                         }
@@ -1916,6 +1913,7 @@
                         try {
                             // Promotions, coupons, and totals are finalized before the payment UI opens.
                             // From this point onward user-entered payment rows are immutable.
+                            window.WMN_POS?.Features?.InvoiceHandoff?.Common?.prepareForCompletion?.(this.frm.doc);
                             await wmn_assign_receipt_number(this.frm.doc);
                             const previousOfflineInvoice = typeof wmn_get_existing_offline_invoice_for_stock === "function"
                                 ? await wmn_get_existing_offline_invoice_for_stock(this.frm.doc)
@@ -1982,7 +1980,8 @@
                                 return await this.wmn_finalize_offline_invoice();
                             }
 
-                            await wmn_show_offline_payment_dialog(this);
+                            const paymentResult = await wmn_show_offline_payment_dialog(this);
+                            if (paymentResult?.__wmn_handoff_complete === true) return paymentResult;
                             return await this.wmn_finalize_offline_invoice();
                         } catch (e) {
                             frappe.dom.unfreeze();
@@ -2018,7 +2017,8 @@
                         this.__wmn_return_against_credit = false;
                         const doctype = wmn_pos_invoice_doctype(this);
 
-                        // Offline uses the lightweight POS form model; online keeps the ERPNext form model.
+                        // Offline keeps its lightweight form model. Online follows ERPNext's
+                        // lifecycle and reuses the existing Form instance for each new order.
                         if (wmn_controller_uses_offline_flow(this)) {
                             const doc = await wmn_make_offline_invoice_doc(this);
                             this.frm = wmn_make_offline_frm(doc);
@@ -2029,13 +2029,29 @@
                         }
 
                         return new Promise((resolve) => {
+                            const currentDoctype = String(
+                                this.frm?.doctype || this.frm?.doc?.doctype || ""
+                            );
+                            const reusableFrm =
+                                this.frm && currentDoctype === doctype ? this.frm : null;
+
                             const build = () => {
-                                this.frm = this.get_new_frm(null, doctype);
+                                this.frm = this.get_new_frm(reusableFrm, doctype);
+                                this.frm.doc.items = [];
+                                this.frm.doc.is_pos = 1;
                                 wmn_prepare_pos_frm_doc(this);
+                                window.cur_frm = this.frm;
+                                window.cur_pos = this;
                                 resolve(this.frm);
                             };
 
-                            frappe.model.with_doctype(doctype, build);
+                            // ERPNext reuses the current Form after the first invoice. Only load
+                            // DocType metadata when no compatible Form exists yet.
+                            if (reusableFrm) {
+                                build();
+                            } else {
+                                frappe.model.with_doctype(doctype, build);
+                            }
                         });
                     },
 
@@ -2105,7 +2121,7 @@
         get_new_frm(_frm, doctype) {
                         const target_doctype = doctype || wmn_pos_invoice_doctype(this);
 
-                        // Never create real ERPNext Form while effective offline.
+                        // Never create a real ERPNext Form while effective offline.
                         if (wmn_controller_uses_offline_flow(this)) {
                             const doc = {
                                 doctype: target_doctype,
@@ -2121,14 +2137,23 @@
                             return this.frm;
                         }
 
-                        const page = $("<div>");
-                        const frm = new frappe.ui.form.Form(target_doctype, page, false);
+                        const currentDoctype = String(
+                            _frm?.doctype || _frm?.doc?.doctype || ""
+                        );
+                        const reusableFrm =
+                            _frm && currentDoctype === target_doctype ? _frm : null;
+
+                        // Match ERPNext's original lifecycle: keep the same Form object and only
+                        // refresh it with a newly-created local document for the next order.
+                        const page = reusableFrm ? null : $("<div>");
+                        const frm = reusableFrm || new frappe.ui.form.Form(target_doctype, page, false);
                         const name = frappe.model.make_new_doc_and_get_name(target_doctype, true);
 
-                        // Start the POS form with a clean item table before ERPNext form setup runs.
-                        // This avoids touching TransactionController prototypes during Sales Invoice initialization.
+                        // Keep the new document clean before Form refresh. This is required for
+                        // both POS Invoice and WMN's Sales Invoice mode.
                         const localDoc = frappe.locals?.[target_doctype]?.[name];
                         if (localDoc) localDoc.items = [];
+
                         frm.refresh(name);
 
                         frm.doc.items = [];
@@ -2315,6 +2340,7 @@
                         try {
                             // Payment is already finalized by the user. Submit must not run any
                             // pricing, discount, tax or outstanding recalculation at this stage.
+                            window.WMN_POS?.Features?.InvoiceHandoff?.Common?.prepareForCompletion?.(doc);
                             doc.is_pos = 1;
                             doc.ignore_pricing_rule = 1;
                             doc.coupon_code = "";
@@ -2425,6 +2451,12 @@
                         }
                     },
 
+        async wmn_send_to_cashier() {
+                    const handoff = window.WMN_POS?.Features?.InvoiceHandoff?.Common;
+                    if (!handoff?.sendToCashier) throw new Error("WMN cashier handoff feature is not available");
+                    return await handoff.sendToCashier(this);
+                },
+
         init_payments() {
                         this.payment = new erpnext.PointOfSale.Payment({
                             wrapper: this.$components_wrapper,
@@ -2458,7 +2490,11 @@
 
                                     return this.wmn_submit_online_invoice();
                                 },
-                                after_checkout: () => this.wmn_refresh_sell_on_credit_button(),
+                                send_to_cashier: async () => await this.wmn_send_to_cashier(),
+                                after_checkout: () => {
+                                    this.wmn_refresh_sell_on_credit_button();
+                                    this.payment?.wmn_setup_send_to_cashier_button?.();
+                                },
                             },
                         });
 
@@ -2502,21 +2538,127 @@
                         setTimeout(bind, 1000);
                     },
 
+        async wmn_open_scanned_draft_for_payment(doc) {
+                    doc = doc || {};
+                    if (cint(doc.docstatus || 0) !== 0 || !doc.name) return false;
+
+                    const handoff = window.WMN_POS?.Features?.InvoiceHandoff?.Common;
+                    this.__wmn_cashier_resume = handoff?.isAwaitingCashier?.(doc) === true;
+                    const cashierPaymentSnapshot = this.__wmn_cashier_resume
+                        ? handoff?.capturePaymentSnapshot?.(doc)
+                        : null;
+                    const targetDoctype = String(doc.doctype || wmn_pos_invoice_doctype(this));
+                    this.recent_order_list?.toggle_component(false);
+                    this.order_summary?.toggle_component(false);
+
+                    if (wmn_controller_uses_offline_flow(this)) {
+                        const offlineDoc = JSON.parse(JSON.stringify(doc));
+                        offlineDoc.items = Array.isArray(offlineDoc.items) ? offlineDoc.items : [];
+                        offlineDoc.payments = Array.isArray(offlineDoc.payments) ? offlineDoc.payments : [];
+
+                        this.frm = wmn_make_offline_frm(offlineDoc);
+                        window.cur_frm = this.frm;
+                        window.cur_pos = this;
+
+                        if (this.cart?.load_invoice) {
+                            await Promise.resolve(this.cart.load_invoice());
+                        }
+
+                        try {
+                            const paymentResult = await wmn_show_offline_payment_dialog(this);
+                            if (paymentResult?.__wmn_handoff_complete === true) return true;
+                            return await this.wmn_finalize_offline_invoice();
+                        } catch (error) {
+                            if (String(error?.message || error) === "cancelled") return false;
+                            throw error;
+                        }
+                    }
+
+                    await new Promise((resolve) => frappe.model.with_doctype(targetDoctype, resolve));
+
+                    let modelDoc = frappe.get_doc(targetDoctype, doc.name);
+                    if (!modelDoc && window.frappe?.model?.sync) {
+                        frappe.model.sync(doc);
+                        modelDoc = frappe.get_doc(targetDoctype, doc.name);
+                    }
+                    if (!modelDoc) throw new Error("WMN scanned draft invoice is not loaded in Frappe model");
+
+                    modelDoc.items = Array.isArray(modelDoc.items) ? modelDoc.items : [];
+                    modelDoc.payments = Array.isArray(modelDoc.payments) ? modelDoc.payments : [];
+
+                    const currentDoctype = String(this.frm?.doctype || this.frm?.doc?.doctype || "");
+                    if (!this.frm || currentDoctype !== targetDoctype) {
+                        this.frm = new frappe.ui.form.Form(targetDoctype, $("<div>"), false);
+                    }
+
+                    this.frm.refresh(doc.name);
+                    window.cur_frm = this.frm;
+                    window.cur_pos = this;
+
+                    if (this.cart?.load_invoice) {
+                        await Promise.resolve(this.cart.load_invoice());
+                    }
+
+                    this.toggle_components(true);
+                    this.order_summary?.toggle_component(false);
+                    this.payment?.checkout?.();
+                    if (cashierPaymentSnapshot) {
+                        handoff?.restorePaymentSnapshot?.(this.frm.doc, cashierPaymentSnapshot);
+                        this.frm?.refresh_field?.("payments");
+                        this.payment?.update_totals_section?.(this.frm.doc);
+                        this.payment?.render_payment_mode_dom?.();
+                    }
+                    return true;
+                },
+
+        async wmn_route_scanned_invoice(doc) {
+                    if (!doc) return false;
+
+                    if (cint(doc.docstatus || 0) === 0) {
+                        return await this.wmn_open_scanned_draft_for_payment(doc);
+                    }
+
+                    if (typeof this.order_summary?.wmn_open_from_invoice_barcode === "function") {
+                        await this.order_summary.wmn_open_from_invoice_barcode(doc);
+                        return true;
+                    }
+
+                    this.order_summary?.load_summary_of?.(doc, false);
+                    return true;
+                },
+
         init_recent_order_list() {
                     this.recent_order_list = new erpnext.PointOfSale.PastOrderList({
                         wrapper: this.$components_wrapper,
                         events: {
                             open_invoice_data: (name) => {
                                 if (wmn_controller_uses_offline_flow(this)) {
-                                    this.wmn_cache().getInvoiceFromCache(wmn_pos_invoice_doctype(this), name).then((doc) => {
-                                        if (doc) this.order_summary.load_summary_of(doc, true);
-                                        else frappe.show_alert({ message: __("Offline invoice not found in cache"), indicator: "orange" });
+                                    this.wmn_cache().getInvoiceFromCache(wmn_pos_invoice_doctype(this), name).then(async (doc) => {
+                                        if (!doc) {
+                                            frappe.show_alert({ message: __("Offline invoice not found in cache"), indicator: "orange" });
+                                            return;
+                                        }
+                                        const handoff = window.WMN_POS?.Features?.InvoiceHandoff?.Common;
+                                        if (handoff?.isAwaitingCashier?.(doc)) {
+                                            await this.wmn_open_scanned_draft_for_payment(doc);
+                                            return;
+                                        }
+                                        this.order_summary.load_summary_of(doc, false);
                                     });
                                     return;
                                 }
-                                frappe.db.get_doc(wmn_pos_invoice_doctype(this), name).then((doc) => {
+                                frappe.db.get_doc(wmn_pos_invoice_doctype(this), name).then(async (doc) => {
+                                    const handoff = window.WMN_POS?.Features?.InvoiceHandoff?.Common;
+                                    if (handoff?.isAwaitingCashier?.(doc)) {
+                                        await this.wmn_open_scanned_draft_for_payment(doc);
+                                        return;
+                                    }
                                     this.order_summary.load_summary_of(doc);
                                 });
+                            },
+                            open_invoice_barcode_doc: async (doc) => {
+                                if (!doc) return;
+                                await this.wmn_route_scanned_invoice(doc);
                             },
                             reset_summary: () => this.order_summary.toggle_summary_placeholder(true),
                         },
@@ -2631,16 +2773,6 @@
                                 
 
                                         () => this.make_new_invoice(),
-
-                                        () => {
-                                            if (window.__wmn_pos_effective_offline === true) {
-                                                return null;
-                                            }
-
-                                            return this.cart && this.cart.load_invoice
-                                                ? this.cart.load_invoice()
-                                                : null;
-                                        },
 
                                         () => this.item_selector.toggle_component(true),
 
@@ -2947,21 +3079,20 @@
         				if ($.isEmptyObject(item_row)) return;
 
         				const next_qty = Math.max(0, flt(item_row.qty) - 1);
+        				const isOfflineFlow = wmn_controller_uses_offline_flow(this);
         				let commercialStateRefreshed = false;
 
         				frappe.dom.freeze();
         				try {
-        					await wmn_pos_set_value(item_row.doctype, item_row.name, "qty", next_qty);
+        					if (next_qty > 0 || isOfflineFlow) {
+        						await wmn_pos_set_value(item_row.doctype, item_row.name, "qty", next_qty);
+        					}
 
         					if (next_qty === 0) {
         						frappe.model.clear_doc(item_row.doctype, item_row.name);
         						this.update_cart_html(item_row, true);
 
-        						if (
-        							typeof wmn_is_pos_offline === "function" &&
-        							wmn_is_pos_offline() &&
-        							typeof this.wmn_remove_offline_item_detail_row === "function"
-        						) {
+        						if (isOfflineFlow && typeof this.wmn_remove_offline_item_detail_row === "function") {
         							await this.wmn_remove_offline_item_detail_row(item_row);
         							commercialStateRefreshed = true;
         						}
@@ -3025,7 +3156,9 @@
         							const next_quantity = Math.max(0, row_quantity - quantity_to_remove);
         							quantity_to_remove -= row_quantity - next_quantity;
 
-        							await wmn_pos_set_value(item_row.doctype, item_row.name, "qty", next_quantity);
+        							if (next_quantity > 0 || wmn_controller_uses_offline_flow(this)) {
+        								await wmn_pos_set_value(item_row.doctype, item_row.name, "qty", next_quantity);
+        							}
         							if (next_quantity === 0) frappe.model.clear_doc(item_row.doctype, item_row.name);
         							this.update_cart_html(item_row, next_quantity === 0);
         						}
@@ -3057,7 +3190,6 @@
     FinalMethods.create_opening_voucher = UIMethods.create_opening_voucher || CoreMethods.create_opening_voucher;
     FinalMethods.prepare_app_defaults = UIMethods.prepare_app_defaults || CoreMethods.prepare_app_defaults;
     FinalMethods.wmn_start_offline_preload = UIMethods.wmn_start_offline_preload || CoreMethods.wmn_start_offline_preload;
-    FinalMethods.wmn_detach_current_frm_refresh_fields = UIMethods.wmn_detach_current_frm_refresh_fields || CoreMethods.wmn_detach_current_frm_refresh_fields;
     FinalMethods.get_item_from_frm = UIMethods.get_item_from_frm || CoreMethods.get_item_from_frm;
     FinalMethods.update_cart_html = UIMethods.update_cart_html || CoreMethods.update_cart_html;
     FinalMethods.wmn_restore_default_customer_for_new_transaction = UIMethods.wmn_restore_default_customer_for_new_transaction || CoreMethods.wmn_restore_default_customer_for_new_transaction;
@@ -3097,8 +3229,11 @@
     FinalMethods.wmn_setup_sell_on_credit_button = UIMethods.wmn_setup_sell_on_credit_button || CoreMethods.wmn_setup_sell_on_credit_button;
     FinalMethods.wmn_sell_on_credit = UIMethods.wmn_sell_on_credit || CoreMethods.wmn_sell_on_credit;
     FinalMethods.wmn_submit_online_invoice = UIMethods.wmn_submit_online_invoice || CoreMethods.wmn_submit_online_invoice;
+    FinalMethods.wmn_send_to_cashier = UIMethods.wmn_send_to_cashier || CoreMethods.wmn_send_to_cashier;
     FinalMethods.init_payments = UIMethods.init_payments || CoreMethods.init_payments;
     FinalMethods.wmn_bind_offline_receipt_buttons = UIMethods.wmn_bind_offline_receipt_buttons || CoreMethods.wmn_bind_offline_receipt_buttons;
+    FinalMethods.wmn_open_scanned_draft_for_payment = UIMethods.wmn_open_scanned_draft_for_payment || CoreMethods.wmn_open_scanned_draft_for_payment;
+    FinalMethods.wmn_route_scanned_invoice = UIMethods.wmn_route_scanned_invoice || CoreMethods.wmn_route_scanned_invoice;
     FinalMethods.init_recent_order_list = UIMethods.init_recent_order_list || CoreMethods.init_recent_order_list;
     FinalMethods.init_order_summary = UIMethods.init_order_summary || CoreMethods.init_order_summary;
     FinalMethods.prepare_dom = UIMethods.prepare_dom || CoreMethods.prepare_dom;

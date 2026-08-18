@@ -29,8 +29,19 @@
             return "wmn_receipt_counter::" + String(opening || "DEFAULT_SHIFT");
         }
 
+        function wmn_bind_receipt_opening(doc) {
+            if (!doc) return "";
+            const opening = wmn_get_current_pos_opening_name(doc);
+            if (opening) {
+                doc.wmn_receipt_opening_entry = doc.wmn_receipt_opening_entry || opening;
+            }
+            return String(doc.wmn_receipt_opening_entry || "").trim();
+        }
+
         async function wmn_assign_receipt_number(doc) {
             if (!doc) return "";
+
+            wmn_bind_receipt_opening(doc);
 
             if (doc.wmn_receipt_no || doc.__wmn_receipt_no) {
                 doc.wmn_receipt_no = doc.wmn_receipt_no || doc.__wmn_receipt_no;

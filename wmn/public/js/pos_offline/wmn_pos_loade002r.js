@@ -21,18 +21,16 @@ frappe.pages["point-of-sale"].on_page_load = function(wrapper) {
 
     frappe.require("point-of-sale.bundle.js", function() {
         const base = "/assets/wmn/js/pos_offline/";
-        const version = "20260817_qz_prefs_persistence";
+        const version = "20260815_pos_cache_manager_local_adapter_v16";
         window.__wmn_pos_asset_version = version;
         const manifest = [
             "core/namespace.js",
             "core/base_registry.js",
             "patches/patch_registry.js",
             "services/storage/offline_storage.js",
-            "services/barcode/invoice_barcode.js",
             "services/connectivity/connectivity.js",
             "services/offline/mode_and_settings.js",
             "core/common.js",
-            "services/settings/device_preferences.js",
             "ui/dialog_manager.js",
             "services/offline/document_adapter.js",
             "services/payment/offline_payment.js",
@@ -41,13 +39,6 @@ frappe.pages["point-of-sale"].on_page_load = function(wrapper) {
             "services/printing/raw_renderer.js",
             "services/printing/template_loader.js",
             "services/printing/pdf_renderer.js",
-            "services/printing/escpos.js",
-            "services/printing/legacy_bridge_adapter.js",
-            "services/printing/browser_print_adapter.js",
-            "services/printing/webusb_escpos_adapter.js",
-            "services/printing/webserial_escpos_adapter.js",
-            "services/printing/qz_print_adapter.js",
-            "services/printing/print_service.js",
             "services/receipt/receipt_counter.js",
             "services/printing/auto_print.js",
             "features/printing/printing.common.js",
@@ -56,12 +47,6 @@ frappe.pages["point-of-sale"].on_page_load = function(wrapper) {
             "features/receipt/receipt.common.js",
             "features/receipt/receipt.online.js",
             "features/receipt/receipt.offline.js",
-            "features/invoice_barcode/invoice_barcode.common.js",
-            "features/invoice_barcode/invoice_barcode.online.js",
-            "features/invoice_barcode/invoice_barcode.offline.js",
-            "features/invoice_handoff/invoice_handoff.common.js",
-            "features/invoice_handoff/invoice_handoff.online.js",
-            "features/invoice_handoff/invoice_handoff.offline.js",
             "features/sync/sync.common.js",
             "features/sync/sync.online.js",
             "features/sync/sync.offline.js",

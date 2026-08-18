@@ -1,4 +1,4 @@
-/* QZ Tray adapter. Supports raw ESC/POS and pixel PDF/PNG printing. */
+/* QZ Tray adapter. Supports optional Managed Bundle and the existing connector flow. */
 (function () {
     "use strict";
 
@@ -6,7 +6,22 @@
     ns.Services.Printing = ns.Services.Printing || {};
     ns.Services.Printing.Adapters = ns.Services.Printing.Adapters || {};
 
-    let loadPromise = null;
+    let managedLoadPromise = null;
+    let legacyLoadPromise = null;
+
+    const MODE_LABELS = {
+        legacy: "Current / Legacy",
+        managed: "Managed Bundle",
+        auto: "Auto (Managed then Legacy)",
+        custom: "Custom URL",
+    };
+
+    function connectorMode(value) {
+        const text = String(value || "").trim();
+        if (MODE_LABELS[text]) return text;
+        const found = Object.entries(MODE_LABELS).find(([, label]) => label === text);
+        return found ? found[0] : "legacy";
+    }
 
     function loadScript(url) {
         return new Promise((resolve, reject) => {
@@ -27,20 +42,65 @@
         });
     }
 
-    async function ensureLibrary(settings) {
-        if (window.qz) return window.qz;
-        if (loadPromise) return loadPromise;
+    function requireManagedBundle() {
+        if (window.WMN_QZ_CLIENT) return Promise.resolve(window.WMN_QZ_CLIENT);
+        if (managedLoadPromise) return managedLoadPromise;
 
-        loadPromise = (async () => {
+        managedLoadPromise = new Promise((resolve, reject) => {
+            let settled = false;
+            const finish = (error) => {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(timeout);
+                if (error) {
+                    reject(error);
+                    return;
+                }
+                if (!window.WMN_QZ_CLIENT) {
+                    reject(new Error("WMN managed QZ bundle loaded without exposing WMN_QZ_CLIENT."));
+                    return;
+                }
+                resolve(window.WMN_QZ_CLIENT);
+            };
+            const timeout = window.setTimeout(() => finish(new Error("Timed out loading the WMN managed QZ bundle.")), 15000);
+
+            try {
+                const result = frappe.require("wmn_qz.bundle.js", () => finish());
+                if (result && typeof result.then === "function") {
+                    result.then(() => finish()).catch((error) => finish(error));
+                }
+            } catch (error) {
+                finish(error);
+            }
+        }).finally(() => {
+            if (!window.WMN_QZ_CLIENT) managedLoadPromise = null;
+        });
+
+        return managedLoadPromise;
+    }
+
+    async function loadLegacy(settings, customOnly) {
+        if (window.qz && !customOnly) return window.qz;
+        if (legacyLoadPromise && !customOnly) return legacyLoadPromise;
+
+        const runner = (async () => {
             const configured = String(settings?.qz_connector_url || "").trim();
-            const candidates = [
-                configured,
-                "/assets/wmn/js/vendor/qz-tray.js",
-                navigator.onLine ? "https://demo.qz.io/js/qz-tray.js" : "",
-            ].filter(Boolean);
+            const candidates = customOnly
+                ? [configured]
+                : [
+                    configured,
+                    "/assets/wmn/js/vendor/qz-tray.js",
+                    navigator.onLine ? "https://demo.qz.io/js/qz-tray.js" : "",
+                ];
+            const urls = [...new Set(candidates.filter(Boolean))];
+            if (!urls.length) {
+                throw new Error(customOnly
+                    ? "QZ Connector URL is required in Custom URL mode."
+                    : "QZ Tray connector (qz-tray.js) is not available.");
+            }
 
             let lastError = null;
-            for (const url of [...new Set(candidates)]) {
+            for (const url of urls) {
                 try {
                     await loadScript(url);
                     if (window.qz) return window.qz;
@@ -51,11 +111,33 @@
             throw lastError || new Error("QZ Tray connector (qz-tray.js) is not available.");
         })();
 
+        if (customOnly) return runner;
+        legacyLoadPromise = runner;
         try {
-            return await loadPromise;
+            return await legacyLoadPromise;
         } finally {
-            if (!window.qz) loadPromise = null;
+            if (!window.qz) legacyLoadPromise = null;
         }
+    }
+
+    async function ensureLibrary(settings) {
+        const mode = connectorMode(settings?.qz_connector_mode);
+
+        if (mode === "managed") {
+            return requireManagedBundle();
+        }
+        if (mode === "custom") {
+            return loadLegacy(settings, true);
+        }
+        if (mode === "auto") {
+            try {
+                return await requireManagedBundle();
+            } catch (managedError) {
+                console.warn("WMN managed QZ client unavailable; falling back to the current connector flow", managedError);
+                return loadLegacy(settings, false);
+            }
+        }
+        return loadLegacy(settings, false);
     }
 
     async function connect(settings) {
@@ -120,6 +202,7 @@
         label: "QZ Tray",
         capabilities: { raw: true, png: true, pdf: true, html: false },
         isSupported() { return true; },
+        connectorMode,
         ensureLibrary,
         connect,
         printers,

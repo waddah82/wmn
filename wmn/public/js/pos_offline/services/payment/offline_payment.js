@@ -106,6 +106,8 @@ function wmn_invoice_payment_total(doc) {
             );
             const payments = await wmn_ensure_offline_payment_rows(doc);
             const defaultPayment = payments.find(p => cint(p.default || 0) === 1) || payments[0];
+            const handoff = window.WMN_POS?.Features?.InvoiceHandoff?.Common;
+            const preservePaymentRows = handoff?.isAwaitingCashier?.(doc) === true || ctrl?.__wmn_cashier_resume === true;
 
             payments.forEach((p) => {
                 p.amount = flt(p.amount || 0);
@@ -119,7 +121,7 @@ function wmn_invoice_payment_total(doc) {
              * Other payment-method amounts are preserved; the default row covers
              * only the remaining balance.
              */
-            if (defaultPayment) {
+            if (defaultPayment && !preservePaymentRows) {
                 const otherPaid = payments.reduce((sum, p) => {
                     if (p === defaultPayment) return sum;
                     return sum + flt(p.amount || 0);
@@ -187,6 +189,13 @@ function wmn_invoice_payment_total(doc) {
                                         </button>
                                     ` : ""}
 
+                                    ${(handoff?.canSendToCashier?.(doc) && ctrl?.__wmn_cashier_resume !== true) ? `
+                                        <button type="button" class="btn btn-default wmn-offline-send-to-cashier-btn"
+                                                style="width:100%;margin-top:12px;font-weight:700;">
+                                            ${wmn_t("Send to Cashier", "إرسال إلى الكاشير")}
+                                        </button>
+                                    ` : ""}
+
                                     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
                                         <div style="font-size:13px;color:#6b7280;">
                                             ${wmn_t("Complete Order will apply payment to the offline invoice then save it offline.", "\u0625\u0643\u0645\u0627\u0644 \u0627\u0644\u0637\u0644\u0628 \u0633\u064A\u0636\u064A\u0641 \u0627\u0644\u062F\u0641\u0639 \u0644\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646 \u062B\u0645 \u064A\u062D\u0641\u0638\u0647\u0627 \u0623\u0648\u0641\u0644\u0627\u064A\u0646.")}
@@ -202,46 +211,7 @@ function wmn_invoice_payment_total(doc) {
                     primary_action_label: wmn_t("Complete Order", "\u0625\u0643\u0645\u0627\u0644 \u0627\u0644\u0637\u0644\u0628"),
                     primary_action: async () => {
                         try {
-                            let paid = 0;
-
-                            d.$wrapper.find(".wmn-offline-payment-amount").each(function () {
-                                const $input = $(this);
-                                const idx = cint($input.attr("data-payment-index"));
-                                const amount = flt($input.val() || 0);
-                                const row = payments[idx];
-
-                                if (!row) return;
-
-                                row.amount = amount;
-                                row.base_amount = amount;
-                                row.parent = doc.name;
-                                paid += amount;
-                            });
-
-                            if (paid <= 0) {
-                                frappe.msgprint({
-                                    title: wmn_t("Payment Required", "\u0627\u0644\u062F\u0641\u0639 \u0645\u0637\u0644\u0648\u0628"),
-                                    indicator: "orange",
-                                    message: wmn_t("Enter payment amount first", "\u0623\u062F\u062E\u0644 \u0645\u0628\u0644\u063A \u0627\u0644\u062F\u0641\u0639 \u0623\u0648\u0644\u0627\u064B")
-                                });
-                                return;
-                            }
-
-                            doc.payments = payments.filter(p => flt(p.amount || 0) > 0 || p.mode_of_payment);
-                            wmn_recalc_offline_payment_doc(doc);
-
-                            if (
-                                !allowPartialPayment &&
-                                flt(doc.paid_amount || 0) < flt(doc.rounded_total || doc.grand_total || 0)
-                            ) {
-                                frappe.msgprint({
-                                    title: wmn_t("Payment Amount", "\u0645\u0628\u0644\u063A \u0627\u0644\u062F\u0641\u0639"),
-                                    indicator: "orange",
-                                    message: wmn_t("Payment amount is less than invoice total", "\u0645\u0628\u0644\u063A \u0627\u0644\u062F\u0641\u0639 \u0623\u0642\u0644 \u0645\u0646 \u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629")
-                                });
-                                return;
-                            }
-
+                            if (!capturePaymentInputs(true, true)) return;
                             d.hide();
                             resolve(doc);
                         } catch (e) {
@@ -255,6 +225,49 @@ function wmn_invoice_payment_total(doc) {
                     }
                 });
 
+                function capturePaymentInputs(requirePayment, enforceFullPayment) {
+                    let paid = 0;
+                    d.$wrapper.find(".wmn-offline-payment-amount").each(function () {
+                        const $input = $(this);
+                        const idx = cint($input.attr("data-payment-index"));
+                        const amount = Math.max(0, flt($input.val() || 0));
+                        const row = payments[idx];
+                        if (!row) return;
+                        row.amount = amount;
+                        row.base_amount = amount;
+                        row.parent = doc.name;
+                        row.parenttype = doc.doctype;
+                        row.parentfield = "payments";
+                        paid += amount;
+                    });
+
+                    if (requirePayment && paid <= 0) {
+                        frappe.msgprint({
+                            title: wmn_t("Payment Required", "الدفع مطلوب"),
+                            indicator: "orange",
+                            message: wmn_t("Enter payment amount first", "أدخل مبلغ الدفع أولاً")
+                        });
+                        return false;
+                    }
+
+                    doc.payments = payments.filter(p => flt(p.amount || 0) > 0 || p.mode_of_payment);
+                    wmn_recalc_offline_payment_doc(doc);
+
+                    if (
+                        enforceFullPayment &&
+                        !allowPartialPayment &&
+                        flt(doc.paid_amount || 0) < flt(doc.rounded_total || doc.grand_total || 0)
+                    ) {
+                        frappe.msgprint({
+                            title: wmn_t("Payment Amount", "مبلغ الدفع"),
+                            indicator: "orange",
+                            message: wmn_t("Payment amount is less than invoice total", "مبلغ الدفع أقل من إجمالي الفاتورة")
+                        });
+                        return false;
+                    }
+                    return true;
+                }
+
                 d.$wrapper.addClass("wmn-pos-app-dialog wmn-offline-payment-modal");
                 d.show();
 
@@ -267,6 +280,25 @@ function wmn_invoice_payment_total(doc) {
                 };
 
                 d.$wrapper.on("input", ".wmn-offline-payment-amount", updatePaidTotal);
+
+                d.$wrapper.on("click", ".wmn-offline-send-to-cashier-btn", async function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const $button = $(this);
+                    if (!capturePaymentInputs(false, false)) return;
+
+                    $button.prop("disabled", true);
+                    try {
+                        const sent = await ctrl.wmn_send_to_cashier();
+                        if (!sent) return;
+                        d.hide();
+                        resolve({ __wmn_handoff_complete: true });
+                    } catch (error) {
+                        console.error("WMN offline Send to Cashier failed", error);
+                    } finally {
+                        $button.prop("disabled", false);
+                    }
+                });
 
                 d.$wrapper.on("click", ".wmn-offline-sell-on-credit-btn", function (e) {
                     e.preventDefault();
@@ -293,3 +325,156 @@ function wmn_invoice_payment_total(doc) {
 
 
 
+
+async function wmn_get_offline_existing_invoice_payment_context(doc) {
+    doc = doc || {};
+    const offline = window.wmnPOSOffline;
+    if (!offline) throw new Error("WMN offline storage is not available");
+
+    const methods = offline.getAllCached
+        ? await offline.getAllCached(offline.STORES.payment_methods)
+        : await offline.getAll(offline.STORES.payment_methods);
+    const paymentMethods = (methods || []).filter(row => row && row.mode_of_payment && row.account);
+
+    return {
+        name: doc.__wmn_server_name || doc.__wmn_display_name || doc.name || doc.__wmn_queue_offline_id || "",
+        invoice_offline_id: doc.__wmn_queue_offline_id || doc.wmn_offline_sync_id || doc.custom_offline_id || doc.name || "",
+        customer: doc.customer || "",
+        customer_name: doc.customer_name || doc.customer || "",
+        currency: doc.currency || "",
+        status: doc.status || "",
+        grand_total: flt(doc.grand_total || 0),
+        paid_amount: flt(doc.paid_amount || 0),
+        outstanding_amount: Math.max(0, flt(doc.outstanding_amount || 0)),
+        payment_methods: paymentMethods,
+    };
+}
+
+async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
+    const context = await wmn_get_offline_existing_invoice_payment_context(doc);
+    const methods = context.payment_methods || [];
+    if (!methods.length) {
+        frappe.msgprint({
+            title: __("Add Payment"),
+            indicator: "orange",
+            message: __("No cached POS Profile payment method with an account is available."),
+        });
+        return null;
+    }
+
+    const outstandingAmount = flt(context.outstanding_amount || 0);
+    if (outstandingAmount <= 0) {
+        frappe.show_alert({ message: __("This invoice has no outstanding amount."), indicator: "orange" });
+        return null;
+    }
+
+    const defaultMethod = methods.find(row => cint(row.default || 0) === 1) || methods[0];
+    const currency = context.currency || "";
+
+    return await new Promise((resolve, reject) => {
+        const dialog = new frappe.ui.Dialog({
+            title: __("Add Payment"),
+            fields: [
+                {
+                    fieldname: "invoice_name",
+                    fieldtype: "Data",
+                    label: __("Sales Invoice"),
+                    default: context.name,
+                    read_only: 1,
+                },
+                {
+                    fieldname: "customer_name",
+                    fieldtype: "Data",
+                    label: __("Customer"),
+                    default: context.customer_name || context.customer,
+                    read_only: 1,
+                },
+                {
+                    fieldname: "outstanding_amount",
+                    fieldtype: "Currency",
+                    label: __("Outstanding Amount"),
+                    default: outstandingAmount,
+                    read_only: 1,
+                },
+                {
+                    fieldname: "mode_of_payment",
+                    fieldtype: "Select",
+                    label: __("Mode of Payment"),
+                    options: methods.map(row => row.mode_of_payment).join("\n"),
+                    default: defaultMethod.mode_of_payment,
+                    reqd: 1,
+                },
+                {
+                    fieldname: "amount",
+                    fieldtype: "Currency",
+                    label: __("Payment Amount"),
+                    default: outstandingAmount,
+                    reqd: 1,
+                    description: currency ? __("Currency: {0}", [currency]) : "",
+                },
+                {
+                    fieldname: "reference_no",
+                    fieldtype: "Data",
+                    label: __("Reference No"),
+                    default: context.name || context.invoice_offline_id,
+                },
+                {
+                    fieldname: "reference_date",
+                    fieldtype: "Date",
+                    label: __("Reference Date"),
+                    default: frappe.datetime.get_today(),
+                },
+            ],
+            primary_action_label: __("Add Payment"),
+            secondary_action_label: __("Close"),
+            secondary_action: () => {
+                dialog.hide();
+                resolve(null);
+            },
+            primary_action: async (values) => {
+                const amount = flt(values.amount || 0);
+                if (amount <= 0) {
+                    frappe.show_alert({ message: __("Payment amount must be greater than zero."), indicator: "orange" });
+                    return;
+                }
+                if (amount > outstandingAmount + 0.000001) {
+                    frappe.show_alert({
+                        message: __("Payment amount cannot exceed outstanding amount {0}.", [format_currency(outstandingAmount, currency)]),
+                        indicator: "orange",
+                    });
+                    return;
+                }
+
+                dialog.get_primary_btn().prop("disabled", true);
+                try {
+                    const row = await window.wmnPOSOffline.savePaymentEntry({
+                        invoice_offline_id: context.invoice_offline_id,
+                        invoice_name: doc.__wmn_server_name || "",
+                        amount,
+                        mode_of_payment: values.mode_of_payment,
+                        reference_no: values.reference_no || context.name || context.invoice_offline_id,
+                        reference_date: values.reference_date || frappe.datetime.get_today(),
+                    });
+                    dialog.hide();
+                    frappe.show_alert({
+                        message: __("Payment saved offline and will be synchronized as a Payment Entry."),
+                        indicator: "green",
+                    });
+                    resolve(row);
+                } catch (e) {
+                    console.error("WMN offline add payment failed", e);
+                    dialog.get_primary_btn().prop("disabled", false);
+                    frappe.msgprint({
+                        title: __("Add Payment"),
+                        indicator: "red",
+                        message: e.message || String(e),
+                    });
+                }
+            },
+        });
+
+        window.WMN_POS?.UI?.Dialogs?.decorate?.(dialog, "wmn-pos-add-payment-dialog");
+        dialog.$wrapper.addClass("wmn-add-payment-modal wmn-offline-add-payment-modal");
+        dialog.show();
+    });
+}

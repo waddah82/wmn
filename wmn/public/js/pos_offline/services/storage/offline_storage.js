@@ -194,7 +194,7 @@ wmn_install_pos_pwa_app_css();
 
             const LEGACY_DB_NAME = "wmn_erpnext_pos_offline";
             const DB_NAME = "wmn_erpnext_pos_offline__" + getSiteKey();
-            const DB_VERSION = 84;
+            const DB_VERSION = 85;
             const STORES = {
                 items: "items",
                 customers: "customers",
@@ -213,6 +213,7 @@ wmn_install_pos_pwa_app_css();
                 item_groups: "item_groups",
                 doctype_meta: "doctype_meta",
                 invoice_queue: "invoice_queue",
+                payment_entry_queue: "payment_entry_queue",
                 cash_movement_queue: "cash_movement_queue",
                 sync_log: "sync_log",
                 barcode_structures: "barcode_structures",
@@ -226,6 +227,10 @@ wmn_install_pos_pwa_app_css();
             let autoSyncBeforePreloadRunning = false;
             let autoSyncBeforePreloadDone = false;
             let supervisorBundleMemory = null;
+            let invoiceSyncRunPromise = null;
+            const invoiceSyncFlights = new Map();
+            let paymentSyncRunPromise = null;
+            const paymentSyncFlights = new Map();
             const masterReadCache = new Map();
             const rowsByItemIndexCache = new WeakMap();
             const CACHEABLE_MASTER_STORES = new Set([
@@ -361,6 +366,14 @@ wmn_install_pos_pwa_app_css();
                         if (!db.objectStoreNames.contains(STORES.invoice_queue)) {
                             const store = db.createObjectStore(STORES.invoice_queue, { keyPath: "offline_id" });
                             store.createIndex("status", "status", { unique: false });
+                            store.createIndex("created_at", "created_at", { unique: false });
+                        }
+
+                        if (!db.objectStoreNames.contains(STORES.payment_entry_queue)) {
+                            const store = db.createObjectStore(STORES.payment_entry_queue, { keyPath: "offline_payment_id" });
+                            store.createIndex("status", "status", { unique: false });
+                            store.createIndex("invoice_offline_id", "invoice_offline_id", { unique: false });
+                            store.createIndex("invoice_name", "invoice_name", { unique: false });
                             store.createIndex("created_at", "created_at", { unique: false });
                         }
 
@@ -1101,11 +1114,11 @@ wmn_install_pos_pwa_app_css();
                     autoSyncBeforePreloadRunning = true;
                     autoSyncBeforePreloadDone = true;
 
-                    const pendingInvoices = await getPendingInvoices();
+                    const syncableInvoices = await getSyncableInvoices();
                     const pendingMovements = await getPendingCashMovements();
-                    if ((!pendingInvoices || !pendingInvoices.length) && (!pendingMovements || !pendingMovements.length)) return false;
+                    if ((!syncableInvoices || !syncableInvoices.length) && (!pendingMovements || !pendingMovements.length)) return false;
 
-                    if (pendingInvoices && pendingInvoices.length) await syncInvoices();
+                    if (syncableInvoices && syncableInvoices.length) await syncInvoices();
                     if (pendingMovements && pendingMovements.length) await syncCashMovements();
                     return true;
                 } catch (e) {
@@ -2094,13 +2107,20 @@ wmn_install_pos_pwa_app_css();
 
             async function saveInvoice(invoice, ctrl) {
                 const doc = clone(invoice);
+                const invoiceBarcode = window.WMN_POS?.Services?.Barcode?.InvoiceBarcode;
+                if (invoiceBarcode?.ensureInvoiceUID) {
+                    invoiceBarcode.ensureInvoiceUID(doc);
+                }
                 if (typeof wmn_assign_receipt_number === "function") {
                     await wmn_assign_receipt_number(doc);
                 }
                 doc.wmn_receipt_no = doc.wmn_receipt_no || doc.__wmn_receipt_no || "";
                 doc.__wmn_receipt_no = doc.__wmn_receipt_no || doc.wmn_receipt_no || "";
                 await wmn_clean_doc_batch_serial_for_save(doc);
-                const offlineId = doc.custom_offline_id || `POS-OFF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                const offlineId = doc.wmn_offline_sync_id
+                    || doc.custom_offline_id
+                    || `POS-OFF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                doc.wmn_offline_sync_id = offlineId;
                 doc.custom_offline_id = offlineId;
                 doc.__islocal = 1;
                 doc.docstatus = 0;
@@ -2136,12 +2156,26 @@ wmn_install_pos_pwa_app_css();
             }
 
             async function getPendingInvoices() {
-                const db = await openDB();
-                return new Promise((resolve, reject) => {
-                    const tx = db.transaction(STORES.invoice_queue, "readonly");
-                    const req = tx.objectStore(STORES.invoice_queue).index("status").getAll("pending");
-                    req.onsuccess = () => resolve(req.result || []);
-                    req.onerror = () => reject(req.error);
+                const rows = await getAll(STORES.invoice_queue);
+                return (rows || []).filter((row) => {
+                    const status = String(row?.status || "pending").toLowerCase();
+                    const queueKind = String(row?.queue_kind || "").toLowerCase();
+                    const invoice = row?.invoice || row?.doc || row?.data || {};
+                    const stage = String(invoice?.wmn_pos_stage || "").trim();
+                    if (queueKind === "draft" || stage === "AWAITING_CASHIER") return false;
+                    return !row?.erpnext_name
+                        && !row?.server_name
+                        && !row?.synced
+                        && !row?.synced_at
+                        && !["synced", "submitted", "success"].includes(status);
+                });
+            }
+
+            async function getSyncableInvoices() {
+                const rows = await getAll(STORES.invoice_queue);
+                return (rows || []).filter((row) => {
+                    const status = getInvoiceQueueStatus(row);
+                    return !["synced", "draft_synced"].includes(status);
                 });
             }
 
@@ -2223,39 +2257,504 @@ wmn_install_pos_pwa_app_css();
                 }
             }
 
-            async function syncInvoices() {
-                if (!online()) return;
-                const pending = await getPendingInvoices();
-                if (!pending.length) return;
+            function getPaymentQueueStatus(row) {
+                const status = String(row?.status || "pending").toLowerCase();
+                if (row?.payment_entry || row?.synced_at || ["synced", "submitted", "success"].includes(status)) {
+                    return "synced";
+                }
+                return status || "pending";
+            }
 
-                for (const row of pending) {
+            function invoiceQueueMatchesIdentity(row, identity) {
+                const target = String(identity || "").trim();
+                if (!target || !row) return false;
+                const invoice = row.invoice || row.doc || row.data || row || {};
+                return [
+                    row.offline_id,
+                    row.erpnext_name,
+                    row.server_name,
+                    invoice.name,
+                    invoice.wmn_offline_sync_id,
+                    invoice.custom_offline_id,
+                    invoice.__wmn_server_name,
+                ].some(value => String(value || "").trim() === target);
+            }
+
+            async function findInvoiceQueueRow(identity) {
+                const target = String(identity || "").trim();
+                if (!target) return null;
+                const direct = await get(STORES.invoice_queue, target);
+                if (direct) return direct;
+                const rows = await getAll(STORES.invoice_queue);
+                return (rows || []).find(row => invoiceQueueMatchesIdentity(row, target)) || null;
+            }
+
+            function paymentQueueMatchesInvoice(paymentRow, invoiceRow) {
+                if (!paymentRow || !invoiceRow) return false;
+                const invoice = invoiceRow.invoice || invoiceRow.doc || invoiceRow.data || invoiceRow || {};
+                const identities = new Set([
+                    invoiceRow.offline_id,
+                    invoiceRow.erpnext_name,
+                    invoiceRow.server_name,
+                    invoice.name,
+                    invoice.wmn_offline_sync_id,
+                    invoice.custom_offline_id,
+                    invoice.__wmn_server_name,
+                ].map(value => String(value || "").trim()).filter(Boolean));
+                return identities.has(String(paymentRow.invoice_offline_id || "").trim())
+                    || identities.has(String(paymentRow.invoice_name || "").trim());
+            }
+
+            function getQueuedPaymentAmount(invoiceRow, paymentRows) {
+                return (paymentRows || []).reduce((total, paymentRow) => {
+                    if (getPaymentQueueStatus(paymentRow) === "synced") return total;
+                    if (!paymentQueueMatchesInvoice(paymentRow, invoiceRow)) return total;
+                    return total + Math.max(0, flt(paymentRow.amount || 0));
+                }, 0);
+            }
+
+            function getInvoicePaymentStatus(doc, row, pendingPaymentAmount = 0) {
+                doc = doc || {};
+                row = row || {};
+                if (cint(doc.is_return || 0) === 1) return "Return";
+                if (doc.__wmn_saved_as_draft === true || row.queue_kind === "draft") return "Draft";
+
+                const specialStatus = String(doc.status || "").trim();
+                if (["Cancelled", "Consolidated"].includes(specialStatus)) return specialStatus;
+
+                const total = Math.abs(flt(doc.rounded_total || doc.grand_total || 0));
+                const baseOutstanding = Math.max(0, flt(doc.__wmn_server_outstanding_amount !== undefined
+                    ? doc.__wmn_server_outstanding_amount
+                    : doc.outstanding_amount || 0));
+                const effectiveOutstanding = Math.max(0, baseOutstanding - Math.max(0, flt(pendingPaymentAmount || 0)));
+                const basePaid = Math.max(0, flt(doc.__wmn_server_paid_amount !== undefined
+                    ? doc.__wmn_server_paid_amount
+                    : doc.paid_amount || 0));
+                const effectivePaid = Math.max(basePaid + Math.max(0, flt(pendingPaymentAmount || 0)), total - effectiveOutstanding);
+                const epsilon = 0.000001;
+
+                if (effectiveOutstanding <= epsilon) return "Paid";
+                if (effectivePaid > epsilon) return "Partly Paid";
+
+                const dueDate = String(doc.due_date || "").slice(0, 10);
+                const today = String(frappe.datetime.get_today() || "").slice(0, 10);
+                if (dueDate && today && dueDate < today) return "Overdue";
+                return "Unpaid";
+            }
+
+            function getInvoiceDisplayStatus(doc, row, pendingPaymentAmount = 0) {
+                if (String(doc?.wmn_pos_stage || "").trim() === "AWAITING_CASHIER") {
+                    return "Awaiting Cashier";
+                }
+                return getInvoicePaymentStatus(doc, row, pendingPaymentAmount);
+            }
+
+            function decorateInvoiceQueueRow(invoiceRow, paymentRows = []) {
+                if (!invoiceRow) return null;
+                const doc = clone(invoiceRow.invoice || invoiceRow.doc || invoiceRow.data || invoiceRow || {});
+                const pendingPaymentAmount = getQueuedPaymentAmount(invoiceRow, paymentRows);
+                const baseOutstanding = Math.max(0, flt(doc.outstanding_amount || 0));
+                const basePaid = Math.max(0, flt(doc.paid_amount || 0));
+                const effectiveOutstanding = Math.max(0, baseOutstanding - pendingPaymentAmount);
+                const effectivePaid = basePaid + pendingPaymentAmount;
+                const displayName = String(invoiceRow.erpnext_name || invoiceRow.server_name || invoiceRow.offline_id || doc.name || "");
+
+                doc.__wmn_queue_offline_id = invoiceRow.offline_id || "";
+                doc.__wmn_queue_status = getInvoiceQueueStatus(invoiceRow);
+                doc.__wmn_server_name = invoiceRow.erpnext_name || invoiceRow.server_name || "";
+                doc.__wmn_local_submitted = invoiceRow.queue_kind !== "draft";
+                doc.__wmn_original_docstatus = cint(doc.docstatus || 0);
+                if (doc.__wmn_local_submitted === true) doc.docstatus = 1;
+                doc.__wmn_pending_payment_amount = pendingPaymentAmount;
+                doc.__wmn_base_paid_amount = basePaid;
+                doc.__wmn_base_outstanding_amount = baseOutstanding;
+                doc.__wmn_original_name = doc.name || "";
+                if (displayName) doc.name = displayName;
+                doc.paid_amount = effectivePaid;
+                doc.outstanding_amount = effectiveOutstanding;
+                doc.status = getInvoicePaymentStatus(doc, invoiceRow, 0);
+                doc.__wmn_display_status = getInvoiceDisplayStatus(doc, invoiceRow, 0);
+                doc.__wmn_display_name = displayName;
+                return doc;
+            }
+
+            async function getOfflineRecentOrders({ search_term = "", status = "", limit = 20 } = {}) {
+                const invoiceRows = await getAll(STORES.invoice_queue);
+                const paymentRows = await getAll(STORES.payment_entry_queue);
+                const search = String(search_term || "").trim().toLowerCase();
+                const wantedStatus = String(status || "").trim();
+                const result = [];
+
+                const sorted = (invoiceRows || []).slice().sort((a, b) => {
+                    return String(b.created_at || "").localeCompare(String(a.created_at || ""));
+                });
+
+                for (const invoiceRow of sorted) {
+                    const doc = decorateInvoiceQueueRow(invoiceRow, paymentRows);
+                    if (!doc) continue;
+                    const invoiceStatus = String(doc.__wmn_display_status || doc.status || "").trim();
+                    if (wantedStatus && invoiceStatus !== wantedStatus) continue;
+
+                    const displayName = String(doc.__wmn_display_name || invoiceRow.offline_id || doc.name || "");
+                    if (search) {
+                        const haystack = [
+                            displayName,
+                            invoiceRow.offline_id,
+                            invoiceRow.erpnext_name,
+                            doc.name,
+                            doc.customer,
+                            doc.customer_name,
+                            doc.wmn_receipt_no,
+                            doc.wmn_invoice_uid,
+                        ].map(value => String(value || "").toLowerCase()).join(" ");
+                        if (!haystack.includes(search)) continue;
+                    }
+
+                    result.push(Object.assign({}, doc, {
+                        name: displayName,
+                        status: invoiceStatus,
+                    }));
+                    if (result.length >= Math.max(1, cint(limit || 20))) break;
+                }
+                return result;
+            }
+
+            async function getOfflineInvoice(identity) {
+                const invoiceRow = await findInvoiceQueueRow(identity);
+                if (!invoiceRow) return null;
+                const paymentRows = await getAll(STORES.payment_entry_queue);
+                return decorateInvoiceQueueRow(invoiceRow, paymentRows);
+            }
+
+            async function getPendingPaymentEntries(invoiceOfflineId = "") {
+                const rows = invoiceOfflineId
+                    ? await getAllByIndex(STORES.payment_entry_queue, "invoice_offline_id", invoiceOfflineId)
+                    : await getAll(STORES.payment_entry_queue);
+                return (rows || []).filter(row => getPaymentQueueStatus(row) !== "synced");
+            }
+
+            async function updatePaymentQueueRow(row) {
+                await bulkPut(STORES.payment_entry_queue, [row]);
+                if (typeof window.wmn_notify_offline_queue_changed === "function") {
+                    window.wmn_notify_offline_queue_changed();
+                }
+                return row;
+            }
+
+            async function savePaymentEntry(payment) {
+                const payload = clone(payment || {});
+                const invoiceIdentity = String(payload.invoice_offline_id || payload.invoice_name || "").trim();
+                const invoiceRow = await findInvoiceQueueRow(invoiceIdentity);
+                if (!invoiceRow) throw new Error("Offline invoice was not found in local storage");
+
+                const invoice = invoiceRow.invoice || invoiceRow.doc || invoiceRow.data || {};
+                if (String(invoice.doctype || invoiceRow.doctype || "") !== "Sales Invoice") {
+                    throw new Error("Offline Payment Entry is supported only for Sales Invoice");
+                }
+                if (cint(invoice.is_return || 0) === 1) throw new Error("Payment cannot be added to a return invoice");
+
+                const amount = flt(payload.amount || 0);
+                if (amount <= 0) throw new Error("Payment amount must be greater than zero");
+
+                const paymentRows = await getAll(STORES.payment_entry_queue);
+                const queuedAmount = getQueuedPaymentAmount(invoiceRow, paymentRows);
+                const baseOutstanding = Math.max(0, flt(invoice.outstanding_amount || 0));
+                const availableOutstanding = Math.max(0, baseOutstanding - queuedAmount);
+                const precision = 0.000001;
+                if (amount - availableOutstanding > precision) {
+                    throw new Error(`Payment amount cannot exceed outstanding amount ${availableOutstanding}`);
+                }
+
+                const offlinePaymentId = String(
+                    payload.wmn_offline_payment_id
+                    || payload.offline_payment_id
+                    || `PAY-OFF-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+                ).trim();
+                const row = {
+                    offline_payment_id: offlinePaymentId,
+                    wmn_offline_payment_id: offlinePaymentId,
+                    status: "pending",
+                    created_at: payload.created_at || new Date().toISOString(),
+                    invoice_offline_id: invoiceRow.offline_id || invoiceIdentity,
+                    invoice_name: invoiceRow.erpnext_name || invoiceRow.server_name || "",
+                    amount,
+                    mode_of_payment: payload.mode_of_payment || "",
+                    reference_no: payload.reference_no || invoiceRow.erpnext_name || invoiceRow.offline_id || invoice.name || "",
+                    reference_date: payload.reference_date || frappe.datetime.get_today(),
+                    last_error: "",
+                };
+
+                await updatePaymentQueueRow(row);
+                return row;
+            }
+
+            async function syncPaymentEntry(row) {
+                if (!online()) throw new Error("POS is offline");
+                if (!row) return row;
+
+                const offlinePaymentId = String(row.wmn_offline_payment_id || row.offline_payment_id || "").trim();
+                if (!offlinePaymentId) throw new Error("Offline payment ID is missing");
+                if (getPaymentQueueStatus(row) === "synced") return row;
+                if (paymentSyncFlights.has(offlinePaymentId)) return await paymentSyncFlights.get(offlinePaymentId);
+
+                const flight = (async () => {
                     try {
-                        await wmn_clean_doc_batch_serial_for_save(row.invoice);
-                        const r = await frappe.call({
-                            method: "wmn.api.sync_offline_pos_invoice",
-                            args: { invoice: row.invoice },
+                        row.status = "syncing";
+                        row.last_try_at = new Date().toISOString();
+                        await updatePaymentQueueRow(row);
+
+                        const invoiceRow = await findInvoiceQueueRow(row.invoice_offline_id || row.invoice_name);
+                        if (!invoiceRow) throw new Error("Offline invoice was not found for Payment Entry sync");
+
+                        let serverInvoiceName = String(invoiceRow.erpnext_name || invoiceRow.server_name || "").trim();
+                        if (!serverInvoiceName) {
+                            const syncedInvoiceRow = await syncInvoice(invoiceRow);
+                            serverInvoiceName = String(syncedInvoiceRow.erpnext_name || syncedInvoiceRow.server_name || "").trim();
+                        }
+                        if (!serverInvoiceName) throw new Error("Server Sales Invoice name is missing");
+
+                        row.invoice_name = serverInvoiceName;
+                        const response = await frappe.call({
+                            method: "wmn.api.sync_offline_payment_entry",
+                            args: {
+                                payment: {
+                                    wmn_offline_payment_id: offlinePaymentId,
+                                    invoice_name: serverInvoiceName,
+                                    amount: row.amount,
+                                    mode_of_payment: row.mode_of_payment,
+                                    reference_no: row.reference_no || serverInvoiceName,
+                                    reference_date: row.reference_date || frappe.datetime.get_today(),
+                                },
+                            },
                             freeze: false,
                         });
-                        const result = r.message || {};
-                        if (cint(result.docstatus || 0) !== 1) {
-                            throw new Error("Server invoice was not submitted");
+                        const result = response?.message || {};
+                        if (cint(result.payment_entry_docstatus || 0) !== 1) {
+                            throw new Error("Server Payment Entry was not submitted");
                         }
+
                         row.status = "synced";
                         row.synced_at = new Date().toISOString();
-                        row.erpnext_name = result.name || result.erpnext_name || "";
+                        row.payment_entry = result.payment_entry || row.payment_entry || "";
                         row.last_error = "";
-                        await updateQueueRow(row);
-                        frappe.show_alert({
-                            message: __("\u062A\u0645\u062A \u0645\u0632\u0627\u0645\u0646\u0629 \u0641\u0627\u062A\u0648\u0631\u0629 \u0623\u0648\u0641\u0644\u0627\u064A\u0646: {0}", [row.erpnext_name || row.offline_id]),
-                            indicator: "green",
-                        });
+                        await updatePaymentQueueRow(row);
+
+                        const currentInvoiceRow = await findInvoiceQueueRow(invoiceRow.offline_id || serverInvoiceName);
+                        if (currentInvoiceRow && currentInvoiceRow.invoice) {
+                            currentInvoiceRow.invoice.status = result.invoice_status || currentInvoiceRow.invoice.status || "";
+                            currentInvoiceRow.invoice.paid_amount = flt(result.paid_amount || 0);
+                            currentInvoiceRow.invoice.outstanding_amount = flt(result.outstanding_amount || 0);
+                            currentInvoiceRow.invoice.__wmn_server_name = serverInvoiceName;
+                            await updateQueueRow(currentInvoiceRow);
+                        }
+                        return row;
                     } catch (e) {
                         row.status = "pending";
                         row.last_error = e.message || String(e);
                         row.last_try_at = new Date().toISOString();
-                        await updateQueueRow(row);
-                        console.error("WMN POS offline invoice sync failed", row.offline_id, e);
+                        await updatePaymentQueueRow(row);
+                        throw e;
+                    } finally {
+                        paymentSyncFlights.delete(offlinePaymentId);
                     }
+                })();
+
+                paymentSyncFlights.set(offlinePaymentId, flight);
+                return await flight;
+            }
+
+            async function syncPaymentEntries(invoiceOfflineId = "") {
+                if (!online()) return [];
+                if (paymentSyncRunPromise) return await paymentSyncRunPromise;
+
+                paymentSyncRunPromise = (async () => {
+                    const pending = await getPendingPaymentEntries(invoiceOfflineId);
+                    const synced = [];
+                    for (const row of pending) {
+                        try {
+                            const result = await syncPaymentEntry(row);
+                            if (getPaymentQueueStatus(result) === "synced") {
+                                synced.push(result);
+                                frappe.show_alert({
+                                    message: __("Offline payment synchronized: {0}", [result.payment_entry || result.offline_payment_id]),
+                                    indicator: "green",
+                                });
+                            }
+                        } catch (e) {
+                            console.error("WMN POS offline Payment Entry sync failed", row.offline_payment_id, e);
+                        }
+                    }
+                    return synced;
+                })();
+
+                try {
+                    return await paymentSyncRunPromise;
+                } finally {
+                    paymentSyncRunPromise = null;
+                }
+            }
+
+            function getInvoiceQueueStatus(row) {
+                const status = String(row?.status || "pending").toLowerCase();
+                const queueKind = String(row?.queue_kind || "").toLowerCase();
+                const invoice = row?.invoice || row?.doc || row?.data || {};
+                const stage = String(invoice?.wmn_pos_stage || "").trim();
+                const isDraft = queueKind === "draft" || stage === "AWAITING_CASHIER";
+
+                if (
+                    isDraft
+                    && (row?.erpnext_name || row?.server_name || status === "draft_synced")
+                ) {
+                    return "draft_synced";
+                }
+
+                if (row?.erpnext_name || row?.server_name || row?.synced || row?.synced_at
+                    || ["synced", "submitted", "success"].includes(status)) {
+                    return "synced";
+                }
+                return status || "pending";
+            }
+
+            function ensureInvoiceSyncIdentity(row) {
+                if (!row) throw new Error("Offline invoice queue row is missing");
+
+                const invoice = row.invoice || row.doc || row.data || row;
+                if (!invoice) throw new Error("Offline invoice data is missing");
+
+                const syncId = String(
+                    invoice.wmn_offline_sync_id
+                    || invoice.custom_offline_id
+                    || row.offline_id
+                    || row.id
+                    || row.name
+                    || ""
+                ).trim();
+
+                if (!syncId) throw new Error("Offline invoice sync ID is missing");
+
+                row.offline_id = row.offline_id || syncId;
+                invoice.wmn_offline_sync_id = syncId;
+                invoice.custom_offline_id = syncId;
+                row.invoice = invoice;
+
+                return { syncId, invoice };
+            }
+
+            async function syncInvoice(row) {
+                if (!online()) throw new Error("POS is offline");
+                if (!row) return row;
+
+                const { syncId, invoice } = ensureInvoiceSyncIdentity(row);
+                const queueKind = String(row.queue_kind || "").toLowerCase();
+                const stage = String(invoice.wmn_pos_stage || "").trim();
+                const syncAsDraft = queueKind === "draft" || stage === "AWAITING_CASHIER";
+                const currentStatus = getInvoiceQueueStatus(row);
+                if (currentStatus === "synced" || currentStatus === "draft_synced") return row;
+
+                if (invoiceSyncFlights.has(syncId)) {
+                    return await invoiceSyncFlights.get(syncId);
+                }
+
+                const flight = (async () => {
+                    try {
+                        await wmn_clean_doc_batch_serial_for_save(invoice);
+                        row.status = "syncing";
+                        row.last_try_at = new Date().toISOString();
+                        row.invoice = invoice;
+                        await updateQueueRow(row);
+
+                        const r = await frappe.call({
+                            method: "wmn.api.sync_offline_pos_invoice",
+                            args: {
+                                invoice,
+                                submit: syncAsDraft ? 0 : 1,
+                            },
+                            freeze: false,
+                        });
+                        const result = r.message || {};
+                        const serverDocstatus = cint(result.docstatus || 0);
+
+                        if (syncAsDraft) {
+                            if (serverDocstatus !== 0) {
+                                throw new Error("Server invoice was not saved as Draft");
+                            }
+
+                            row.status = "draft_synced";
+                            row.draft_synced_at = new Date().toISOString();
+                            delete row.synced_at;
+                        } else {
+                            if (serverDocstatus !== 1) {
+                                throw new Error("Server invoice was not submitted");
+                            }
+
+                            row.status = "synced";
+                            row.synced_at = new Date().toISOString();
+                            delete row.draft_synced_at;
+                        }
+
+                        row.erpnext_name = result.name || result.erpnext_name || row.erpnext_name || "";
+                        row.server_name = row.erpnext_name || row.server_name || "";
+                        row.last_error = "";
+                        invoice.__wmn_server_name = row.erpnext_name || "";
+                        invoice.status = result.invoice_status || invoice.status || (syncAsDraft ? "Draft" : "");
+                        invoice.docstatus = syncAsDraft ? 0 : 1;
+                        invoice.paid_amount = flt(result.paid_amount || invoice.paid_amount || 0);
+                        invoice.outstanding_amount = flt(
+                            result.outstanding_amount !== undefined
+                                ? result.outstanding_amount
+                                : invoice.outstanding_amount || 0
+                        );
+                        row.invoice = invoice;
+                        await updateQueueRow(row);
+                        return row;
+                    } catch (e) {
+                        row.status = "pending";
+                        row.last_error = e.message || String(e);
+                        row.last_try_at = new Date().toISOString();
+                        row.invoice = invoice;
+                        await updateQueueRow(row);
+                        throw e;
+                    } finally {
+                        invoiceSyncFlights.delete(syncId);
+                    }
+                })();
+
+                invoiceSyncFlights.set(syncId, flight);
+                return await flight;
+            }
+
+            async function syncInvoices() {
+                if (!online()) return [];
+                if (invoiceSyncRunPromise) return await invoiceSyncRunPromise;
+
+                invoiceSyncRunPromise = (async () => {
+                    const pending = await getSyncableInvoices();
+                    const synced = [];
+                    for (const row of pending) {
+                        try {
+                            const result = await syncInvoice(row);
+                            const resultStatus = getInvoiceQueueStatus(result);
+                            if (resultStatus === "synced" || resultStatus === "draft_synced") {
+                                synced.push(result);
+                                frappe.show_alert({
+                                    message: resultStatus === "draft_synced"
+                                        ? __("Offline draft synchronized: {0}", [result.erpnext_name || result.offline_id])
+                                        : __("تمت مزامنة فاتورة أوفلاين: {0}", [result.erpnext_name || result.offline_id]),
+                                    indicator: "green",
+                                });
+                            }
+                        } catch (e) {
+                            console.error("WMN POS offline invoice sync failed", row.offline_id, e);
+                        }
+                    }
+                    await syncPaymentEntries();
+                    return synced;
+                })();
+
+                try {
+                    return await invoiceSyncRunPromise;
+                } finally {
+                    invoiceSyncRunPromise = null;
                 }
             }
 
@@ -2307,8 +2806,18 @@ wmn_install_pos_pwa_app_css();
                 getStock,
                 saveInvoice,
                 getPendingInvoices,
+                getSyncableInvoices,
+                findInvoiceQueueRow,
+                decorateInvoiceQueueRow,
+                getOfflineRecentOrders,
+                getOfflineInvoice,
+                savePaymentEntry,
+                getPendingPaymentEntries,
+                syncPaymentEntry,
+                syncPaymentEntries,
                 getPendingReservedQty,
                 getPendingReservedSerialNos,
+                syncInvoice,
                 syncInvoices,
                 getDBName: () => DB_NAME,
                 getSiteKey: getSiteKey,

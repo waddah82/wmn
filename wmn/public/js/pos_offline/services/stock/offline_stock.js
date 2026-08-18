@@ -69,7 +69,11 @@
             try {
                 if (!doc || !doc.custom_offline_id || !window.wmnPOSOffline || !window.wmnPOSOffline.get) return null;
                 const oldRow = await window.wmnPOSOffline.get(window.wmnPOSOffline.STORES.invoice_queue, doc.custom_offline_id);
-                return oldRow && (oldRow.invoice || oldRow.doc || oldRow.data) || null;
+                if (!oldRow) return null;
+                if (String(oldRow.queue_kind || "").toLowerCase() === "draft") return null;
+                const oldDoc = oldRow.invoice || oldRow.doc || oldRow.data || null;
+                if (String(oldDoc?.wmn_pos_stage || "").trim() === "AWAITING_CASHIER") return null;
+                return oldDoc;
             } catch (e) {
                 console.warn("WMN offline stock old invoice read skipped", e);
                 return null;

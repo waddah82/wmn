@@ -901,9 +901,25 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             try { console.info("WMN silent print mode:", mode, "offline:", isOfflineDoc); } catch(e) {}
 
             if (mode === "raw_text") {
-                //const rawText = wmn_build_offline_raw_receipt_text(doc);
                 const rawText = wmn_render_raw_print_temp(cfg.template, doc);
-                
+                const barcode = window.WMN_POS?.Services?.Barcode?.InvoiceBarcode;
+                const printService = window.WMN_POS?.Services?.Printing?.PrintService;
+                const printConfig = printService?.getConfig?.() || {};
+
+                if (barcode?.isPrintEnabled?.(printConfig)) {
+                    const transport = String(printConfig.method || "").trim();
+                    if (transport === "browser" && printService?.sendHtml) {
+                        return await printService.sendHtml(
+                            barcode.browserRawHtml(rawText, doc, printConfig),
+                            { printType: printType || "RECEIPT" }
+                        );
+                    }
+                    return await wmn_send_raw_text_to_printer(
+                        barcode.decorateRawText(rawText, doc, printConfig),
+                        printType
+                    );
+                }
+
                 return await wmn_send_raw_text_to_printer(rawText, printType);
             }
 
@@ -917,13 +933,17 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
              */
             if (cfg.template && String(cfg.template || "").trim()) {
                 try {
-                    const rendered = wmn_render_raw_print_template(
+                    let rendered = wmn_render_raw_print_template(
                         cfg.template,
                         doc,
                         cfg.printFormat
                     );
 
                     if (rendered && typeof rendered === "object") {
+                        const barcode = window.WMN_POS?.Services?.Barcode?.InvoiceBarcode;
+                        if (barcode?.decoratePdfDefinition) {
+                            rendered = barcode.decoratePdfDefinition(rendered, doc);
+                        }
                         const pdfBase64 = await wmn_pdfmake_to_base64(rendered);
                         return await wmn_send_pdf_to_printer(pdfBase64, printType);
                     }
@@ -963,6 +983,11 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
 
             if (!renderedHtml || !String(renderedHtml).trim()) {
                 throw new Error("Rendered Print Format output is empty");
+            }
+
+            const invoiceBarcode = window.WMN_POS?.Services?.Barcode?.InvoiceBarcode;
+            if (invoiceBarcode?.injectIntoHtml) {
+                renderedHtml = invoiceBarcode.injectIntoHtml(renderedHtml, doc);
             }
 
             if (mode === "pdfmake") {

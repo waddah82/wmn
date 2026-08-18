@@ -2048,10 +2048,14 @@
         				try {
         					if (window.wmnPOSOffline?.getPendingInvoices) {
         						const rows = await window.wmnPOSOffline.getPendingInvoices();
-        						count = Array.isArray(rows) ? rows.length : 0;
+        						count += Array.isArray(rows) ? rows.length : 0;
+        					}
+        					if (window.wmnPOSOffline?.getPendingPaymentEntries) {
+        						const rows = await window.wmnPOSOffline.getPendingPaymentEntries();
+        						count += Array.isArray(rows) ? rows.length : 0;
         					}
         				} catch (e) {
-        					console.warn("WMN pending invoice count failed", e);
+        					console.warn("WMN pending financial queue count failed", e);
         				}
 
         				this.$pendingBadge.text(String(count));

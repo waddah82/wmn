@@ -55,10 +55,6 @@
             return methods.FinalMethods.wmn_start_offline_preload.apply(this, args);
         }
 
-        wmn_detach_current_frm_refresh_fields(...args) {
-            return methods.FinalMethods.wmn_detach_current_frm_refresh_fields.apply(this, args);
-        }
-
         get_item_from_frm(...args) {
             return methods.FinalMethods.get_item_from_frm.apply(this, args);
         }
@@ -215,12 +211,24 @@
             return methods.FinalMethods.wmn_submit_online_invoice.apply(this, args);
         }
 
+        wmn_send_to_cashier(...args) {
+            return methods.FinalMethods.wmn_send_to_cashier.apply(this, args);
+        }
+
         init_payments(...args) {
             return methods.FinalMethods.init_payments.apply(this, args);
         }
 
         wmn_bind_offline_receipt_buttons(...args) {
             return methods.FinalMethods.wmn_bind_offline_receipt_buttons.apply(this, args);
+        }
+
+        wmn_open_scanned_draft_for_payment(...args) {
+            return methods.FinalMethods.wmn_open_scanned_draft_for_payment.apply(this, args);
+        }
+
+        wmn_route_scanned_invoice(...args) {
+            return methods.FinalMethods.wmn_route_scanned_invoice.apply(this, args);
         }
 
         init_recent_order_list(...args) {
@@ -397,6 +405,10 @@
 
         wmn_set_online_promotion_rate(...args) {
             return ns.Features.Promotion.Online.ControllerMethods.wmn_set_online_promotion_rate.apply(this, args);
+        }
+
+        wmn_prepare_online_promotion_free_item_row(...args) {
+            return ns.Features.Promotion.Online.ControllerMethods.wmn_prepare_online_promotion_free_item_row.apply(this, args);
         }
 
         wmn_get_cashier_commercial_catalog(...args) {

@@ -264,19 +264,20 @@
 
         async getInvoiceFromCache(doctype, name) {
             if (!name) return null;
+            if (this.offline?.getOfflineInvoice) {
+                return await this.offline.getOfflineInvoice(name);
+            }
+
             const stores = (this.offline && this.offline.STORES) || {};
             const rows = await this.getAll(stores.invoice_queue);
             const row = (rows || []).find(r => {
                 const inv = r.invoice || r.doc || r;
                 return String(r.offline_id || "") === String(name) ||
+                    String(r.erpnext_name || r.server_name || "") === String(name) ||
                     String(inv.name || "") === String(name) ||
-                    String(inv.custom_offline_id || "") === String(name);
+                    String(inv.wmn_offline_sync_id || inv.custom_offline_id || "") === String(name);
             });
-            if (row) return _clone(row.invoice || row.doc || row);
-
-            // Submitted online invoices are generally not cached in invoice_queue.
-            // If a dedicated store is later added, this method is the only place to extend.
-            return null;
+            return row ? _clone(row.invoice || row.doc || row) : null;
         }
 
         async deleteInvoiceFromCache(doctype, name) {
@@ -292,8 +293,9 @@
                     const row = rows.find(r => {
                         const inv = r.invoice || r.doc || r;
                         return String(r.offline_id || "") === String(name) ||
+                            String(r.erpnext_name || r.server_name || "") === String(name) ||
                             String(inv.name || "") === String(name) ||
-                            String(inv.custom_offline_id || "") === String(name);
+                            String(inv.wmn_offline_sync_id || inv.custom_offline_id || "") === String(name);
                     });
                     if (!row) return resolve(false);
                     store.delete(row.offline_id || row.name || name);
@@ -410,7 +412,7 @@
 
         async safeRefreshRecentOrders(ctrl) {
             try {
-                if (ctrl && ctrl.recent_order_list && ctrl.recent_order_list.refresh_list && !this.isOffline()) {
+                if (ctrl && ctrl.recent_order_list && ctrl.recent_order_list.refresh_list) {
                     return ctrl.recent_order_list.refresh_list();
                 }
                 if (ctrl && ctrl.order_summary && ctrl.order_summary.toggle_summary_placeholder) {

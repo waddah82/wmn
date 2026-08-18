@@ -46,6 +46,50 @@
                     return result;
                 },
 
+        get_upper_section_html(doc) {
+                    const upperSectionHtml = super.get_upper_section_html(doc);
+                    const receiptIdentityHtml = this.wmn_get_receipt_identity_html(doc);
+                    if (!receiptIdentityHtml) return upperSectionHtml;
+
+                    const rightSectionMarker = '<div class="right-section">';
+                    if (upperSectionHtml.includes(rightSectionMarker)) {
+                        return upperSectionHtml.replace(
+                            rightSectionMarker,
+                            `${receiptIdentityHtml}${rightSectionMarker}`
+                        );
+                    }
+
+                    return `${upperSectionHtml}${receiptIdentityHtml}`;
+                },
+
+        wmn_get_receipt_identity_html(doc) {
+                    doc = doc || this.doc || {};
+
+                    const barcodeService = window.WMN_POS?.Services?.Barcode?.InvoiceBarcode;
+                    const rawReceiptNo = doc.wmn_receipt_no || doc.__wmn_receipt_no || "";
+                    const receiptNo = String(rawReceiptNo || "").trim();
+                    const barcodePayload = barcodeService?.payloadFromDoc
+                        ? barcodeService.payloadFromDoc(doc)
+                        : "";
+
+                    if (!receiptNo && !barcodePayload) return "";
+
+                    let barcodeHtml = "";
+                    if (barcodePayload && barcodeService?.buildHtmlBlock) {
+                        const printConfig = window.WMN_POS?.Services?.Printing?.PrintService?.getConfig?.() || {};
+                        barcodeHtml = barcodeService.buildHtmlBlock(doc, {
+                            ...printConfig,
+                            show_invoice_barcode: 1,
+                        });
+                    }
+
+                    const receiptHtml = receiptNo
+                        ? `<div class="wmn-summary-receipt-number" style="display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;font-weight:600;direction:ltr"><span>R NO :</span><strong style="font-family:monospace">${frappe.utils.escape_html(receiptNo)}</strong></div>`
+                        : "";
+
+                    return `<div class="wmn-summary-receipt-identity" style="flex:0 1 230px;min-width:150px;max-width:230px;text-align:center;align-self:center;padding:0 10px;box-sizing:border-box;direction:ltr">${receiptHtml}<div class="wmn-summary-barcode-wrap" style="margin:4px auto 0;max-width:220px">${barcodeHtml}</div></div>`;
+                },
+
         bind_events() {
                     super.bind_events();
                     this.$summary_container.on("click", ".wmn-add-payment-btn", async (e) => {
@@ -94,15 +138,29 @@
                     else this.$summary_container.append($block);
                 },
 
+        wmn_can_add_payment(doc) {
+                    doc = doc || this.doc || {};
+                    if (doc.doctype !== "Sales Invoice") return false;
+                    const isSubmitted = cint(doc.docstatus || 0) === 1 || doc.__wmn_local_submitted === true;
+                    if (!isSubmitted) return false;
+                    if (cint(doc.is_return || 0) === 1) return false;
+                    return flt(doc.outstanding_amount || 0) > 0.000001;
+                },
+
+        async wmn_open_from_invoice_barcode(doc) {
+                    if (!doc) return false;
+                    this.load_summary_of(doc, false);
+                    if (this.wmn_can_add_payment(doc)) {
+                        await this.wmn_open_add_payment_dialog();
+                    }
+                    return true;
+                },
+
         wmn_render_add_payment_button(doc, after_submission = false) {
                     this.$summary_btns.find(".wmn-add-payment-btn").remove();
 
                     if (after_submission) return;
-                    if (wmn_summary_is_offline()) return;
-                    if (!doc || doc.doctype !== "Sales Invoice") return;
-                    if (cint(doc.docstatus || 0) !== 1) return;
-                    if (cint(doc.is_return || 0) === 1) return;
-                    if (flt(doc.outstanding_amount || 0) <= 0) return;
+                    if (!this.wmn_can_add_payment(doc)) return;
 
                     this.$summary_btns.append(
                         `<div class="summary-btn btn btn-default wmn-add-payment-btn">${__("Add Payment")}</div>`
@@ -113,8 +171,24 @@
                     const doc = this.doc || {};
                     if (!doc.name || doc.doctype !== "Sales Invoice") return;
                     if (wmn_summary_is_offline()) {
-                        frappe.show_alert({ message: __("Payment Entry is not available while offline."), indicator: "orange" });
-                        return;
+                        if (typeof wmn_open_offline_existing_invoice_payment_dialog !== "function") {
+                            frappe.show_alert({ message: __("Offline payment service is not available."), indicator: "orange" });
+                            return;
+                        }
+
+                        const queued = await wmn_open_offline_existing_invoice_payment_dialog(doc);
+                        if (!queued) return;
+
+                        const identity = doc.__wmn_queue_offline_id || doc.__wmn_server_name || doc.name;
+                        const cache = window.cur_pos?.wmn_cache?.();
+                        const freshDoc = cache?.getInvoiceFromCache
+                            ? await cache.getInvoiceFromCache("Sales Invoice", identity)
+                            : await window.wmnPOSOffline?.getOfflineInvoice?.(identity);
+                        if (freshDoc) this.load_summary_of(freshDoc, false);
+                        if (window.cur_pos?.recent_order_list?.refresh_list) {
+                            await window.cur_pos.recent_order_list.refresh_list();
+                        }
+                        return queued;
                     }
 
                     frappe.dom.freeze(__("Loading payment details..."));
@@ -306,8 +380,12 @@
     const FinalMethods = Object.create(null);
     FinalMethods.toggle_summary_placeholder = UIMethods.toggle_summary_placeholder || CoreMethods.toggle_summary_placeholder;
     FinalMethods.load_summary_of = UIMethods.load_summary_of || CoreMethods.load_summary_of;
+    FinalMethods.get_upper_section_html = UIMethods.get_upper_section_html || CoreMethods.get_upper_section_html;
+    FinalMethods.wmn_get_receipt_identity_html = UIMethods.wmn_get_receipt_identity_html || CoreMethods.wmn_get_receipt_identity_html;
     FinalMethods.bind_events = UIMethods.bind_events || CoreMethods.bind_events;
     FinalMethods.wmn_render_discount_summary = UIMethods.wmn_render_discount_summary || CoreMethods.wmn_render_discount_summary;
+    FinalMethods.wmn_can_add_payment = UIMethods.wmn_can_add_payment || CoreMethods.wmn_can_add_payment;
+    FinalMethods.wmn_open_from_invoice_barcode = UIMethods.wmn_open_from_invoice_barcode || CoreMethods.wmn_open_from_invoice_barcode;
     FinalMethods.wmn_render_add_payment_button = UIMethods.wmn_render_add_payment_button || CoreMethods.wmn_render_add_payment_button;
     FinalMethods.wmn_open_add_payment_dialog = UIMethods.wmn_open_add_payment_dialog || CoreMethods.wmn_open_add_payment_dialog;
     FinalMethods.get_condition_btn_map = UIMethods.get_condition_btn_map || CoreMethods.get_condition_btn_map;
