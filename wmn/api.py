@@ -3939,89 +3939,24 @@ def get_pos_offline_data1(pos_profile, price_list=None, warehouse=None):
     }
 
 
-@frappe.whitelist()
-def sync_offline_pos_invoice(invoice):
-    """Create or finalize an ERPNext invoice from the browser offline queue."""
-    if isinstance(invoice, str):
-        invoice = frappe.parse_json(invoice)
+WMN_OFFLINE_SYNC_FIELD = "wmn_offline_sync_id"
 
-    if not isinstance(invoice, dict):
-        frappe.throw(_("Invalid invoice payload"))
 
-    offline_id = invoice.get("custom_offline_id")
-    if not offline_id:
-        frappe.throw(_("Missing custom_offline_id"))
+def _wmn_validate_offline_invoice_sync_schema(doctype):
+    from wmn.setup.offline_sync import validate_offline_sync_schema
 
-    supervisor_approvals = invoice.get("__wmn_supervisor_approvals") or []
-    coupon_code = str(invoice.get("__wmn_coupon_code") or "").strip()
-    coupon_discount_amount = max(0, flt(invoice.get("__wmn_coupon_discount_total") or 0))
-    promotion_invoice_discount_amount = max(0, flt(invoice.get("__wmn_promotion_invoice_discount_total") or 0))
-    promotion_results = _wmn_normalize_promotion_results(invoice.get("__wmn_pos_promotions") or [])
-    if coupon_code:
-        locked_coupon = _wmn_get_pos_coupon_by_code(coupon_code)
-        frappe.db.sql(
-            "select name from `tabWMN POS Coupon` where name=%s for update",
-            (locked_coupon.name,),
-        )
+    return validate_offline_sync_schema(doctype)
 
-    doctype = invoice.get("doctype") or "POS Invoice"
-    if doctype not in ("POS Invoice", "Sales Invoice"):
-        frappe.throw(_("Invalid invoice doctype"))
 
-    existing = frappe.db.exists(doctype, {"custom_offline_id": offline_id})
-    if existing:
-        doc = frappe.get_doc(doctype, existing)
+def _wmn_get_offline_invoice_sync_id(invoice):
+    return str(
+        invoice.get(WMN_OFFLINE_SYNC_FIELD)
+        or invoice.get("custom_offline_id")
+        or ""
+    ).strip()
 
-        if doc.docstatus == 2:
-            frappe.throw(_("Offline invoice {0} is cancelled").format(existing))
 
-        if doc.docstatus == 0:
-            doc.is_pos = 1
-            doc.ignore_pricing_rule = 1
-            if doc.meta.has_field("coupon_code"):
-                doc.coupon_code = ""
-            if coupon_code:
-                validated_invoice = _wmn_apply_coupon_to_offline_invoice_payload(dict(invoice))
-                doc.apply_discount_on = validated_invoice.get("apply_discount_on") or "Grand Total"
-                doc.additional_discount_percentage = 0
-                doc.discount_amount = flt(validated_invoice.get("discount_amount") or 0)
-                if doc.meta.has_field("base_discount_amount"):
-                    doc.base_discount_amount = flt(validated_invoice.get("base_discount_amount") or doc.discount_amount)
-                doc.save()
-            doc.submit()
-
-        doc.reload()
-        if coupon_code and doc.docstatus == 1:
-            _wmn_register_pos_coupon_redemption(
-                coupon_code=coupon_code,
-                invoice_doctype=doctype,
-                invoice_name=doc.name,
-                customer=doc.get("customer"),
-                company=doc.get("company"),
-                coupon_discount_amount=coupon_discount_amount,
-                promotion_invoice_discount_amount=promotion_invoice_discount_amount,
-                offline_id=offline_id,
-            )
-        if promotion_results and doc.docstatus == 1:
-            _wmn_register_pos_promotion_redemptions(
-                promotion_results=promotion_results,
-                invoice_doctype=doctype,
-                invoice_name=doc.name,
-                offline_id=offline_id,
-            )
-        if supervisor_approvals and doc.docstatus == 1:
-            _wmn_register_offline_supervisor_approvals(
-                supervisor_approvals, doctype, doc.name, offline_id
-            )
-        return {
-            "status": "already_synced" if doc.docstatus == 1 else "existing",
-            "name": doc.name,
-            "docstatus": doc.docstatus,
-            "invoice_status": doc.get("status"),
-            "paid_amount": flt(doc.get("paid_amount") or 0),
-            "outstanding_amount": flt(doc.get("outstanding_amount") or 0),
-        }
-
+def _wmn_prepare_offline_invoice_sync_payload(invoice, doctype, offline_id):
     clean_invoice = dict(invoice)
     clean_invoice = _wmn_apply_coupon_to_offline_invoice_payload(clean_invoice)
     clean_invoice = _wmn_strip_promotion_transients(clean_invoice)
@@ -4034,6 +3969,12 @@ def sync_offline_pos_invoice(invoice):
     clean_invoice["is_pos"] = 1
     clean_invoice["ignore_pricing_rule"] = 1
     clean_invoice["coupon_code"] = ""
+    clean_invoice[WMN_OFFLINE_SYNC_FIELD] = offline_id
+    clean_invoice.pop("custom_offline_id", None)
+
+    # WMN operational stages must never be stored in ERPNext's native status field.
+    if str(clean_invoice.get("status") or "").strip() == "Awaiting Cashier":
+        clean_invoice["status"] = "Draft"
 
     # Offline rows can be created without all accounting defaults that ERPNext
     # normally fills during the online item_code event. Resolve only missing
@@ -4090,12 +4031,172 @@ def sync_offline_pos_invoice(invoice):
             value = details.get("item_tax_rate")
             row["item_tax_rate"] = frappe.as_json(value) if isinstance(value, dict) else value
 
+    return clean_invoice
+
+
+def _wmn_replace_offline_invoice_draft_payload(doc, clean_invoice):
+    """Replace an existing server Draft with the latest offline payload."""
+    protected_fields = {
+        "doctype",
+        "name",
+        "docstatus",
+        "owner",
+        "creation",
+        "modified",
+        "modified_by",
+        "_user_tags",
+        "_comments",
+        "_assign",
+        "_liked_by",
+    }
+    child_identity_fields = {
+        "name",
+        "parent",
+        "parenttype",
+        "parentfield",
+        "owner",
+        "creation",
+        "modified",
+        "modified_by",
+        "docstatus",
+    }
+    table_fields = {
+        df.fieldname
+        for df in (doc.meta.get_table_fields() or [])
+        if getattr(df, "fieldname", None)
+    }
+
+    for fieldname, value in clean_invoice.items():
+        if fieldname in protected_fields or fieldname in table_fields:
+            continue
+        if doc.meta.has_field(fieldname):
+            doc.set(fieldname, value)
+
+    for fieldname in table_fields:
+        if fieldname not in clean_invoice:
+            continue
+        doc.set(fieldname, [])
+        for child in clean_invoice.get(fieldname) or []:
+            if not isinstance(child, dict):
+                continue
+            child_data = dict(child)
+            for key in child_identity_fields:
+                child_data.pop(key, None)
+            doc.append(fieldname, child_data)
+
+    doc.docstatus = 0
+    doc.is_pos = 1
+    doc.ignore_pricing_rule = 1
+    if doc.meta.has_field("coupon_code"):
+        doc.coupon_code = ""
+    return doc
+
+
+@frappe.whitelist()
+def sync_offline_pos_invoice(invoice, submit=1):
+    """Synchronize an offline invoice as Draft or finalize it by Submit."""
+    if isinstance(invoice, str):
+        invoice = frappe.parse_json(invoice)
+
+    if not isinstance(invoice, dict):
+        frappe.throw(_("Invalid invoice payload"))
+
+    submit_invoice = cint(submit) == 1
+    offline_id = _wmn_get_offline_invoice_sync_id(invoice)
+    if not offline_id:
+        frappe.throw(_("Missing WMN offline sync ID"))
+
+    supervisor_approvals = invoice.get("__wmn_supervisor_approvals") or []
+    coupon_code = str(invoice.get("__wmn_coupon_code") or "").strip()
+    coupon_discount_amount = max(0, flt(invoice.get("__wmn_coupon_discount_total") or 0))
+    promotion_invoice_discount_amount = max(0, flt(invoice.get("__wmn_promotion_invoice_discount_total") or 0))
+    promotion_results = _wmn_normalize_promotion_results(invoice.get("__wmn_pos_promotions") or [])
+    if coupon_code:
+        locked_coupon = _wmn_get_pos_coupon_by_code(coupon_code)
+        frappe.db.sql(
+            "select name from `tabWMN POS Coupon` where name=%s for update",
+            (locked_coupon.name,),
+        )
+
+    doctype = invoice.get("doctype") or "POS Invoice"
+    if doctype not in ("POS Invoice", "Sales Invoice"):
+        frappe.throw(_("Invalid invoice doctype"))
+
+    stage = str(invoice.get("wmn_pos_stage") or "").strip()
+    if stage == "AWAITING_CASHIER" and submit_invoice:
+        frappe.throw(_("Awaiting Cashier draft cannot be submitted before Complete Order"))
+
+    _wmn_validate_offline_invoice_sync_schema(doctype)
+    clean_invoice = _wmn_prepare_offline_invoice_sync_payload(invoice, doctype, offline_id)
+
+    existing = frappe.db.exists(doctype, {WMN_OFFLINE_SYNC_FIELD: offline_id})
+    if existing:
+        doc = frappe.get_doc(doctype, existing)
+
+        if doc.docstatus == 2:
+            frappe.throw(_("Offline invoice {0} is cancelled").format(existing))
+
+        if doc.docstatus == 0:
+            _wmn_replace_offline_invoice_draft_payload(doc, clean_invoice)
+            doc.save()
+            if submit_invoice:
+                doc.submit()
+
+        doc.reload()
+        if coupon_code and doc.docstatus == 1:
+            _wmn_register_pos_coupon_redemption(
+                coupon_code=coupon_code,
+                invoice_doctype=doctype,
+                invoice_name=doc.name,
+                customer=doc.get("customer"),
+                company=doc.get("company"),
+                coupon_discount_amount=coupon_discount_amount,
+                promotion_invoice_discount_amount=promotion_invoice_discount_amount,
+                offline_id=offline_id,
+            )
+        if promotion_results and doc.docstatus == 1:
+            _wmn_register_pos_promotion_redemptions(
+                promotion_results=promotion_results,
+                invoice_doctype=doctype,
+                invoice_name=doc.name,
+                offline_id=offline_id,
+            )
+        if supervisor_approvals and doc.docstatus == 1:
+            _wmn_register_offline_supervisor_approvals(
+                supervisor_approvals, doctype, doc.name, offline_id
+            )
+
+        return {
+            "status": (
+                "already_synced"
+                if doc.docstatus == 1
+                else "draft_synced"
+            ),
+            "name": doc.name,
+            "docstatus": doc.docstatus,
+            "invoice_status": doc.get("status"),
+            "paid_amount": flt(doc.get("paid_amount") or 0),
+            "outstanding_amount": flt(doc.get("outstanding_amount") or 0),
+        }
+
     doc = frappe.get_doc(clean_invoice)
     doc.flags.ignore_permissions = False
-    doc.insert()
-    doc.submit()
+    try:
+        doc.insert()
+    except frappe.UniqueValidationError:
+        existing = frappe.db.exists(doctype, {WMN_OFFLINE_SYNC_FIELD: offline_id})
+        if not existing:
+            raise
+        doc = frappe.get_doc(doctype, existing)
+
+    if doc.docstatus == 2:
+        frappe.throw(_("Offline invoice {0} is cancelled").format(doc.name))
+
+    if doc.docstatus == 0 and submit_invoice:
+        doc.submit()
+
     doc.reload()
-    if coupon_code:
+    if coupon_code and doc.docstatus == 1:
         _wmn_register_pos_coupon_redemption(
             coupon_code=coupon_code,
             invoice_doctype=doctype,
@@ -4106,20 +4207,20 @@ def sync_offline_pos_invoice(invoice):
             promotion_invoice_discount_amount=promotion_invoice_discount_amount,
             offline_id=offline_id,
         )
-    if promotion_results:
+    if promotion_results and doc.docstatus == 1:
         _wmn_register_pos_promotion_redemptions(
             promotion_results=promotion_results,
             invoice_doctype=doctype,
             invoice_name=doc.name,
             offline_id=offline_id,
         )
-    if supervisor_approvals:
+    if supervisor_approvals and doc.docstatus == 1:
         _wmn_register_offline_supervisor_approvals(
             supervisor_approvals, doctype, doc.name, offline_id
         )
 
     return {
-        "status": "submitted",
+        "status": "submitted" if doc.docstatus == 1 else "draft_synced",
         "name": doc.name,
         "docstatus": doc.docstatus,
         "invoice_status": doc.get("status"),
@@ -4193,13 +4294,22 @@ def get_sales_invoice_payment_context(invoice_name):
     }
 
 
-@frappe.whitelist()
-def add_payment_to_sales_invoice(
+WMN_OFFLINE_PAYMENT_FIELD = "wmn_offline_payment_id"
+
+
+def _wmn_validate_offline_payment_schema():
+    from wmn.setup.offline_payment import validate_offline_payment_schema
+
+    return validate_offline_payment_schema()
+
+
+def _wmn_create_sales_invoice_payment_entry(
     invoice_name,
     amount,
     mode_of_payment,
     reference_no=None,
     reference_date=None,
+    offline_payment_id=None,
 ):
     if not invoice_name:
         frappe.throw(_("Sales Invoice is required"))
@@ -4269,13 +4379,20 @@ def add_payment_to_sales_invoice(
     payment_entry.mode_of_payment = mode_of_payment
     payment_entry.reference_no = reference_no or invoice.name
     payment_entry.reference_date = reference_date or nowdate()
+    if offline_payment_id:
+        payment_entry.set(WMN_OFFLINE_PAYMENT_FIELD, offline_payment_id)
 
     payment_entry.insert()
     payment_entry.submit()
 
     invoice.reload()
 
+    return payment_entry, invoice
+
+
+def _wmn_payment_result(payment_entry, invoice, status=None):
     return {
+        "status": status or "created",
         "payment_entry": payment_entry.name,
         "payment_entry_docstatus": payment_entry.docstatus,
         "invoice": invoice.name,
@@ -4284,6 +4401,87 @@ def add_payment_to_sales_invoice(
         "outstanding_amount": flt(invoice.outstanding_amount or 0),
     }
 
+
+@frappe.whitelist()
+def add_payment_to_sales_invoice(
+    invoice_name,
+    amount,
+    mode_of_payment,
+    reference_no=None,
+    reference_date=None,
+):
+    payment_entry, invoice = _wmn_create_sales_invoice_payment_entry(
+        invoice_name=invoice_name,
+        amount=amount,
+        mode_of_payment=mode_of_payment,
+        reference_no=reference_no,
+        reference_date=reference_date,
+    )
+    return _wmn_payment_result(payment_entry, invoice)
+
+
+@frappe.whitelist()
+def sync_offline_payment_entry(payment):
+    if isinstance(payment, str):
+        payment = frappe.parse_json(payment)
+    if not isinstance(payment, dict):
+        frappe.throw(_("Invalid offline payment payload"))
+
+    offline_payment_id = str(
+        payment.get(WMN_OFFLINE_PAYMENT_FIELD)
+        or payment.get("offline_payment_id")
+        or ""
+    ).strip()
+    if not offline_payment_id:
+        frappe.throw(_("Missing offline payment ID"))
+
+    _wmn_validate_offline_payment_schema()
+
+    existing = frappe.db.exists(
+        "Payment Entry",
+        {WMN_OFFLINE_PAYMENT_FIELD: offline_payment_id},
+    )
+    if existing:
+        payment_entry = frappe.get_doc("Payment Entry", existing)
+        payment_entry.check_permission("read")
+        invoice_name = payment.get("invoice_name") or ""
+        invoice = frappe.get_doc("Sales Invoice", invoice_name) if invoice_name else None
+        if invoice:
+            invoice.check_permission("read")
+        return _wmn_payment_result(
+            payment_entry,
+            invoice,
+            status="already_synced",
+        ) if invoice else {
+            "status": "already_synced",
+            "payment_entry": payment_entry.name,
+            "payment_entry_docstatus": payment_entry.docstatus,
+            "invoice": invoice_name,
+        }
+
+    try:
+        payment_entry, invoice = _wmn_create_sales_invoice_payment_entry(
+            invoice_name=payment.get("invoice_name"),
+            amount=payment.get("amount"),
+            mode_of_payment=payment.get("mode_of_payment"),
+            reference_no=payment.get("reference_no"),
+            reference_date=payment.get("reference_date"),
+            offline_payment_id=offline_payment_id,
+        )
+    except frappe.UniqueValidationError:
+        existing = frappe.db.exists(
+            "Payment Entry",
+            {WMN_OFFLINE_PAYMENT_FIELD: offline_payment_id},
+        )
+        if not existing:
+            raise
+        payment_entry = frappe.get_doc("Payment Entry", existing)
+        payment_entry.check_permission("read")
+        invoice = frappe.get_doc("Sales Invoice", payment.get("invoice_name"))
+        invoice.check_permission("read")
+        return _wmn_payment_result(payment_entry, invoice, status="already_synced")
+
+    return _wmn_payment_result(payment_entry, invoice, status="synced")
 
 
 
@@ -4305,14 +4503,19 @@ def get_past_order_list(search_term, status, limit=20):
         "outstanding_amount",
         "docstatus",
         "is_return",
+        "wmn_pos_stage",
+        "wmn_invoice_uid",
     ]
     filters = {"is_pos": 1}
 
-    if status:
-        filters["status"] = status
-
     if not status:
         return []
+
+    if status == "Awaiting Cashier":
+        filters["docstatus"] = 0
+        filters["wmn_pos_stage"] = "AWAITING_CASHIER"
+    else:
+        filters["status"] = status
 
     invoice_list = []
 
@@ -4353,6 +4556,16 @@ def get_past_order_list(search_term, status, limit=20):
             page_length=limit,
             order_by="posting_date desc, posting_time desc",
         )
+
+    if status == "Draft":
+        invoice_list = [
+            row for row in invoice_list
+            if str(row.get("wmn_pos_stage") or "").strip() != "AWAITING_CASHIER"
+        ]
+
+    for row in invoice_list:
+        if str(row.get("wmn_pos_stage") or "").strip() == "AWAITING_CASHIER":
+            row["status"] = "Awaiting Cashier"
 
     return invoice_list
 

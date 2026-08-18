@@ -1,20 +1,20 @@
-/* WMN POS Offline Service Worker v15
-   Fixes:
+/* WMN POS Offline Service Worker v17
+   Changes:
+   - Refreshes the POS runtime asset cache for the invoice barcode feature.
    - Normalized cache key for getdoctype, so cached_timestamp/_ do not break offline cache matching.
    - Supports both POS Invoice and Sales Invoice doctype metadata.
    - Never returns plain text "Offline".
    - Avoids `exc: "Offline..."` strings because Frappe may try JSON.parse(exc).
 */
 
-const WMN_POS_SW_VERSION = "v15";
-const WMN_POS_CACHE = "wmn-pos-runtime-v15";
-const WMN_POS_API_CACHE = "wmn-pos-api-v15";
+const WMN_POS_SW_VERSION = "v17";
+const WMN_POS_CACHE = "wmn-pos-runtime-v17";
+const WMN_POS_API_CACHE = "wmn-pos-api-v17";
 
 const SHELL_URLS = [
   "/app",
   "/app/point-of-sale",
-  "/pos-offline-manifest.json",
-  "/assets/wmn/js/vendor/qz-tray.js"
+  "/pos-offline-manifest.json"
 ];
 
 function sameOrigin(url) {

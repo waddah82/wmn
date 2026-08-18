@@ -78,6 +78,16 @@ override_whitelisted_methods = {
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
+
+#after_install = "wmn.setup.offline_sync.ensure_offline_sync_fields"
+#after_migrate = "wmn.setup.offline_sync.ensure_offline_sync_fields"
+#after_migrate = "wmn.setup.pos_menu.ensure_default_pos_menu_settings"
+
+after_install = "wmn.setup.install.after_install"
+after_migrate = "wmn.setup.migrate.after_migrate"
+
+
+
 # Svg Icons
 # ------------------
 # include app icons in desk
