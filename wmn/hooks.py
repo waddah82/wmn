@@ -13,13 +13,19 @@ app_license = "mit"
 # app_include_css = "/assets/wmn/css/wmn.css"
 # app_include_js = "/assets/wmn/js/ui_setting.js"
 app_include_js = [
-    "/assets/wmn/js/ui_setting.js",
+    #"/assets/wmn/js/ui_setting.js",
     "/assets/wmn/js/pos_barcode_override.js",
-    "assets/wmn/js/workspace_header_V16.js",
     "/assets/wmn/js/silent_print.js",
+    "assets/wmn/js/workspace_header_unified.js",
     "/assets/wmn/js/global_new_override.js",
+    "/assets/wmn/js/ui_theme_manager.js",
+    #"assets/wmn/js/workspace_header.js",
+    #"assets/wmn/js/html2canvas.js",
+    #"assets/wmn/js/pdfmake.min.js",
+    #"assets/wmn/js/vfs_fonts.js",
+    #"/assets/wmn/js/vfs_fonts_custom.js",
 
-    #"/assets/wmn/js/workspace_header.js",
+
 ]
 #app_include_css = "assets/your_app/css/workspace_header.css"
 #website_route_rules = [
@@ -44,24 +50,46 @@ app_include_js = [
 # include js in page
 # page_js = {"page" : "public/js/file.js"}
 #page_js = {
-#    "point-of-sale": "public/js/custom_pos_offline.js"
+ #   "point-of-sale": "public/js/custom_pos_offline.js"
 #}
 
+
 page_js = {
+    #"point-of-sale": "public/js/mamsek.js"
     "point-of-sale": "public/js/pos_offline/wmn_pos_loader.js"
 }
 
 
+doctype_js = {
+    "POS Closing Entry": "public/js/pos_offline/features/cash_movement/pos_closing.js",
+}
+
+doc_events = {
+    "POS Closing Entry": {
+        "validate": "wmn.features.cash_movement.pos_closing.apply_cash_movement_to_closing",
+    },
+}
 override_whitelisted_methods = {
     "erpnext.stock.utils.scan_barcode": "wmn.barcode_handler.custom_scan_barcode",
     "erpnext.stock.get_item_details.get_item_details": "wmn.barcode_handler.custom_get_item_details",
     "pos_next.api.items.search_by_barcode": "wmn.barcode_handler.custom_search_by_barcode"
+    #"pos_next.api.invoices.submit_invoice": "wmn.api.custom_submit_invoice"
 }
 # include js in doctype views
 # doctype_js = {"doctype" : "public/js/doctype.js"}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
+
+
+#after_install = "wmn.setup.offline_sync.ensure_offline_sync_fields"
+#after_migrate = "wmn.setup.offline_sync.ensure_offline_sync_fields"
+#after_migrate = "wmn.setup.pos_menu.ensure_default_pos_menu_settings"
+
+after_install = "wmn.setup.install.after_install"
+after_migrate = "wmn.setup.migrate.after_migrate"
+
+
 
 # Svg Icons
 # ------------------
@@ -256,4 +284,35 @@ override_whitelisted_methods = {
 # default_log_clearing_doctypes = {
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
-
+fixtures = [
+  
+ 
+    
+    {
+        "doctype": "Custom Field",
+        "filters": [["module", "in", ["Wmn"]]]
+    },
+    {
+        "doctype": "Property Setter",
+        "filters": [["module", "in", ["Wmn"]]]
+    },
+    {
+        "doctype": "Print Format",
+        "filters": [["module", "in", ["Wmn"]]]
+    },
+    {
+        "doctype": "WMN Print Format",
+        "filters": [["name", "in", ["pos raw"]]]
+    },
+    {
+        "doctype": "Party Type",
+        "filters": [
+            ["name", "in", ["Receivable", "Payable"]]
+        ]
+    },
+    {
+        "dt": "Client Script",
+        "filters": [["module", "in", ["Wmn"]]]
+    },
+    
+]

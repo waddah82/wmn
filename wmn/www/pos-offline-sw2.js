@@ -1,20 +1,19 @@
-/* WMN POS Offline Service Worker v16-port
-   Changes:
-   - Refreshes the POS runtime asset cache for the invoice barcode feature.
+/* WMN POS Offline Service Worker v15
+   Fixes:
    - Normalized cache key for getdoctype, so cached_timestamp/_ do not break offline cache matching.
    - Supports both POS Invoice and Sales Invoice doctype metadata.
    - Never returns plain text "Offline".
    - Avoids `exc: "Offline..."` strings because Frappe may try JSON.parse(exc).
 */
 
-const WMN_POS_SW_VERSION = "v16-port-20260819";
-const WMN_POS_CACHE = "wmn-pos-runtime-v16-port-20260819";
-const WMN_POS_API_CACHE = "wmn-pos-api-v16-port-20260819";
+const WMN_POS_SW_VERSION = "v15";
+const WMN_POS_CACHE = "wmn-pos-runtime-v15";
+const WMN_POS_API_CACHE = "wmn-pos-api-v15";
 
 const SHELL_URLS = [
-  "/desk",
-  "/desk/point-of-sale",
-  "/pos-offline-manifest.json"
+  "/app",
+  "/app/point-of-sale",
+  "/pos-offline-manifest.webmanifest"
 ];
 
 function sameOrigin(url) {
@@ -53,9 +52,9 @@ function isAsset(url) {
 
 function isAppNavigation(url, request) {
   return request.mode === "navigate" && (
-    url.pathname === "/desk" ||
-    url.pathname === "/desk/" ||
-    url.pathname === "/desk/point-of-sale"
+    url.pathname === "/app" ||
+    url.pathname === "/app/" ||
+    url.pathname === "/app/point-of-sale"
   );
 }
 
@@ -374,8 +373,8 @@ self.addEventListener("fetch", (event) => {
             const cache = await caches.open(WMN_POS_CACHE);
             return (
               await cache.match(request) ||
-              await cache.match("/desk/point-of-sale") ||
-              await cache.match("/desk") ||
+              await cache.match("/app/point-of-sale") ||
+              await cache.match("/app") ||
               new Response("<!doctype html><html><body><h3>POS offline shell is not cached yet. Open POS online once first.</h3></body></html>", {
                 status: 200,
                 headers: { "Content-Type": "text/html; charset=utf-8", "X-WMN-POS-SW": WMN_POS_SW_VERSION }
@@ -386,7 +385,7 @@ self.addEventListener("fetch", (event) => {
       return;
     }
 
-    if (isAsset(url) || url.pathname === "/pos-offline-manifest.json") {
+    if (isAsset(url) || url.pathname === "/pos-offline-manifest.webmanifest") {
       event.respondWith(
         caches.match(request).then((cached) => {
           return cached || fetch(request)
