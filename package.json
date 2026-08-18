@@ -1,0 +1,7 @@
+{
+  "name": "wmn",
+  "private": true,
+  "dependencies": {
+    "qz-tray": "2.2.6"
+  }
+}
