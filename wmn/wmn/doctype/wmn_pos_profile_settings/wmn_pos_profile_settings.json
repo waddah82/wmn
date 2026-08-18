@@ -1,0 +1,321 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:pos_profile",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "pos_profile",
+  "section_1",
+  "default_item_view",
+  "show_item_cart_counter",
+  "section_2",
+  "enable_auto_silent_print",
+  "wmn_silent_print_mode",
+  "print_after_cashier_completion",
+  "printing_method",
+  "fallback_method",
+  "copies",
+  "cut_paper",
+  "feed_lines",
+  "escpos_initialize",
+  "section_3",
+  "show_invoice_barcode",
+  "invoice_barcode_height",
+  "invoice_barcode_module_width",
+  "invoice_barcode_human_readable",
+  "section_4",
+  "qz_printer_name",
+  "qz_connector_mode",
+  "qz_connector_url",
+  "qz_host",
+  "qz_encoding",
+  "section_5",
+  "bridge_ws_url",
+  "section_6",
+  "webusb_vendor_id",
+  "webusb_product_id",
+  "webusb_serial_number",
+  "webusb_device_label",
+  "section_7",
+  "webserial_vendor_id",
+  "webserial_product_id",
+  "webserial_device_label",
+  "webserial_baud_rate",
+  "webserial_data_bits",
+  "webserial_stop_bits",
+  "webserial_parity",
+  "webserial_flow_control"
+ ],
+ "fields": [
+  {
+   "fieldname": "pos_profile",
+   "label": "POS Profile",
+   "fieldtype": "Link",
+   "options": "POS Profile",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldtype": "Section Break",
+   "label": "POS Behavior",
+   "fieldname": "section_1"
+  },
+  {
+   "fieldname": "default_item_view",
+   "label": "Default Item View",
+   "fieldtype": "Select",
+   "options": "Grid View\nButton View",
+   "default": "Grid View"
+  },
+  {
+   "fieldname": "show_item_cart_counter",
+   "label": "Show Item Cart Quantity Counter",
+   "fieldtype": "Check",
+   "default": "0"
+  },
+  {
+   "fieldtype": "Section Break",
+   "label": "Printing",
+   "fieldname": "section_2"
+  },
+  {
+   "fieldname": "enable_auto_silent_print",
+   "label": "Enable Auto Silent Print",
+   "fieldtype": "Check",
+   "default": "0"
+  },
+  {
+   "fieldname": "wmn_silent_print_mode",
+   "label": "Silent Print Mode",
+   "fieldtype": "Select",
+   "options": "raw_text\nhtml2canvas\npdfmake",
+   "default": "raw_text"
+  },
+  {
+   "fieldname": "print_after_cashier_completion",
+   "label": "Print Again After Cashier Completion",
+   "fieldtype": "Check",
+   "default": "0",
+   "description": "When enabled, a cashier handoff invoice is printed again after final completion. The handoff print remains unchanged."
+  },
+  {
+   "fieldname": "printing_method",
+   "label": "Printing Method",
+   "fieldtype": "Select",
+   "options": "legacy_bridge\nbrowser\nwebusb\nwebserial\nqz",
+   "default": "legacy_bridge"
+  },
+  {
+   "fieldname": "fallback_method",
+   "label": "Fallback Printing Method",
+   "fieldtype": "Select",
+   "options": "none\nlegacy_bridge\nbrowser\nwebusb\nwebserial\nqz",
+   "default": "none"
+  },
+  {
+   "fieldname": "copies",
+   "label": "Copies",
+   "fieldtype": "Int",
+   "default": "1"
+  },
+  {
+   "fieldname": "cut_paper",
+   "label": "Cut Paper",
+   "fieldtype": "Check",
+   "default": "1"
+  },
+  {
+   "fieldname": "feed_lines",
+   "label": "Feed Lines",
+   "fieldtype": "Int",
+   "default": "3"
+  },
+  {
+   "fieldname": "escpos_initialize",
+   "label": "Initialize ESC/POS Printer",
+   "fieldtype": "Check",
+   "default": "1"
+  },
+  {
+   "fieldtype": "Section Break",
+   "label": "Invoice Barcode",
+   "fieldname": "section_3"
+  },
+  {
+   "fieldname": "show_invoice_barcode",
+   "label": "Show Invoice Barcode",
+   "fieldtype": "Check",
+   "default": "1"
+  },
+  {
+   "fieldname": "invoice_barcode_height",
+   "label": "Barcode Height",
+   "fieldtype": "Int",
+   "default": "56"
+  },
+  {
+   "fieldname": "invoice_barcode_module_width",
+   "label": "Barcode Module Width",
+   "fieldtype": "Int",
+   "default": "2"
+  },
+  {
+   "fieldname": "invoice_barcode_human_readable",
+   "label": "Print Barcode Value",
+   "fieldtype": "Check",
+   "default": "1"
+  },
+  {
+   "fieldtype": "Section Break",
+   "label": "QZ Tray",
+   "fieldname": "section_4"
+  },
+  {
+   "fieldname": "qz_printer_name",
+   "label": "Printer Name",
+   "fieldtype": "Data"
+  },
+  {
+   "fieldname": "qz_connector_mode",
+   "label": "QZ Connector Mode",
+   "fieldtype": "Select",
+   "options": "legacy\nmanaged\nauto\ncustom",
+   "default": "legacy"
+  },
+  {
+   "fieldname": "qz_connector_url",
+   "label": "QZ Connector URL",
+   "fieldtype": "Data"
+  },
+  {
+   "fieldname": "qz_host",
+   "label": "QZ Host",
+   "fieldtype": "Data"
+  },
+  {
+   "fieldname": "qz_encoding",
+   "label": "QZ Raw Encoding",
+   "fieldtype": "Data",
+   "default": "UTF8"
+  },
+  {
+   "fieldtype": "Section Break",
+   "label": "WMN Windows Bridge",
+   "fieldname": "section_5"
+  },
+  {
+   "fieldname": "bridge_ws_url",
+   "label": "Printer WebSocket URL",
+   "fieldtype": "Data",
+   "default": "ws://127.0.0.1:12212/printer"
+  },
+  {
+   "fieldtype": "Section Break",
+   "label": "Direct WebUSB",
+   "fieldname": "section_6"
+  },
+  {
+   "fieldname": "webusb_vendor_id",
+   "label": "USB Vendor ID",
+   "fieldtype": "Data"
+  },
+  {
+   "fieldname": "webusb_product_id",
+   "label": "USB Product ID",
+   "fieldtype": "Data"
+  },
+  {
+   "fieldname": "webusb_serial_number",
+   "label": "USB Serial Number",
+   "fieldtype": "Data"
+  },
+  {
+   "fieldname": "webusb_device_label",
+   "label": "USB Printer Label",
+   "fieldtype": "Data"
+  },
+  {
+   "fieldtype": "Section Break",
+   "label": "Direct WebSerial",
+   "fieldname": "section_7"
+  },
+  {
+   "fieldname": "webserial_vendor_id",
+   "label": "Serial USB Vendor ID",
+   "fieldtype": "Data"
+  },
+  {
+   "fieldname": "webserial_product_id",
+   "label": "Serial USB Product ID",
+   "fieldtype": "Data"
+  },
+  {
+   "fieldname": "webserial_device_label",
+   "label": "Serial Printer Label",
+   "fieldtype": "Data"
+  },
+  {
+   "fieldname": "webserial_baud_rate",
+   "label": "Baud Rate",
+   "fieldtype": "Int",
+   "default": "9600"
+  },
+  {
+   "fieldname": "webserial_data_bits",
+   "label": "Data Bits",
+   "fieldtype": "Int",
+   "default": "8"
+  },
+  {
+   "fieldname": "webserial_stop_bits",
+   "label": "Stop Bits",
+   "fieldtype": "Int",
+   "default": "1"
+  },
+  {
+   "fieldname": "webserial_parity",
+   "label": "Parity",
+   "fieldtype": "Select",
+   "options": "none\neven\nodd",
+   "default": "none"
+  },
+  {
+   "fieldname": "webserial_flow_control",
+   "label": "Flow Control",
+   "fieldtype": "Select",
+   "options": "none\nhardware",
+   "default": "none"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "module": "Wmn",
+ "name": "WMN POS Profile Settings",
+ "permissions": [
+  {
+   "role": "Sales User",
+   "read": 1
+  },
+  {
+   "role": "Sales Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1
+  },
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

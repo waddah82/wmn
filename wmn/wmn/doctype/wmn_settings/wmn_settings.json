@@ -6,11 +6,12 @@
  "engine": "InnoDB",
  "field_order": [
   "enable_workspace_header",
-  "workspace_navigation_mode"
+  "workspace_navigation_mode",
+  "enable_pos_offline"
  ],
  "fields": [
   {
-   "default": "1",
+   "default": "0",
    "fieldname": "enable_workspace_header",
    "fieldtype": "Check",
    "label": "enable_workspace_header"
@@ -31,7 +32,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-05-03 23:47:37.749439",
+ "modified": "2026-07-09 00:06:06.126176",
  "modified_by": "Administrator",
  "module": "Wmn",
  "name": "WMN Settings",
@@ -46,8 +47,16 @@
    "role": "System Manager",
    "share": 1,
    "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "All",
+   "share": 1
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": []

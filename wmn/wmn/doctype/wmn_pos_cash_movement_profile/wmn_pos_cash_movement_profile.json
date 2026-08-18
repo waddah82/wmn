@@ -1,0 +1,144 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-08-13 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-08-13 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Wmn",
+ "owner": "Administrator",
+ "states": [],
+ "track_changes": 1,
+ "autoname": "field:pos_profile",
+ "naming_rule": "By fieldname",
+ "field_order": [
+  "pos_profile",
+  "enabled",
+  "company",
+  "currency",
+  "accounts_section",
+  "cash_in_offset_account",
+  "default_expense_account",
+  "withdrawal_offset_account",
+  "cost_center"
+ ],
+ "fields": [
+  {
+   "fieldname": "pos_profile",
+   "fieldtype": "Link",
+   "label": "POS Profile",
+   "options": "POS Profile",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1,
+   "fetch_from": "pos_profile.company",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "accounts_section",
+   "fieldtype": "Section Break",
+   "label": "Offset Accounts",
+   "description": "The POS cash account is resolved automatically from the selected Cash Mode of Payment and its Company default account."
+  },
+  {
+   "fieldname": "cash_in_offset_account",
+   "fieldtype": "Link",
+   "label": "Cash In Offset Account",
+   "options": "Account",
+   "reqd": 1,
+   "description": "Credited when cash is added to the drawer."
+  },
+  {
+   "fieldname": "default_expense_account",
+   "fieldtype": "Link",
+   "label": "Default Expense Account",
+   "options": "Account",
+   "reqd": 1,
+   "description": "Debited for POS Cash Expense."
+  },
+  {
+   "fieldname": "withdrawal_offset_account",
+   "fieldtype": "Link",
+   "label": "Withdrawal Offset Account",
+   "options": "Account",
+   "reqd": 1,
+   "description": "Debited when cash is withdrawn from the drawer."
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "label": "Cost Center",
+   "options": "Cost Center",
+   "description": "Used on expense entries. If empty, POS Profile or Company default is used."
+  }
+ ],
+ "name": "WMN POS Cash Movement Profile",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Sales User"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}
