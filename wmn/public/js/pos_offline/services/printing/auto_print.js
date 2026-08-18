@@ -4,11 +4,18 @@
             return !!(settings.enable_auto_silent_print || settings.enable_auto_silent_print == 1);
         }
 
-        async function wmn_try_auto_silent_print_after_order(doc) {
+        async function wmn_try_auto_silent_print_after_order(doc, mode, context = {}) {
             try {
                 if (!doc) return false;
                 if (doc.__wmn_auto_silent_print_done) return false;
-                if (!(await wmn_auto_silent_print_enabled())) return false;
+
+                const cashierCompletion = context?.cashier_completion === true;
+                if (cashierCompletion) {
+                    const printConfig = window.WMN_POS?.Services?.Printing?.PrintService?.getConfig?.() || {};
+                    if (!cint(printConfig.print_after_cashier_completion || 0)) return false;
+                } else if (!(await wmn_auto_silent_print_enabled())) {
+                    return false;
+                }
 
                 doc.__wmn_auto_silent_print_done = 1;
                 await wmn_print_raw_receipt(doc);

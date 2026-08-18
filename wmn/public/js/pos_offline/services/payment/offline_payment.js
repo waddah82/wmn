@@ -107,6 +107,7 @@ function wmn_invoice_payment_total(doc) {
             const payments = await wmn_ensure_offline_payment_rows(doc);
             const defaultPayment = payments.find(p => cint(p.default || 0) === 1) || payments[0];
             const handoff = window.WMN_POS?.Features?.InvoiceHandoff?.Common;
+            const recentOrdersOrigin = ctrl?.__wmn_payment_origin === "recent_orders";
             const preservePaymentRows = handoff?.isAwaitingCashier?.(doc) === true || ctrl?.__wmn_cashier_resume === true;
 
             payments.forEach((p) => {
@@ -218,10 +219,12 @@ function wmn_invoice_payment_total(doc) {
                             reject(e);
                         }
                     },
-                    secondary_action_label: wmn_t("Cancel", "\u0625\u0644\u063A\u0627\u0621"),
+                    secondary_action_label: recentOrdersOrigin
+                        ? wmn_t("Back to Recent Orders", "العودة للطلبات الأخيرة")
+                        : wmn_t("Cancel", "\u0625\u0644\u063A\u0627\u0621"),
                     secondary_action: () => {
                         d.hide();
-                        reject(new Error("cancelled"));
+                        reject(new Error(recentOrdersOrigin ? "recent_orders_back" : "cancelled"));
                     }
                 });
 

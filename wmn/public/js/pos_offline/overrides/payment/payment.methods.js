@@ -232,6 +232,42 @@
                     });
                 },
 
+        wmn_setup_back_to_recent_orders_button() {
+                    const $submit = this.$component?.find?.(".submit-order-btn").first();
+                    if (!$submit?.length) return;
+
+                    let $button = this.$component.find(".wmn-payment-back-to-recent-btn").first();
+                    if (!$button.length) {
+                        $button = $(
+                            `<button type="button" class="btn btn-default wmn-payment-back-to-recent-btn" style="margin-inline-end:8px;font-weight:700;">${wmn_t("Back to Recent Orders", "العودة للطلبات الأخيرة")}</button>`
+                        );
+                        $button.insertBefore($submit);
+                    }
+
+                    const canShow = window.cur_pos?.__wmn_payment_origin === "recent_orders";
+                    $button.toggle(canShow);
+                    if (!canShow) return;
+
+                    $button.off("click.wmnBackRecentOrders").on("click.wmnBackRecentOrders", async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (!this.events?.back_to_recent_orders) return;
+
+                        $button.prop("disabled", true);
+                        try {
+                            await this.events.back_to_recent_orders();
+                        } catch (error) {
+                            console.error("WMN back to Recent Orders failed", error);
+                            frappe.show_alert({
+                                message: error?.message || wmn_t("Could not return to Recent Orders", "تعذر الرجوع إلى الطلبات الأخيرة"),
+                                indicator: "red",
+                            });
+                        } finally {
+                            $button.prop("disabled", false);
+                        }
+                    });
+                },
+
         make_invoice_fields_control() {
                     this.reqd_invoice_fields = [];
 
@@ -292,6 +328,7 @@
         checkout() {
                     const result = super.checkout();
                     this.wmn_setup_send_to_cashier_button();
+                    this.wmn_setup_back_to_recent_orders_button();
                     if (this.events && typeof this.events.after_checkout === "function") {
                         Promise.resolve(this.events.after_checkout()).catch((e) => {
                             console.warn("WMN Payment after_checkout skipped", e);
@@ -308,6 +345,7 @@
     const FinalMethods = Object.create(null);
     FinalMethods.bind_events = UIMethods.bind_events || CoreMethods.bind_events;
     FinalMethods.wmn_setup_send_to_cashier_button = UIMethods.wmn_setup_send_to_cashier_button || CoreMethods.wmn_setup_send_to_cashier_button;
+    FinalMethods.wmn_setup_back_to_recent_orders_button = UIMethods.wmn_setup_back_to_recent_orders_button || CoreMethods.wmn_setup_back_to_recent_orders_button;
     FinalMethods.make_invoice_fields_control = UIMethods.make_invoice_fields_control || CoreMethods.make_invoice_fields_control;
     FinalMethods.checkout = UIMethods.checkout || CoreMethods.checkout;
 

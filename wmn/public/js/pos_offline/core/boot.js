@@ -5,6 +5,7 @@ window.wmn_pos_boot = async function wmn_pos_boot(wrapper) {
 
     await ns.Services?.Settings?.DevicePreferences?.initialize?.();
     await wmn_bootstrap_detect_effective_offline();
+    await ns.Services?.Settings?.PrintSettingsRepository?.initialize?.();
     ns.UI.Mamsek?.setup?.();
     ns.UI.Dialogs?.setup?.();
     ns.Patches.EnabledPatches.applyAll();

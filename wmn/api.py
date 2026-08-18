@@ -4588,3 +4588,19 @@ def get_translated_workspaces():
         ws['translated_label'] = _(ws.get('label') or ws.get('name'))
         
     return workspaces
+
+
+@frappe.whitelist()
+def get_pos_print_transport_settings():
+    """Return the shared WMN POS printer transport settings for browser bootstrap."""
+    from wmn.setup.print_settings import get_pos_print_settings_payload
+
+    return get_pos_print_settings_payload()
+
+
+@frappe.whitelist()
+def save_pos_print_transport_settings(config=None):
+    """Save the shared WMN POS printer transport settings after normal DocType permission checks."""
+    from wmn.setup.print_settings import save_pos_print_settings_config
+
+    return save_pos_print_settings_config(config or {})

@@ -21,7 +21,7 @@ frappe.pages["point-of-sale"].on_page_load = function(wrapper) {
 
     frappe.require("point-of-sale.bundle.js", function() {
         const base = "/assets/wmn/js/pos_offline/";
-        const version = "20260817_qz_prefs_persistence";
+        const version = "20260818_cashier_recent_orders_server_print_settings";
         window.__wmn_pos_asset_version = version;
         const manifest = [
             "core/namespace.js",
@@ -33,6 +33,7 @@ frappe.pages["point-of-sale"].on_page_load = function(wrapper) {
             "services/offline/mode_and_settings.js",
             "core/common.js",
             "services/settings/device_preferences.js",
+            "services/settings/print_settings_repository.js",
             "ui/dialog_manager.js",
             "services/offline/document_adapter.js",
             "services/payment/offline_payment.js",

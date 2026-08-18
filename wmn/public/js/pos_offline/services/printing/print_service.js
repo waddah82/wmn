@@ -49,15 +49,20 @@
         invoice_barcode_height: 56,
         invoice_barcode_module_width: 2,
         invoice_barcode_human_readable: 1,
+        print_after_cashier_completion: 0,
     };
 
     function devicePreferences() {
         return ns.Services?.Settings?.DevicePreferences || null;
     }
 
+    function settingsRepository() {
+        return ns.Services?.Settings?.PrintSettingsRepository || null;
+    }
+
     devicePreferences()?.register?.(STORAGE_KEY, DEFAULTS);
 
-    function readConfig() {
+    function readLocalConfig() {
         let stored = {};
         const service = devicePreferences();
         if (service?.readSync) {
@@ -70,7 +75,16 @@
         return Object.assign({}, DEFAULTS, stored, legacyUrl && !stored.bridge_ws_url ? { bridge_ws_url: legacyUrl } : {});
     }
 
-    function saveConfig(config) {
+    function readConfig() {
+        const repository = settingsRepository();
+        const server = repository?.getServerConfig?.() || {};
+        if (repository?.getSource?.() === "local") {
+            return Object.assign({}, DEFAULTS, server, readLocalConfig());
+        }
+        return Object.assign({}, DEFAULTS, server);
+    }
+
+    function saveLocalConfig(config) {
         const normalized = Object.assign({}, DEFAULTS, config || {});
         const service = devicePreferences();
         if (service?.write) service.write(STORAGE_KEY, normalized, DEFAULTS);
@@ -78,7 +92,20 @@
         if (normalized.bridge_ws_url) {
             try { localStorage.setItem("whb_websocket_url", normalized.bridge_ws_url); } catch (e) {}
         }
+        settingsRepository()?.setSource?.("local");
         return normalized;
+    }
+
+    function saveConfig(config) {
+        return saveLocalConfig(config);
+    }
+
+    async function saveServerConfig(config) {
+        const repository = settingsRepository();
+        if (!repository?.saveServer) throw new Error(__("WMN Print Settings service is not available."));
+        const normalized = Object.assign({}, DEFAULTS, config || {});
+        await repository.saveServer(normalized);
+        return Object.assign({}, DEFAULTS, repository.getServerConfig?.() || normalized);
     }
 
     function adapters() {
@@ -97,7 +124,8 @@
     }
 
     async function dispatch(kind, payload, context) {
-        const settings = readConfig();
+        await settingsRepository()?.initialize?.();
+        const settings = Object.assign({}, readConfig(), context?.settings_override || {});
         const method = String(context?.method || settings.method || "legacy_bridge");
         const adapter = getAdapter(method);
         if (!adapter) throw new Error("Unknown WMN print method: " + method);
@@ -170,11 +198,13 @@
     }
 
     function normalizeDialogConfig(values) {
-        return Object.assign({}, values || {}, {
+        const normalized = Object.assign({}, values || {}, {
             method: methodId(values?.method, false),
             fallback_method: methodId(values?.fallback_method, true),
             qz_connector_mode: qzConnectorModeId(values?.qz_connector_mode),
         });
+        delete normalized.save_target;
+        return normalized;
     }
 
     function setDialogValue(dialog, fieldname, value) {
@@ -258,21 +288,69 @@
         button(__("Test Print"), async () => {
             const rawValues = dialog.get_values(true) || {};
             validateQZPrinterSelection(rawValues);
-            const cfg = saveConfig(Object.assign(readConfig(), normalizeDialogConfig(rawValues)));
+            const cfg = Object.assign({}, readConfig(), normalizeDialogConfig(rawValues));
             const test = "WMN POS\nPrinter Test\n------------------------------\n" + new Date().toLocaleString() + "\n";
-            await dispatch("raw", test, { method: cfg.method, printType: "RECEIPT", jobName: "WMN POS Printer Test" });
-            frappe.show_alert({ message: __("Test print sent."), indicator: "green" });
+            await dispatch("raw", test, {
+                method: cfg.method,
+                printType: "RECEIPT",
+                jobName: "WMN POS Printer Test",
+                settings_override: cfg,
+            });
+            frappe.show_alert({ message: __("Test print sent. Settings were not saved."), indicator: "green" });
         }, false);
     }
 
-    function showSettings() {
+    function renderSettingsSourceStatus(dialog) {
+        const field = dialog.get_field("settings_source_status");
+        if (!field?.$wrapper) return;
+        const repository = settingsRepository();
+        const status = repository?.status?.() || {};
+        const source = repository?.getSource?.() === "local" ? "local" : "server";
+        const sourceLabel = source === "local" ? __("This Browser") : __("WMN Print Settings (Server)");
+        const serverName = status.name ? frappe.utils.escape_html(String(status.name)) : __("Not configured");
+        const connectionLabel = status.online ? __("Online") : __("Offline - cached server settings are used");
+        const writeLabel = status.can_write ? __("Server save allowed") : __("Server save is read-only for this user");
+        field.$wrapper.html(`
+            <div class="alert alert-light border" style="margin:0; padding:10px 12px;">
+                <div><strong>${__("Active settings source")}:</strong> ${sourceLabel}</div>
+                <div><strong>${__("WMN Print Settings")}:</strong> ${serverName}</div>
+                <div><strong>${__("Connection")}:</strong> ${connectionLabel}</div>
+                <div><strong>${__("Permission")}:</strong> ${writeLabel}</div>
+            </div>
+        `);
+    }
+
+    async function showSettings() {
+        const repository = settingsRepository();
+        if (repository?.isOnline?.()) await repository.refresh?.();
         const cfg = readConfig();
+        const repoStatus = repository?.status?.() || {};
+        const source = repository?.getSource?.() === "local" ? "local" : "server";
         const dialog = new frappe.ui.Dialog({
             title: __("Printer Settings"),
             size: "large",
             fields: [
                 { fieldname: "method", label: __("Printing Method"), fieldtype: "Select", reqd: 1, options: methodOptions(false), default: methodLabel(cfg.method) },
                 { fieldname: "fallback_method", label: __("Fallback Method"), fieldtype: "Select", options: methodOptions(true), default: cfg.fallback_method === "none" ? "No fallback" : methodLabel(cfg.fallback_method) },
+                { fieldtype: "Section Break", label: __("Settings Storage") },
+                {
+                    fieldname: "save_target",
+                    label: __("Save Changes To"),
+                    fieldtype: "Select",
+                    reqd: 1,
+                    options: `${__("This Browser")}\n${__("WMN Print Settings (Server)")}`,
+                    default: source === "local" ? __("This Browser") : __("WMN Print Settings (Server)"),
+                    description: __("Browser saves a terminal-specific override. Server saves shared defaults that a new browser loads automatically."),
+                },
+                { fieldname: "settings_source_status", fieldtype: "HTML" },
+                { fieldtype: "Section Break", label: __("Receipt Lifecycle") },
+                {
+                    fieldname: "print_after_cashier_completion",
+                    label: __("Print Again After Cashier Completion"),
+                    fieldtype: "Check",
+                    default: cfg.print_after_cashier_completion,
+                    description: __("Applies only when an Awaiting Cashier draft was already printed before handoff. Normal POS auto-print behavior is unchanged."),
+                },
                 { fieldtype: "Section Break", label: __("ESC/POS Receipt") },
                 { fieldname: "cut_paper", label: __("Cut Paper"), fieldtype: "Check", default: cfg.cut_paper },
                 { fieldname: "feed_lines", label: __("Feed Lines"), fieldtype: "Int", default: cfg.feed_lines },
@@ -316,17 +394,36 @@
                 { fieldname: "connection_actions", fieldtype: "HTML" },
             ],
             primary_action_label: __("Save"),
-            primary_action(values) {
+            primary_action: async (values) => {
                 try {
                     validateQZPrinterSelection(values || {});
+                    const normalizedValues = normalizeDialogConfig(values || {});
+                    const nextConfig = Object.assign({}, cfg, normalizedValues);
+                    const saveTarget = String(values?.save_target || "");
+                    const saveOnServer = saveTarget === __("WMN Print Settings (Server)");
+
+                    if (saveOnServer) {
+                        const currentStatus = settingsRepository()?.status?.() || repoStatus;
+                        if (!currentStatus.online) {
+                            throw new Error(__("Cannot save WMN Print Settings while offline. Choose This Browser or reconnect."));
+                        }
+                        if (!currentStatus.available) {
+                            throw new Error(__("WMN Print Settings is not configured. Create or select the server Print Settings record first."));
+                        }
+                        if (!currentStatus.can_write) {
+                            throw new Error(__("You do not have permission to update WMN Print Settings."));
+                        }
+                        await saveServerConfig(nextConfig);
+                        frappe.show_alert({ message: __("Printer settings saved to WMN Print Settings and will be used by new browsers."), indicator: "green" });
+                    } else {
+                        saveLocalConfig(nextConfig);
+                        frappe.show_alert({ message: __("Printer settings saved for this browser only."), indicator: "green" });
+                    }
+
+                    dialog.hide();
                 } catch (error) {
                     frappe.msgprint({ title: __("Printer"), indicator: "red", message: error.message || String(error) });
-                    return;
                 }
-                const normalizedValues = normalizeDialogConfig(values || {});
-                saveConfig(Object.assign(cfg, normalizedValues));
-                dialog.hide();
-                frappe.show_alert({ message: __("Printer settings saved on this device."), indicator: "green" });
             },
         });
 
@@ -334,6 +431,8 @@
         dialog.set_value("method", methodLabel(cfg.method));
         dialog.set_value("fallback_method", cfg.fallback_method === "none" ? "No fallback" : methodLabel(cfg.fallback_method));
         dialog.set_value("qz_connector_mode", qzConnectorModeLabel(cfg.qz_connector_mode));
+        renderSettingsSourceStatus(dialog);
+        dialog.get_field("save_target")?.$input?.on("change.wmn-print-source", () => renderSettingsSourceStatus(dialog));
         dialog.get_field("method").$input.on("change.wmn-print", () => {
             setTimeout(async () => {
                 renderActionButtons(dialog);

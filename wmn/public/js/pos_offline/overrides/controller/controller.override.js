@@ -211,6 +211,10 @@
             return methods.FinalMethods.wmn_submit_online_invoice.apply(this, args);
         }
 
+        wmn_return_to_recent_orders(...args) {
+            return methods.FinalMethods.wmn_return_to_recent_orders.apply(this, args);
+        }
+
         wmn_send_to_cashier(...args) {
             return methods.FinalMethods.wmn_send_to_cashier.apply(this, args);
         }

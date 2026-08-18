@@ -606,6 +606,7 @@
         async make_new_invoice() {
                         this.__wmn_return_against_credit = false;
                         this.__wmn_cashier_resume = false;
+                        this.__wmn_payment_origin = "";
                         if (window.__wmn_pos_effective_offline !== true) {
                             await wmn_bootstrap_detect_effective_offline();
                         }
@@ -1908,6 +1909,8 @@
                     },
 
         async wmn_finalize_offline_invoice() {
+                        const paymentOrigin = String(this.__wmn_payment_origin || "");
+                        const cashierCompletion = this.__wmn_cashier_resume === true;
                         frappe.dom.freeze(wmn_t("Saving offline invoice...", "\u062C\u0627\u0631\u064A \u062D\u0641\u0638 \u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0623\u0648\u0641\u0644\u0627\u064A\u0646..."));
 
                         try {
@@ -1933,16 +1936,23 @@
                                 indicator: "orange"
                             });
 
-                            this.toggle_components(false);
-                            this.order_summary.toggle_component(true);
-                            this.order_summary.load_summary_of(this.frm.doc, true);
-                            wmn_try_auto_silent_print_after_order(this.frm.doc, "offline");
-                            this.wmn_bind_offline_receipt_buttons();
+                            await wmn_try_auto_silent_print_after_order(this.frm.doc, "offline", {
+                                cashier_completion: cashierCompletion,
+                            });
 
-                            if (this.wmn_cache && this.wmn_cache()) {
-                                await this.wmn_cache().safeRefreshRecentOrders(this);
-                            } else if (this.recent_order_list && this.recent_order_list.refresh_list) {
-                                this.recent_order_list.refresh_list();
+                            if (paymentOrigin === "recent_orders") {
+                                await this.wmn_return_to_recent_orders({ refresh: true, focus_search: true });
+                            } else {
+                                this.toggle_components(false);
+                                this.order_summary.toggle_component(true);
+                                this.order_summary.load_summary_of(this.frm.doc, true);
+                                this.wmn_bind_offline_receipt_buttons();
+
+                                if (this.wmn_cache && this.wmn_cache()) {
+                                    await this.wmn_cache().safeRefreshRecentOrders(this);
+                                } else if (this.recent_order_list && this.recent_order_list.refresh_list) {
+                                    await Promise.resolve(this.recent_order_list.refresh_list());
+                                }
                             }
 
                             return row;
@@ -2317,6 +2327,8 @@
         async wmn_submit_online_invoice() {
                         const doc = this.frm && this.frm.doc ? this.frm.doc : null;
                         if (!doc) return;
+                        const paymentOrigin = String(this.__wmn_payment_origin || "");
+                        const cashierCompletion = this.__wmn_cashier_resume === true;
 
                         if (doc.doctype === "Sales Invoice") {
                             const allowPartialPayment = await wmn_is_partial_payment_allowed(this);
@@ -2430,13 +2442,20 @@
                                 await this.item_selector.wmn_refresh_available_stock();
                             }
 
-                            this.toggle_components(false);
-                            this.order_summary.toggle_component(true);
-                            this.order_summary.load_summary_of(submittedDoc, true);
-                            wmn_try_auto_silent_print_after_order(submittedDoc, "online");
+                            await wmn_try_auto_silent_print_after_order(submittedDoc, "online", {
+                                cashier_completion: cashierCompletion,
+                            });
 
-                            if (this.recent_order_list && this.recent_order_list.refresh_list) {
-                                this.recent_order_list.refresh_list();
+                            if (paymentOrigin === "recent_orders") {
+                                await this.wmn_return_to_recent_orders({ refresh: true, focus_search: true });
+                            } else {
+                                this.toggle_components(false);
+                                this.order_summary.toggle_component(true);
+                                this.order_summary.load_summary_of(submittedDoc, true);
+
+                                if (this.recent_order_list && this.recent_order_list.refresh_list) {
+                                    await Promise.resolve(this.recent_order_list.refresh_list());
+                                }
                             }
 
                             frappe.show_alert({
@@ -2450,6 +2469,37 @@
                             throw e;
                         }
                     },
+
+        async wmn_return_to_recent_orders(options = {}) {
+                    const refresh = options.refresh !== false;
+                    const focusSearch = options.focus_search !== false;
+
+                    this.payment?.toggle_component?.(false);
+                    this.order_summary?.toggle_component?.(false);
+
+                    // Prepare a clean transaction in the background so Back to Cart never
+                    // reopens the draft/submitted invoice that was handled by the cashier.
+                    await this.make_new_invoice();
+                    this.toggle_recent_order_list(true);
+                    this.order_summary?.toggle_summary_placeholder?.(true);
+
+                    if (refresh && this.recent_order_list?.refresh_list) {
+                        await Promise.resolve(this.recent_order_list.refresh_list());
+                    }
+
+                    if (focusSearch) {
+                        setTimeout(() => {
+                            const $input = this.recent_order_list?.search_field?.$input;
+                            if ($input?.length) {
+                                $input.val("");
+                                $input.trigger("input");
+                                $input.trigger("focus");
+                            }
+                        }, 0);
+                    }
+
+                    return true;
+                },
 
         async wmn_send_to_cashier() {
                     const handoff = window.WMN_POS?.Features?.InvoiceHandoff?.Common;
@@ -2491,9 +2541,11 @@
                                     return this.wmn_submit_online_invoice();
                                 },
                                 send_to_cashier: async () => await this.wmn_send_to_cashier(),
+                                back_to_recent_orders: async () => await this.wmn_return_to_recent_orders({ refresh: true, focus_search: true }),
                                 after_checkout: () => {
                                     this.wmn_refresh_sell_on_credit_button();
                                     this.payment?.wmn_setup_send_to_cashier_button?.();
+                                    this.payment?.wmn_setup_back_to_recent_orders_button?.();
                                 },
                             },
                         });
@@ -2543,6 +2595,7 @@
                     if (cint(doc.docstatus || 0) !== 0 || !doc.name) return false;
 
                     const handoff = window.WMN_POS?.Features?.InvoiceHandoff?.Common;
+                    this.__wmn_payment_origin = "recent_orders";
                     this.__wmn_cashier_resume = handoff?.isAwaitingCashier?.(doc) === true;
                     const cashierPaymentSnapshot = this.__wmn_cashier_resume
                         ? handoff?.capturePaymentSnapshot?.(doc)
@@ -2569,7 +2622,12 @@
                             if (paymentResult?.__wmn_handoff_complete === true) return true;
                             return await this.wmn_finalize_offline_invoice();
                         } catch (error) {
-                            if (String(error?.message || error) === "cancelled") return false;
+                            const reason = String(error?.message || error);
+                            if (reason === "recent_orders_back") {
+                                await this.wmn_return_to_recent_orders({ refresh: true, focus_search: true });
+                                return false;
+                            }
+                            if (reason === "cancelled") return false;
                             throw error;
                         }
                     }
@@ -3229,6 +3287,7 @@
     FinalMethods.wmn_setup_sell_on_credit_button = UIMethods.wmn_setup_sell_on_credit_button || CoreMethods.wmn_setup_sell_on_credit_button;
     FinalMethods.wmn_sell_on_credit = UIMethods.wmn_sell_on_credit || CoreMethods.wmn_sell_on_credit;
     FinalMethods.wmn_submit_online_invoice = UIMethods.wmn_submit_online_invoice || CoreMethods.wmn_submit_online_invoice;
+    FinalMethods.wmn_return_to_recent_orders = UIMethods.wmn_return_to_recent_orders || CoreMethods.wmn_return_to_recent_orders;
     FinalMethods.wmn_send_to_cashier = UIMethods.wmn_send_to_cashier || CoreMethods.wmn_send_to_cashier;
     FinalMethods.init_payments = UIMethods.init_payments || CoreMethods.init_payments;
     FinalMethods.wmn_bind_offline_receipt_buttons = UIMethods.wmn_bind_offline_receipt_buttons || CoreMethods.wmn_bind_offline_receipt_buttons;

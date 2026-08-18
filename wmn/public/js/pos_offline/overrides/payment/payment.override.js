@@ -19,6 +19,10 @@
             return methods.FinalMethods.wmn_setup_send_to_cashier_button.apply(this, args);
         }
 
+        wmn_setup_back_to_recent_orders_button(...args) {
+            return methods.FinalMethods.wmn_setup_back_to_recent_orders_button.apply(this, args);
+        }
+
         make_invoice_fields_control(...args) {
             return methods.FinalMethods.make_invoice_fields_control.apply(this, args);
         }
