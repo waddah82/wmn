@@ -11,9 +11,22 @@ def _field_exists(doctype, fieldname):
 
 
 def _get_pos_profile_uses_sales_invoice(pos_profile):
-    if not pos_profile or not _field_exists("POS Profile", "as_sales_invoice"):
+    if not pos_profile:
         return False
-    return cint(frappe.db.get_value("POS Profile", pos_profile, "as_sales_invoice") or 0) == 1
+
+    if frappe.db.exists("DocType", "WMN POS Profile Settings"):
+        value = frappe.db.get_value(
+            "WMN POS Profile Settings",
+            {"pos_profile": pos_profile},
+            "as_sales_invoice",
+        )
+        if value is not None:
+            return cint(value or 0) == 1
+
+    # Migration fallback only. Runtime ownership is WMN POS Profile Settings.
+    if _field_exists("POS Profile", "as_sales_invoice"):
+        return cint(frappe.db.get_value("POS Profile", pos_profile, "as_sales_invoice") or 0) == 1
+    return False
 
 
 def _get_native_pos_invoice_names(closing_entry):

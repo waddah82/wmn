@@ -4,6 +4,7 @@ import frappe
 DEFAULT_MENU_ITEMS = (
     {"doctype_name": "WMN POS Menu Settings", "section": "Setup", "display_order": 5},
     {"doctype_name": "POS Profile", "section": "Setup", "display_order": 10},
+    {"doctype_name": "WMN POS Profile Settings", "section": "Setup", "display_order": 15},
     {"doctype_name": "WMN POS Cash Movement Profile", "section": "Setup", "display_order": 20},
     {"doctype_name": "WMN POS Cashier Permission", "section": "Setup", "display_order": 30},
     {"doctype_name": "WMN POS Supervisor", "section": "Setup", "display_order": 40},
@@ -31,15 +32,26 @@ def ensure_default_pos_menu_settings():
         return
 
     settings = frappe.get_single("WMN POS Menu Settings")
-    if settings.initialized:
-        return
+    changed = False
 
-    settings.set("menu_items", [])
+    if not settings.initialized:
+        settings.set("menu_items", [])
+        changed = True
+
+    existing = {str(row.doctype_name or "") for row in (settings.menu_items or [])}
     for entry in DEFAULT_MENU_ITEMS:
         if not frappe.db.exists("DocType", entry["doctype_name"]):
             continue
+        if entry["doctype_name"] in existing:
+            continue
         settings.append("menu_items", {"enabled": 1, **entry})
+        existing.add(entry["doctype_name"])
+        changed = True
 
-    settings.initialized = 1
-    settings.flags.ignore_permissions = True
-    settings.save()
+    if not settings.initialized:
+        settings.initialized = 1
+        changed = True
+
+    if changed:
+        settings.flags.ignore_permissions = True
+        settings.save()

@@ -4591,16 +4591,30 @@ def get_translated_workspaces():
 
 
 @frappe.whitelist()
-def get_pos_print_transport_settings():
-    """Return the shared WMN POS printer transport settings for browser bootstrap."""
-    from wmn.setup.print_settings import get_pos_print_settings_payload
+def get_pos_profile_settings(pos_profile=None):
+    """Return WMN settings scoped to one POS Profile for POS bootstrap."""
+    from wmn.setup.pos_profile_settings import settings_payload
 
-    return get_pos_print_settings_payload()
+    pos_profile = str(pos_profile or "").strip()
+    if not pos_profile:
+        frappe.throw(_("POS Profile is required."))
+    return settings_payload(pos_profile)
 
 
 @frappe.whitelist()
-def save_pos_print_transport_settings(config=None):
-    """Save the shared WMN POS printer transport settings after normal DocType permission checks."""
-    from wmn.setup.print_settings import save_pos_print_settings_config
+def save_pos_profile_settings(pos_profile=None, values=None):
+    """Save a partial WMN settings update for one POS Profile."""
+    import json
+    from wmn.setup.pos_profile_settings import save_settings_patch
 
-    return save_pos_print_settings_config(config or {})
+    pos_profile = str(pos_profile or "").strip()
+    if not pos_profile:
+        frappe.throw(_("POS Profile is required."))
+
+    if isinstance(values, str):
+        try:
+            values = json.loads(values or "{}")
+        except Exception:
+            frappe.throw(_("POS Profile settings must be valid JSON."))
+
+    return save_settings_patch(pos_profile, values or {})

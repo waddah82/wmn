@@ -5,7 +5,6 @@ from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 HANDOFF_STAGE_FIELD = "wmn_pos_stage"
 HANDOFF_SENT_AT_FIELD = "wmn_sent_to_cashier_at"
-HANDOFF_SENT_BY_FIELD = "wmn_sent_to_cashier_by"
 HANDOFF_DOCTYPES = ("Sales Invoice", "POS Invoice")
 AWAITING_CASHIER = "AWAITING_CASHIER"
 
@@ -28,16 +27,6 @@ def _get_invoice_handoff_custom_fields():
                 "label": "WMN Sent to Cashier At",
                 "fieldtype": "Datetime",
                 "insert_after": HANDOFF_STAGE_FIELD,
-                "read_only": 1,
-                "hidden": 1,
-                "no_copy": 1,
-            },
-            {
-                "fieldname": HANDOFF_SENT_BY_FIELD,
-                "label": "WMN Sent to Cashier By",
-                "fieldtype": "Link",
-                "options": "User",
-                "insert_after": HANDOFF_SENT_AT_FIELD,
                 "read_only": 1,
                 "hidden": 1,
                 "no_copy": 1,
@@ -65,7 +54,6 @@ def validate_invoice_handoff_schema(doctype):
         for fieldname in (
             HANDOFF_STAGE_FIELD,
             HANDOFF_SENT_AT_FIELD,
-            HANDOFF_SENT_BY_FIELD,
         )
         if not meta.get_field(fieldname)
     ]
