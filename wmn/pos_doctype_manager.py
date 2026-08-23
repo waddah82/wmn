@@ -37,6 +37,8 @@ def _get_menu_entries():
             "order": int(row.display_order or 0),
             "custom_label": (row.custom_label or "").strip(),
             "icon": (row.icon or "").strip(),
+            "button_color": (getattr(row, "button_color", "") or "").strip(),
+            "text_color": (getattr(row, "text_color", "") or "").strip(),
         })
     return entries
 
@@ -208,6 +210,8 @@ def get_available_pos_doctypes():
             "section": entry["section"],
             "order": entry["order"],
             "icon": entry["icon"],
+            "button_color": entry["button_color"],
+            "text_color": entry["text_color"],
             "is_single": 1 if meta.issingle else 0,
             "is_submittable": 1 if meta.is_submittable else 0,
             "title_field": meta.title_field or "",

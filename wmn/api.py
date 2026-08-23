@@ -4094,7 +4094,7 @@ def _wmn_replace_offline_invoice_draft_payload(doc, clean_invoice):
 
 @frappe.whitelist()
 def sync_offline_pos_invoice(invoice, submit=1):
-    """Synchronize an offline invoice as Draft or finalize it by Submit."""
+    """Synchronize normal offline invoices or reconstruct returns from their server source."""
     if isinstance(invoice, str):
         invoice = frappe.parse_json(invoice)
 
@@ -4107,6 +4107,33 @@ def sync_offline_pos_invoice(invoice, submit=1):
         frappe.throw(_("Missing WMN offline sync ID"))
 
     supervisor_approvals = invoice.get("__wmn_supervisor_approvals") or []
+
+    doctype = invoice.get("doctype") or "POS Invoice"
+    if doctype not in ("POS Invoice", "Sales Invoice"):
+        frappe.throw(_("Invalid invoice doctype"))
+
+    stage = str(invoice.get("wmn_pos_stage") or "").strip()
+    if stage == "AWAITING_CASHIER" and submit_invoice:
+        frappe.throw(_("Awaiting Cashier draft cannot be submitted before Complete Order"))
+
+    _wmn_validate_offline_invoice_sync_schema(doctype)
+
+    if cint(invoice.get("is_return") or 0):
+        from wmn.offline_sync.return_sync import sync_offline_return_intent
+
+        result = sync_offline_return_intent(
+            invoice=invoice,
+            doctype=doctype,
+            offline_id=offline_id,
+            submit_invoice=submit_invoice,
+            offline_sync_field=WMN_OFFLINE_SYNC_FIELD,
+        )
+        if supervisor_approvals and cint(result.get("docstatus") or 0) == 1:
+            _wmn_register_offline_supervisor_approvals(
+                supervisor_approvals, doctype, result.get("name"), offline_id
+            )
+        return result
+
     coupon_code = str(invoice.get("__wmn_coupon_code") or "").strip()
     coupon_discount_amount = max(0, flt(invoice.get("__wmn_coupon_discount_total") or 0))
     promotion_invoice_discount_amount = max(0, flt(invoice.get("__wmn_promotion_invoice_discount_total") or 0))
@@ -4118,15 +4145,6 @@ def sync_offline_pos_invoice(invoice, submit=1):
             (locked_coupon.name,),
         )
 
-    doctype = invoice.get("doctype") or "POS Invoice"
-    if doctype not in ("POS Invoice", "Sales Invoice"):
-        frappe.throw(_("Invalid invoice doctype"))
-
-    stage = str(invoice.get("wmn_pos_stage") or "").strip()
-    if stage == "AWAITING_CASHIER" and submit_invoice:
-        frappe.throw(_("Awaiting Cashier draft cannot be submitted before Complete Order"))
-
-    _wmn_validate_offline_invoice_sync_schema(doctype)
     clean_invoice = _wmn_prepare_offline_invoice_sync_payload(invoice, doctype, offline_id)
 
     existing = frappe.db.exists(doctype, {WMN_OFFLINE_SYNC_FIELD: offline_id})
@@ -4514,6 +4532,9 @@ def get_past_order_list(search_term, status, limit=20):
     if status == "Awaiting Cashier":
         filters["docstatus"] = 0
         filters["wmn_pos_stage"] = "AWAITING_CASHIER"
+    elif status == "Returnable":
+        filters["docstatus"] = 1
+        filters["is_return"] = 0
     else:
         filters["status"] = status
 
