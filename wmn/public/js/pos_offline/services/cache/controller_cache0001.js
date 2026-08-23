@@ -388,19 +388,11 @@
             const frm = await this.makeOfflineFrm(sourceDoc.doctype || (this.ctrl && this.ctrl.settings && this.ctrl.settings.frm_doctype) || "POS Invoice");
             frm.doc.is_return = 1;
             frm.doc.return_against = sourceDoc.name;
-            frm.doc.__wmn_return_source_payment_state = typeof wmn_source_invoice_payment_state === "function"
-                ? wmn_source_invoice_payment_state(sourceDoc)
-                : "paid";
             frm.doc.__wmn_return_against_credit = typeof wmn_source_invoice_is_credit === "function"
                 ? wmn_source_invoice_is_credit(sourceDoc)
                 : false;
-            frm.doc.__wmn_return_zero_payment = typeof wmn_source_invoice_requires_zero_return_payment === "function"
-                ? wmn_source_invoice_requires_zero_return_payment(sourceDoc)
-                : frm.doc.__wmn_return_against_credit === true;
             if (this.ctrl) {
                 this.ctrl.__wmn_return_against_credit = frm.doc.__wmn_return_against_credit === true;
-                this.ctrl.__wmn_return_zero_payment = frm.doc.__wmn_return_zero_payment === true;
-                this.ctrl.__wmn_return_source_payment_state = frm.doc.__wmn_return_source_payment_state;
             }
             frm.doc.customer = sourceDoc.customer;
             frm.doc.customer_name = sourceDoc.customer_name;
@@ -456,7 +448,6 @@
                 return returnRow;
             });
 
-            const zeroPaymentReturn = frm.doc.__wmn_return_zero_payment === true;
             frm.doc.payments = (sourceDoc.payments || [])
                 .filter((row) => row && row.mode_of_payment)
                 .map((row, idx) => ({
@@ -470,15 +461,13 @@
                     type: row.type || "",
                     account: row.account || "",
                     default: row.default,
-                    amount: zeroPaymentReturn ? 0 : -Math.abs(flt(row.amount || 0)),
-                    base_amount: zeroPaymentReturn
-                        ? 0
-                        : -Math.abs(flt(row.base_amount !== undefined ? row.base_amount : row.amount || 0)),
+                    amount: -Math.abs(flt(row.amount || 0)),
+                    base_amount: -Math.abs(flt(row.base_amount !== undefined ? row.base_amount : row.amount || 0)),
                 }));
 
             const sourcePaidAmount = Math.abs(flt(sourceDoc.paid_amount || 0));
             const hasMappedPayment = frm.doc.payments.some((row) => Math.abs(flt(row.amount || 0)) > 0.000001);
-            if (!zeroPaymentReturn && sourcePaidAmount > 0.000001 && !hasMappedPayment) {
+            if (sourcePaidAmount > 0.000001 && !hasMappedPayment) {
                 const cachedPaymentMethods = await this.getPaymentMethods();
                 const fallbackMethod = (cachedPaymentMethods || []).find((row) => cint(row.default || 0) === 1)
                     || (cachedPaymentMethods || [])[0];
@@ -500,14 +489,8 @@
                 }
             }
 
-            if (zeroPaymentReturn && typeof wmn_prepare_zero_payment_return === "function") {
-                wmn_prepare_zero_payment_return(frm.doc);
-            }
             if (typeof wmn_recalculate_offline_doc === "function") {
                 wmn_recalculate_offline_doc(frm.doc);
-            }
-            if (zeroPaymentReturn && typeof wmn_prepare_zero_payment_return === "function") {
-                wmn_prepare_zero_payment_return(frm.doc);
             }
             return frm;
         }

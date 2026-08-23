@@ -6,6 +6,10 @@
     const methods = ns.OverrideMethods.Controller;
 
     class WMNControllerOverride extends Base {
+        wmn_prepare_pos_frm_doc(...args) {
+            return methods.FinalMethods.wmn_prepare_pos_frm_doc.apply(this, args);
+        }
+
         constructor(...args) {
             super(...args);
             methods.initialize(this, args);

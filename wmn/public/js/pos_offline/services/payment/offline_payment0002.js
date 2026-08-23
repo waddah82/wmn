@@ -5,50 +5,21 @@ function wmn_invoice_payment_total(doc) {
             return Math.max(Math.abs(flt(doc.paid_amount || 0)), rowTotal);
         }
 
-        function wmn_source_invoice_payment_state(doc) {
+        function wmn_source_invoice_is_credit(doc) {
             doc = doc || {};
-            if (cint(doc.is_return || 0) === 1) return "return";
 
-            const epsilon = 0.000001;
+            if (cint(doc.is_return || 0) === 1) return false;
+            if (doc.__wmn_credit_sale === true || cint(doc.__wmn_credit_sale || 0) === 1) return true;
+
             const total = Math.abs(flt(doc.rounded_total || doc.grand_total || 0));
             const paid = wmn_invoice_payment_total(doc);
-            const outstanding = flt(doc.outstanding_amount || 0);
-            const status = String(doc.status || "").trim().toLowerCase();
             const isSubmitted = cint(doc.docstatus || 0) === 1 || doc.__wmn_local_submitted === true;
-            const explicitlyCredit = doc.__wmn_credit_sale === true || cint(doc.__wmn_credit_sale || 0) === 1;
+            const epsilon = 0.000001;
 
-            if (explicitlyCredit || (isSubmitted && total > epsilon && paid <= epsilon)) {
-                return "unpaid";
-            }
-
-            if (
-                status === "partly paid" ||
-                status === "partly paid and discounted" ||
-                (paid > epsilon && outstanding > epsilon) ||
-                (total > epsilon && paid > epsilon && paid < total - epsilon)
-            ) {
-                return "partly_paid";
-            }
-
-            if (
-                status === "unpaid" ||
-                status === "unpaid and discounted" ||
-                status === "overdue" ||
-                status === "overdue and discounted"
-            ) {
-                return paid <= epsilon ? "unpaid" : "partly_paid";
-            }
-
-            return "paid";
-        }
-
-        function wmn_source_invoice_is_credit(doc) {
-            return wmn_source_invoice_payment_state(doc) === "unpaid";
-        }
-
-        function wmn_source_invoice_requires_zero_return_payment(doc) {
-            const state = wmn_source_invoice_payment_state(doc);
-            return state === "unpaid" || state === "partly_paid";
+            // A submitted invoice with a positive total and no collected payment is a pure credit sale.
+            // This also identifies older offline credit invoices that were saved before outstanding_amount
+            // was persisted locally.
+            return isSubmitted && total > epsilon && paid <= epsilon;
         }
 
         function wmn_mark_offline_credit_sale(doc) {
@@ -64,18 +35,17 @@ function wmn_invoice_payment_total(doc) {
             return doc;
         }
 
-        function wmn_is_zero_payment_return_doc(doc, ctrl) {
+        function wmn_is_credit_return_doc(doc, ctrl) {
             doc = doc || {};
             if (cint(doc.is_return || 0) !== 1) return false;
 
             return !!(
-                doc.__wmn_return_zero_payment === true ||
-                cint(doc.__wmn_return_zero_payment || 0) === 1 ||
-                (ctrl && (ctrl.__wmn_return_zero_payment === true || cint(ctrl.__wmn_return_zero_payment || 0) === 1))
+                doc.__wmn_return_against_credit === true ||
+                (ctrl && ctrl.__wmn_return_against_credit === true)
             );
         }
 
-        function wmn_prepare_zero_payment_return(doc) {
+        function wmn_prepare_credit_return_without_payment(doc) {
             if (!doc) return doc;
 
             (doc.payments || []).forEach((row) => {

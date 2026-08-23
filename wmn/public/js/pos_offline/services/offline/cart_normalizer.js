@@ -109,8 +109,13 @@
         function wmn_normalize_all_offline_cart_rows(doc, fallbackWarehouse) {
             if (!doc) return doc;
 
+            const isReturn = cint(doc.is_return || 0) === 1;
             doc.items = (doc.items || [])
-                .filter(row => row && row.item_code && flt(row.qty || 0) > 0)
+                .filter((row) => {
+                    if (!row || !row.item_code) return false;
+                    const qty = flt(row.qty || 0);
+                    return isReturn ? qty < 0 : qty > 0;
+                })
                 .map((row, idx) => wmn_normalize_offline_cart_row(row, doc, idx, fallbackWarehouse));
 
             return doc;

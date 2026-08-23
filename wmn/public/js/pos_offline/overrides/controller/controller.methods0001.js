@@ -1989,26 +1989,23 @@
 
                     const checkoutDoc = this.frm && this.frm.doc ? this.frm.doc : null;
                     const offlineCheckout = wmn_controller_uses_offline_flow(this);
-                    const isZeroPaymentReturn = typeof wmn_is_zero_payment_return_doc === "function"
-                        ? wmn_is_zero_payment_return_doc(checkoutDoc, this)
+                    const isCreditReturn = typeof wmn_is_credit_return_doc === "function"
+                        ? wmn_is_credit_return_doc(checkoutDoc, this)
                         : false;
 
                     if (offlineCheckout) {
                         try {
-                            if (!isZeroPaymentReturn) {
+                            if (!isCreditReturn) {
                                 await this.wmn_ensure_commercial_state_ready_for_payment();
                             }
 
-                            if (isZeroPaymentReturn) {
-                                // Unpaid and partly-paid source invoices return as credit notes.
-                                // Do not create an automatic cash/card refund in Offline mode.
-                                if (typeof wmn_prepare_zero_payment_return === "function") {
-                                    wmn_prepare_zero_payment_return(this.frm.doc);
+                            if (isCreditReturn) {
+                                // A return against a pure credit invoice is a credit note against
+                                // receivables. There is no cash/card refund to collect or require.
+                                if (typeof wmn_prepare_credit_return_without_payment === "function") {
+                                    wmn_prepare_credit_return_without_payment(this.frm.doc);
                                 }
                                 this.wmn_recalculate_offline_totals();
-                                if (typeof wmn_prepare_zero_payment_return === "function") {
-                                    wmn_prepare_zero_payment_return(this.frm.doc);
-                                }
                                 return await this.wmn_finalize_offline_invoice();
                             }
 
@@ -2032,10 +2029,10 @@
                         }
                     }
 
-                    if (isZeroPaymentReturn && typeof wmn_prepare_zero_payment_return === "function") {
-                        // Keep unpaid/partly-paid returns at zero payment. The Payment owner
-                        // enforces the same lock again after ERPNext renders the section.
-                        wmn_prepare_zero_payment_return(checkoutDoc);
+                    if (isCreditReturn && typeof wmn_prepare_credit_return_without_payment === "function") {
+                        // Keep a pure credit return at zero payment, but still use ERPNext's
+                        // normal checkout flow so the Payment section is rendered first.
+                        wmn_prepare_credit_return_without_payment(checkoutDoc);
                     } else {
                         // Pay is a boundary only. It waits for the already-running WMN
                         // commercial refresh and must not start a new pricing calculation.
@@ -2047,8 +2044,6 @@
 
         async make_sales_invoice_frm() {
                         this.__wmn_return_against_credit = false;
-                        this.__wmn_return_zero_payment = false;
-                        this.__wmn_return_source_payment_state = "";
                         const doctype = wmn_pos_invoice_doctype(this);
 
                         // Offline keeps its lightweight form model. Online follows ERPNext's
@@ -2103,18 +2098,10 @@
                         );
                         if (!returnApproval || !returnApproval.approved) return null;
 
-                        const returnSourcePaymentState = typeof wmn_source_invoice_payment_state === "function"
-                            ? wmn_source_invoice_payment_state(doc)
-                            : "paid";
                         const returnAgainstCredit = typeof wmn_source_invoice_is_credit === "function"
                             ? wmn_source_invoice_is_credit(doc)
                             : false;
-                        const returnZeroPayment = typeof wmn_source_invoice_requires_zero_return_payment === "function"
-                            ? wmn_source_invoice_requires_zero_return_payment(doc)
-                            : returnAgainstCredit;
-                        this.__wmn_return_source_payment_state = returnSourcePaymentState;
                         this.__wmn_return_against_credit = returnAgainstCredit;
-                        this.__wmn_return_zero_payment = returnZeroPayment;
 
                         if (wmn_controller_uses_offline_flow(this)) {
                             const frm = await this.wmn_cache().makeReturnInvoiceOffline(doc);
@@ -2143,27 +2130,17 @@
                                 frappe.model.sync(r.message);
                                 const returnDoc = frappe.get_doc(r.message.doctype, r.message.name);
                                 returnDoc.__run_link_triggers = false;
-                                returnDoc.__wmn_return_source_payment_state = returnSourcePaymentState;
                                 returnDoc.__wmn_return_against_credit = returnAgainstCredit;
-                                returnDoc.__wmn_return_zero_payment = returnZeroPayment;
                                 if (this.frm && this.frm.doc) {
-                                    this.frm.doc.__wmn_return_source_payment_state = returnSourcePaymentState;
                                     this.frm.doc.__wmn_return_against_credit = returnAgainstCredit;
-                                    this.frm.doc.__wmn_return_zero_payment = returnZeroPayment;
                                 }
-                                if (returnZeroPayment && typeof wmn_prepare_zero_payment_return === "function") {
-                                    wmn_prepare_zero_payment_return(returnDoc);
+                                if (returnAgainstCredit && typeof wmn_prepare_credit_return_without_payment === "function") {
+                                    wmn_prepare_credit_return_without_payment(returnDoc);
                                     if (this.frm && this.frm.doc) {
-                                        wmn_prepare_zero_payment_return(this.frm.doc);
+                                        wmn_prepare_credit_return_without_payment(this.frm.doc);
                                     }
                                 }
                                 this.set_pos_profile_data().then(() => {
-                                    if (returnZeroPayment && typeof wmn_prepare_zero_payment_return === "function") {
-                                        wmn_prepare_zero_payment_return(returnDoc);
-                                        if (this.frm && this.frm.doc) {
-                                            wmn_prepare_zero_payment_return(this.frm.doc);
-                                        }
-                                    }
                                     frappe.dom.unfreeze();
                                 });
                             },
@@ -2332,9 +2309,6 @@
                                 });
 
                                 doc.payments = payments;
-                                if (typeof wmn_mark_offline_credit_sale === "function") {
-                                    wmn_mark_offline_credit_sale(doc);
-                                }
                                 wmn_recalc_offline_payment_doc(doc);
                                 return await this.wmn_finalize_offline_invoice();
                             } catch (e) {
@@ -2572,12 +2546,12 @@
                                 },
                                 submit_invoice: async () => {
                                     const paymentDoc = this.frm && this.frm.doc ? this.frm.doc : null;
-                                    const isZeroPaymentReturn = typeof wmn_is_zero_payment_return_doc === "function"
-                                        ? wmn_is_zero_payment_return_doc(paymentDoc, this)
+                                    const isCreditReturn = typeof wmn_is_credit_return_doc === "function"
+                                        ? wmn_is_credit_return_doc(paymentDoc, this)
                                         : false;
 
-                                    if (isZeroPaymentReturn && typeof wmn_prepare_zero_payment_return === "function") {
-                                        wmn_prepare_zero_payment_return(paymentDoc);
+                                    if (isCreditReturn && typeof wmn_prepare_credit_return_without_payment === "function") {
+                                        wmn_prepare_credit_return_without_payment(paymentDoc);
                                     }
 
                                     if (wmn_controller_uses_offline_flow(this)) {
@@ -2636,6 +2610,30 @@
                         setTimeout(bind, 1000);
                     },
 
+        async wmn_load_server_invoice_into_frm(name, doctype) {
+                    const targetName = String(name || "").trim();
+                    const targetDoctype = String(doctype || wmn_pos_invoice_doctype(this));
+                    if (!targetName) throw new Error("WMN server invoice name is required");
+
+                    await new Promise((resolve) => frappe.model.with_doctype(targetDoctype, resolve));
+                    await frappe.model.with_doc(targetDoctype, targetName);
+
+                    const modelDoc = frappe.get_doc(targetDoctype, targetName);
+                    if (!modelDoc) {
+                        throw new Error(`WMN could not load ${targetDoctype} ${targetName}`);
+                    }
+
+                    const currentDoctype = String(this.frm?.doctype || this.frm?.doc?.doctype || "");
+                    if (!this.frm || currentDoctype !== targetDoctype) {
+                        this.frm = new frappe.ui.form.Form(targetDoctype, $("<div>"), false);
+                    }
+
+                    await Promise.resolve(this.frm.refresh(targetName));
+                    window.cur_frm = this.frm;
+                    window.cur_pos = this;
+                    return this.frm;
+                },
+
         async wmn_open_scanned_draft_for_payment(doc) {
                     doc = doc || {};
                     if (cint(doc.docstatus || 0) !== 0 || !doc.name) return false;
@@ -2678,29 +2676,12 @@
                         }
                     }
 
-                    await new Promise((resolve) => frappe.model.with_doctype(targetDoctype, resolve));
-
-                    // Existing server drafts must enter the native Frappe Form lifecycle with
-                    // both the document and docinfo loaded. frappe.db.get_doc()/model.sync(doc)
-                    // only populate locals and leave Form sidebar consumers such as AssignTo
-                    // without frappe.model.docinfo. with_doc() is Frappe's owner for this load.
-                    await frappe.model.with_doc(targetDoctype, doc.name);
-                    const modelDoc = frappe.get_doc(targetDoctype, doc.name);
-                    if (!modelDoc || !frappe.model.get_docinfo(targetDoctype, doc.name)) {
-                        throw new Error("WMN scanned draft invoice did not load through the Frappe document lifecycle");
-                    }
-
-                    modelDoc.items = Array.isArray(modelDoc.items) ? modelDoc.items : [];
-                    modelDoc.payments = Array.isArray(modelDoc.payments) ? modelDoc.payments : [];
-
-                    const currentDoctype = String(this.frm?.doctype || this.frm?.doc?.doctype || "");
-                    if (!this.frm || currentDoctype !== targetDoctype) {
-                        this.frm = new frappe.ui.form.Form(targetDoctype, $("<div>"), false);
-                    }
-
-                    this.frm.refresh(doc.name);
-                    window.cur_frm = this.frm;
-                    window.cur_pos = this;
+                    // Existing server drafts must enter the native Frappe document lifecycle
+                    // before the POS Form is refreshed. This keeps Sales Invoice item rows and
+                    // docinfo available to both the cart and the Payment screen.
+                    await this.wmn_load_server_invoice_into_frm(doc.name, targetDoctype);
+                    this.frm.doc.items = Array.isArray(this.frm.doc.items) ? this.frm.doc.items : [];
+                    this.frm.doc.payments = Array.isArray(this.frm.doc.payments) ? this.frm.doc.payments : [];
 
                     if (this.cart?.load_invoice) {
                         await Promise.resolve(this.cart.load_invoice());
@@ -2857,8 +2838,7 @@
                                         return;
                                     }
                                     frappe.run_serially([
-                                        () => frappe.model.with_doc(doctype, name),
-                                        () => this.frm.refresh(name),
+                                        () => this.wmn_load_server_invoice_into_frm(name, doctype),
                                         () => this.frm.call("reset_mode_of_payments"),
                                         () => this.cart.load_invoice(),
                                         () => this.item_selector.toggle_component(true),
@@ -3343,6 +3323,7 @@
     FinalMethods.wmn_send_to_cashier = UIMethods.wmn_send_to_cashier || CoreMethods.wmn_send_to_cashier;
     FinalMethods.init_payments = UIMethods.init_payments || CoreMethods.init_payments;
     FinalMethods.wmn_bind_offline_receipt_buttons = UIMethods.wmn_bind_offline_receipt_buttons || CoreMethods.wmn_bind_offline_receipt_buttons;
+    FinalMethods.wmn_load_server_invoice_into_frm = UIMethods.wmn_load_server_invoice_into_frm || CoreMethods.wmn_load_server_invoice_into_frm;
     FinalMethods.wmn_open_scanned_draft_for_payment = UIMethods.wmn_open_scanned_draft_for_payment || CoreMethods.wmn_open_scanned_draft_for_payment;
     FinalMethods.wmn_route_scanned_invoice = UIMethods.wmn_route_scanned_invoice || CoreMethods.wmn_route_scanned_invoice;
     FinalMethods.init_recent_order_list = UIMethods.init_recent_order_list || CoreMethods.init_recent_order_list;

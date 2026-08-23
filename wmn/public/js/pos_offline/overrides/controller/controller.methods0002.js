@@ -1989,26 +1989,23 @@
 
                     const checkoutDoc = this.frm && this.frm.doc ? this.frm.doc : null;
                     const offlineCheckout = wmn_controller_uses_offline_flow(this);
-                    const isZeroPaymentReturn = typeof wmn_is_zero_payment_return_doc === "function"
-                        ? wmn_is_zero_payment_return_doc(checkoutDoc, this)
+                    const isCreditReturn = typeof wmn_is_credit_return_doc === "function"
+                        ? wmn_is_credit_return_doc(checkoutDoc, this)
                         : false;
 
                     if (offlineCheckout) {
                         try {
-                            if (!isZeroPaymentReturn) {
+                            if (!isCreditReturn) {
                                 await this.wmn_ensure_commercial_state_ready_for_payment();
                             }
 
-                            if (isZeroPaymentReturn) {
-                                // Unpaid and partly-paid source invoices return as credit notes.
-                                // Do not create an automatic cash/card refund in Offline mode.
-                                if (typeof wmn_prepare_zero_payment_return === "function") {
-                                    wmn_prepare_zero_payment_return(this.frm.doc);
+                            if (isCreditReturn) {
+                                // A return against a pure credit invoice is a credit note against
+                                // receivables. There is no cash/card refund to collect or require.
+                                if (typeof wmn_prepare_credit_return_without_payment === "function") {
+                                    wmn_prepare_credit_return_without_payment(this.frm.doc);
                                 }
                                 this.wmn_recalculate_offline_totals();
-                                if (typeof wmn_prepare_zero_payment_return === "function") {
-                                    wmn_prepare_zero_payment_return(this.frm.doc);
-                                }
                                 return await this.wmn_finalize_offline_invoice();
                             }
 
@@ -2032,10 +2029,10 @@
                         }
                     }
 
-                    if (isZeroPaymentReturn && typeof wmn_prepare_zero_payment_return === "function") {
-                        // Keep unpaid/partly-paid returns at zero payment. The Payment owner
-                        // enforces the same lock again after ERPNext renders the section.
-                        wmn_prepare_zero_payment_return(checkoutDoc);
+                    if (isCreditReturn && typeof wmn_prepare_credit_return_without_payment === "function") {
+                        // Keep a pure credit return at zero payment, but still use ERPNext's
+                        // normal checkout flow so the Payment section is rendered first.
+                        wmn_prepare_credit_return_without_payment(checkoutDoc);
                     } else {
                         // Pay is a boundary only. It waits for the already-running WMN
                         // commercial refresh and must not start a new pricing calculation.
@@ -2047,8 +2044,6 @@
 
         async make_sales_invoice_frm() {
                         this.__wmn_return_against_credit = false;
-                        this.__wmn_return_zero_payment = false;
-                        this.__wmn_return_source_payment_state = "";
                         const doctype = wmn_pos_invoice_doctype(this);
 
                         // Offline keeps its lightweight form model. Online follows ERPNext's
@@ -2103,18 +2098,10 @@
                         );
                         if (!returnApproval || !returnApproval.approved) return null;
 
-                        const returnSourcePaymentState = typeof wmn_source_invoice_payment_state === "function"
-                            ? wmn_source_invoice_payment_state(doc)
-                            : "paid";
                         const returnAgainstCredit = typeof wmn_source_invoice_is_credit === "function"
                             ? wmn_source_invoice_is_credit(doc)
                             : false;
-                        const returnZeroPayment = typeof wmn_source_invoice_requires_zero_return_payment === "function"
-                            ? wmn_source_invoice_requires_zero_return_payment(doc)
-                            : returnAgainstCredit;
-                        this.__wmn_return_source_payment_state = returnSourcePaymentState;
                         this.__wmn_return_against_credit = returnAgainstCredit;
-                        this.__wmn_return_zero_payment = returnZeroPayment;
 
                         if (wmn_controller_uses_offline_flow(this)) {
                             const frm = await this.wmn_cache().makeReturnInvoiceOffline(doc);
@@ -2143,29 +2130,28 @@
                                 frappe.model.sync(r.message);
                                 const returnDoc = frappe.get_doc(r.message.doctype, r.message.name);
                                 returnDoc.__run_link_triggers = false;
-                                returnDoc.__wmn_return_source_payment_state = returnSourcePaymentState;
                                 returnDoc.__wmn_return_against_credit = returnAgainstCredit;
-                                returnDoc.__wmn_return_zero_payment = returnZeroPayment;
                                 if (this.frm && this.frm.doc) {
-                                    this.frm.doc.__wmn_return_source_payment_state = returnSourcePaymentState;
                                     this.frm.doc.__wmn_return_against_credit = returnAgainstCredit;
-                                    this.frm.doc.__wmn_return_zero_payment = returnZeroPayment;
                                 }
-                                if (returnZeroPayment && typeof wmn_prepare_zero_payment_return === "function") {
-                                    wmn_prepare_zero_payment_return(returnDoc);
+                                if (returnAgainstCredit && typeof wmn_prepare_credit_return_without_payment === "function") {
+                                    wmn_prepare_credit_return_without_payment(returnDoc);
                                     if (this.frm && this.frm.doc) {
-                                        wmn_prepare_zero_payment_return(this.frm.doc);
+                                        wmn_prepare_credit_return_without_payment(this.frm.doc);
                                     }
                                 }
-                                this.set_pos_profile_data().then(() => {
-                                    if (returnZeroPayment && typeof wmn_prepare_zero_payment_return === "function") {
-                                        wmn_prepare_zero_payment_return(returnDoc);
-                                        if (this.frm && this.frm.doc) {
-                                            wmn_prepare_zero_payment_return(this.frm.doc);
-                                        }
-                                    }
+                                // Sales Invoice returns are already fully mapped by ERPNext's native
+                                // make_return_doc/make_sales_return owner, including the exact refund
+                                // payment from the source invoice. Calling set_pos_profile_data() here
+                                // triggers Sales Invoice set_pos_data -> set_missing_values again and can
+                                // rebuild the payment rows. Keep the mapped return untouched.
+                                if (invoiceDoctype === "Sales Invoice") {
                                     frappe.dom.unfreeze();
-                                });
+                                } else {
+                                    this.set_pos_profile_data().then(() => {
+                                        frappe.dom.unfreeze();
+                                    });
+                                }
                             },
                         });
                     },
@@ -2572,12 +2558,12 @@
                                 },
                                 submit_invoice: async () => {
                                     const paymentDoc = this.frm && this.frm.doc ? this.frm.doc : null;
-                                    const isZeroPaymentReturn = typeof wmn_is_zero_payment_return_doc === "function"
-                                        ? wmn_is_zero_payment_return_doc(paymentDoc, this)
+                                    const isCreditReturn = typeof wmn_is_credit_return_doc === "function"
+                                        ? wmn_is_credit_return_doc(paymentDoc, this)
                                         : false;
 
-                                    if (isZeroPaymentReturn && typeof wmn_prepare_zero_payment_return === "function") {
-                                        wmn_prepare_zero_payment_return(paymentDoc);
+                                    if (isCreditReturn && typeof wmn_prepare_credit_return_without_payment === "function") {
+                                        wmn_prepare_credit_return_without_payment(paymentDoc);
                                     }
 
                                     if (wmn_controller_uses_offline_flow(this)) {

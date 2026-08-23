@@ -21,6 +21,7 @@
         "Partly Paid",
         "Overdue",
         "Consolidated",
+        "Returnable",
         "Return",
     ];
 
@@ -29,6 +30,11 @@
 
         make_filter_section() {
             const me = this;
+            const profileAsSalesInvoice = window.WMN_POS?.Services?.Settings?.POSProfileSettings?.getEffective?.()?.as_sales_invoice;
+            const statusOptions = STATUS_OPTIONS.filter((status) => {
+                if (status !== "Returnable") return true;
+                return cint(profileAsSalesInvoice || 0) === 1;
+            });
             this.search_field = frappe.ui.form.make_control({
                 df: {
                     label: __("Search"),
@@ -52,7 +58,7 @@
                 df: {
                     label: __("Invoice Status"),
                     fieldtype: "Select",
-                    options: STATUS_OPTIONS.join("\n"),
+                    options: statusOptions.join("\n"),
                     placeholder: __("Filter by invoice status"),
                     onchange: function () {
                         if (me.$component.is(":visible")) me.refresh_list();

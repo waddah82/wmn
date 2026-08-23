@@ -5,77 +5,32 @@ function wmn_invoice_payment_total(doc) {
             return Math.max(Math.abs(flt(doc.paid_amount || 0)), rowTotal);
         }
 
-        function wmn_source_invoice_payment_state(doc) {
+        function wmn_source_invoice_is_credit(doc) {
             doc = doc || {};
-            if (cint(doc.is_return || 0) === 1) return "return";
 
-            const epsilon = 0.000001;
+            if (cint(doc.is_return || 0) === 1) return false;
+
             const total = Math.abs(flt(doc.rounded_total || doc.grand_total || 0));
             const paid = wmn_invoice_payment_total(doc);
-            const outstanding = flt(doc.outstanding_amount || 0);
-            const status = String(doc.status || "").trim().toLowerCase();
-            const isSubmitted = cint(doc.docstatus || 0) === 1 || doc.__wmn_local_submitted === true;
-            const explicitlyCredit = doc.__wmn_credit_sale === true || cint(doc.__wmn_credit_sale || 0) === 1;
+            const outstanding = Math.abs(flt(doc.outstanding_amount || 0));
+            const epsilon = 0.000001;
 
-            if (explicitlyCredit || (isSubmitted && total > epsilon && paid <= epsilon)) {
-                return "unpaid";
-            }
-
-            if (
-                status === "partly paid" ||
-                status === "partly paid and discounted" ||
-                (paid > epsilon && outstanding > epsilon) ||
-                (total > epsilon && paid > epsilon && paid < total - epsilon)
-            ) {
-                return "partly_paid";
-            }
-
-            if (
-                status === "unpaid" ||
-                status === "unpaid and discounted" ||
-                status === "overdue" ||
-                status === "overdue and discounted"
-            ) {
-                return paid <= epsilon ? "unpaid" : "partly_paid";
-            }
-
-            return "paid";
+            // A pure credit sale has an invoice balance but no collected payment.
+            // This matches the WMN "Sell on Credit" flow where payment rows are kept at zero.
+            return total > epsilon && paid <= epsilon && outstanding > epsilon;
         }
 
-        function wmn_source_invoice_is_credit(doc) {
-            return wmn_source_invoice_payment_state(doc) === "unpaid";
-        }
-
-        function wmn_source_invoice_requires_zero_return_payment(doc) {
-            const state = wmn_source_invoice_payment_state(doc);
-            return state === "unpaid" || state === "partly_paid";
-        }
-
-        function wmn_mark_offline_credit_sale(doc) {
-            if (!doc || cint(doc.is_return || 0) === 1) return doc;
-
-            const total = Math.abs(flt(doc.rounded_total || doc.grand_total || 0));
-            doc.__wmn_credit_sale = true;
-            doc.paid_amount = 0;
-            doc.base_paid_amount = 0;
-            doc.outstanding_amount = total;
-            doc.__wmn_base_outstanding_amount = total;
-            doc.status = "Unpaid";
-            return doc;
-        }
-
-        function wmn_is_zero_payment_return_doc(doc, ctrl) {
+        function wmn_is_credit_return_doc(doc, ctrl) {
             doc = doc || {};
             if (cint(doc.is_return || 0) !== 1) return false;
 
             return !!(
-                doc.__wmn_return_zero_payment === true ||
-                cint(doc.__wmn_return_zero_payment || 0) === 1 ||
-                (ctrl && (ctrl.__wmn_return_zero_payment === true || cint(ctrl.__wmn_return_zero_payment || 0) === 1))
+                doc.__wmn_return_against_credit === true ||
+                (ctrl && ctrl.__wmn_return_against_credit === true)
             );
         }
 
-        function wmn_prepare_zero_payment_return(doc) {
+        function wmn_prepare_credit_return_without_payment(doc) {
             if (!doc) return doc;
 
             (doc.payments || []).forEach((row) => {
@@ -141,9 +96,7 @@ function wmn_invoice_payment_total(doc) {
             wmn_recalc_offline_payment_doc(doc);
 
             const total = flt(doc.rounded_total || doc.grand_total || 0);
-            const isReturn = cint(doc.is_return || 0) === 1;
-            const epsilon = 0.000001;
-            if (Math.abs(total) <= epsilon) frappe.throw(wmn_t("Invoice total is zero", "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0635\u0641\u0631"));
+            if (total <= 0) frappe.throw(wmn_t("Invoice total is zero", "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0635\u0641\u0631"));
 
             const allowPartialPayment = await wmn_is_partial_payment_allowed(ctrl);
             const canSellOnCredit = (
@@ -169,7 +122,7 @@ function wmn_invoice_payment_total(doc) {
              * Other payment-method amounts are preserved; the default row covers
              * only the remaining balance.
              */
-            if (defaultPayment && !preservePaymentRows && !isReturn) {
+            if (defaultPayment && !preservePaymentRows) {
                 const otherPaid = payments.reduce((sum, p) => {
                     if (p === defaultPayment) return sum;
                     return sum + flt(p.amount || 0);
@@ -193,7 +146,7 @@ function wmn_invoice_payment_total(doc) {
                             <div style="font-weight:600;">${mode}</div>
                             <div style="font-size:12px;color:#6b7280;">${frappe.utils.escape_html(p.account || "")}</div>
                         </div>
-                        <input type="number" step="0.01" ${isReturn ? 'max="0"' : 'min="0"'}
+                        <input type="number" step="0.01" min="0"
                                class="form-control wmn-offline-payment-amount"
                                data-payment-index="${idx}"
                                value="${amount}">
@@ -203,7 +156,7 @@ function wmn_invoice_payment_total(doc) {
 
             return new Promise((resolve, reject) => {
                 const d = new frappe.ui.Dialog({
-                    title: isReturn ? wmn_t("Refund", "استرداد") : wmn_t("Payment", "\u0627\u0644\u062F\u0641\u0639"),
+                    title: wmn_t("Payment", "\u0627\u0644\u062F\u0641\u0639"),
                     size: "large",
                     fields: [
                         {
@@ -246,12 +199,10 @@ function wmn_invoice_payment_total(doc) {
 
                                     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
                                         <div style="font-size:13px;color:#6b7280;">
-                                            ${isReturn
-                                                ? wmn_t("Complete Order will apply the refund to the offline return then save it offline.", "إكمال الطلب سيطبق الاسترداد على المرتجع ثم يحفظه أوفلاين.")
-                                                : wmn_t("Complete Order will apply payment to the offline invoice then save it offline.", "\u0625\u0643\u0645\u0627\u0644 \u0627\u0644\u0637\u0644\u0628 \u0633\u064A\u0636\u064A\u0641 \u0627\u0644\u062F\u0641\u0639 \u0644\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646 \u062B\u0645 \u064A\u062D\u0641\u0638\u0647\u0627 \u0623\u0648\u0641\u0644\u0627\u064A\u0646.")}
+                                            ${wmn_t("Complete Order will apply payment to the offline invoice then save it offline.", "\u0625\u0643\u0645\u0627\u0644 \u0627\u0644\u0637\u0644\u0628 \u0633\u064A\u0636\u064A\u0641 \u0627\u0644\u062F\u0641\u0639 \u0644\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646 \u062B\u0645 \u064A\u062D\u0641\u0638\u0647\u0627 \u0623\u0648\u0641\u0644\u0627\u064A\u0646.")}
                                         </div>
                                         <div style="font-weight:700;">
-                                            ${isReturn ? wmn_t("Refund", "الاسترداد") : wmn_t("Paid", "\u0627\u0644\u0645\u062F\u0641\u0648\u0639")}: <span class="wmn-offline-paid-total">0</span>
+                                            ${wmn_t("Paid", "\u0627\u0644\u0645\u062F\u0641\u0648\u0639")}: <span class="wmn-offline-paid-total">0</span>
                                         </div>
                                     </div>
                                 </div>
@@ -282,8 +233,7 @@ function wmn_invoice_payment_total(doc) {
                     d.$wrapper.find(".wmn-offline-payment-amount").each(function () {
                         const $input = $(this);
                         const idx = cint($input.attr("data-payment-index"));
-                        const rawAmount = flt($input.val() || 0);
-                        const amount = isReturn ? Math.min(0, rawAmount) : Math.max(0, rawAmount);
+                        const amount = Math.max(0, flt($input.val() || 0));
                         const row = payments[idx];
                         if (!row) return;
                         row.amount = amount;
@@ -294,7 +244,7 @@ function wmn_invoice_payment_total(doc) {
                         paid += amount;
                     });
 
-                    if (requirePayment && Math.abs(paid) <= epsilon) {
+                    if (requirePayment && paid <= 0) {
                         frappe.msgprint({
                             title: wmn_t("Payment Required", "الدفع مطلوب"),
                             indicator: "orange",
@@ -303,35 +253,20 @@ function wmn_invoice_payment_total(doc) {
                         return false;
                     }
 
-                    doc.payments = payments.filter(p => Math.abs(flt(p.amount || 0)) > epsilon || p.mode_of_payment);
+                    doc.payments = payments.filter(p => flt(p.amount || 0) > 0 || p.mode_of_payment);
                     wmn_recalc_offline_payment_doc(doc);
 
-                    const paidAmount = flt(doc.paid_amount || 0);
-                    const invoiceTotal = flt(doc.rounded_total || doc.grand_total || 0);
-
-                    if (isReturn && paidAmount < invoiceTotal - epsilon) {
+                    if (
+                        enforceFullPayment &&
+                        !allowPartialPayment &&
+                        flt(doc.paid_amount || 0) < flt(doc.rounded_total || doc.grand_total || 0)
+                    ) {
                         frappe.msgprint({
-                            title: wmn_t("Refund Amount", "مبلغ الاسترداد"),
+                            title: wmn_t("Payment Amount", "مبلغ الدفع"),
                             indicator: "orange",
-                            message: wmn_t("Refund amount cannot exceed the return total", "مبلغ الاسترداد لا يمكن أن يتجاوز إجمالي المرتجع")
+                            message: wmn_t("Payment amount is less than invoice total", "مبلغ الدفع أقل من إجمالي الفاتورة")
                         });
                         return false;
-                    }
-
-                    if (enforceFullPayment && !allowPartialPayment) {
-                        const invalidFullPayment = isReturn
-                            ? Math.abs(paidAmount - invoiceTotal) > epsilon
-                            : paidAmount < invoiceTotal - epsilon;
-                        if (invalidFullPayment) {
-                            frappe.msgprint({
-                                title: wmn_t("Payment Amount", "مبلغ الدفع"),
-                                indicator: "orange",
-                                message: isReturn
-                                    ? wmn_t("Refund amount must equal the return total", "مبلغ الاسترداد يجب أن يساوي إجمالي المرتجع")
-                                    : wmn_t("Payment amount is less than invoice total", "مبلغ الدفع أقل من إجمالي الفاتورة")
-                            });
-                            return false;
-                        }
                     }
                     return true;
                 }
@@ -381,7 +316,6 @@ function wmn_invoice_payment_total(doc) {
                     });
 
                     doc.payments = payments;
-                    wmn_mark_offline_credit_sale(doc);
                     wmn_recalc_offline_payment_doc(doc);
 
                     d.hide();

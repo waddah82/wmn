@@ -12,9 +12,9 @@
      */
 
 
-        function wmn_payment_is_zero_return(doc) {
+        function wmn_payment_is_credit_return(doc) {
             try {
-                return typeof wmn_is_zero_payment_return_doc === "function" && wmn_is_zero_payment_return_doc(doc, window.cur_pos);
+                return typeof wmn_is_credit_return_doc === "function" && wmn_is_credit_return_doc(doc, window.cur_pos);
             } catch (e) {
                 return false;
             }
@@ -67,13 +67,6 @@
                     const me = this;
 
                     this.$payment_modes.on("click", ".mode-of-payment", function (e) {
-                        const doc = me.events?.get_frm?.()?.doc || {};
-                        if (wmn_payment_is_zero_return(doc)) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            return;
-                        }
-
                         const mode_clicked = $(this);
                         if (!$(e.target).is(mode_clicked)) return;
 
@@ -148,18 +141,13 @@
 
                     this.$component.on("click", ".submit-order-btn", async () => {
                         const doc = this.events.get_frm().doc;
-                        const items = doc.items || [];
-                        const isZeroPaymentReturn = wmn_payment_is_zero_return(doc);
-
-                        if (isZeroPaymentReturn && typeof wmn_prepare_zero_payment_return === "function") {
-                            wmn_prepare_zero_payment_return(doc);
-                            this.update_totals_section(doc);
-                        }
-
                         const paid_amount = doc.paid_amount;
+                        const items = doc.items || [];
+                        const isCreditReturn = wmn_payment_is_credit_return(doc);
+
                         if (!this.validate_reqd_invoice_fields()) return;
 
-                        const zeroPaymentAllowed = isZeroPaymentReturn || flt(doc.additional_discount_percentage || 0) === 100;
+                        const zeroPaymentAllowed = isCreditReturn || flt(doc.additional_discount_percentage || 0) === 100;
                         if (!items.length || (flt(paid_amount || 0) === 0 && !zeroPaymentAllowed)) {
                             const message = items.length
                                 ? __("You cannot submit the order without payment.")
@@ -169,8 +157,8 @@
                             return;
                         }
 
-                        if (isZeroPaymentReturn && typeof wmn_prepare_zero_payment_return === "function") {
-                            wmn_prepare_zero_payment_return(doc);
+                        if (isCreditReturn && typeof wmn_prepare_credit_return_without_payment === "function") {
+                            wmn_prepare_credit_return_without_payment(doc);
                             this.update_totals_section(doc);
                         }
 
@@ -340,18 +328,6 @@
 
         checkout() {
                     const result = super.checkout();
-                    const doc = this.events?.get_frm?.()?.doc || {};
-
-                    if (wmn_payment_is_zero_return(doc) && typeof wmn_prepare_zero_payment_return === "function") {
-                        wmn_prepare_zero_payment_return(doc);
-                        this.selected_mode = "";
-                        this.render_payment_mode_dom();
-                        this.update_totals_section(doc);
-                        this.$payment_modes.find(".mode-of-payment").removeClass("border-primary");
-                        this.$payment_modes.find(".mode-of-payment-control input").prop("disabled", true);
-                        this.$payment_modes.find(".cash-shortcuts").hide();
-                    }
-
                     this.wmn_setup_send_to_cashier_button();
                     this.wmn_setup_back_to_recent_orders_button();
                     if (this.events && typeof this.events.after_checkout === "function") {

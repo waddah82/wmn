@@ -2393,7 +2393,11 @@ wmn_install_pos_pwa_app_css();
                     const doc = decorateInvoiceQueueRow(invoiceRow, paymentRows);
                     if (!doc) continue;
                     const invoiceStatus = String(doc.__wmn_display_status || doc.status || "").trim();
-                    if (wantedStatus && invoiceStatus !== wantedStatus) continue;
+                    if (wantedStatus === "Returnable") {
+                        if (cint(doc.docstatus || 0) !== 1 || cint(doc.is_return || 0) === 1) continue;
+                    } else if (wantedStatus && invoiceStatus !== wantedStatus) {
+                        continue;
+                    }
 
                     const displayName = String(doc.__wmn_display_name || invoiceRow.offline_id || doc.name || "");
                     if (search) {
@@ -2640,6 +2644,51 @@ wmn_install_pos_pwa_app_css();
                 return { syncId, invoice };
             }
 
+            async function resolveReturnAgainstForSync(row, invoice) {
+                if (!invoice || cint(invoice.is_return || 0) !== 1) return invoice;
+
+                const returnAgainst = String(invoice.return_against || "").trim();
+                if (!returnAgainst) return invoice;
+
+                const sourceRow = await findInvoiceQueueRow(returnAgainst);
+                if (!sourceRow) {
+                    // A server invoice name does not need local remapping. The server API
+                    // performs a final defensive resolution for legacy offline IDs.
+                    return invoice;
+                }
+
+                const sourceOfflineId = String(sourceRow.offline_id || "").trim();
+                const currentOfflineId = String(row?.offline_id || "").trim();
+                if (sourceOfflineId && currentOfflineId && sourceOfflineId === currentOfflineId) {
+                    throw new Error(__("A return invoice cannot reference itself."));
+                }
+
+                let serverSourceName = String(
+                    sourceRow.erpnext_name || sourceRow.server_name || ""
+                ).trim();
+
+                if (!serverSourceName) {
+                    const syncedSourceRow = await syncInvoice(sourceRow);
+                    serverSourceName = String(
+                        syncedSourceRow?.erpnext_name || syncedSourceRow?.server_name || ""
+                    ).trim();
+
+                    if (getInvoiceQueueStatus(syncedSourceRow) !== "synced") {
+                        throw new Error(__(
+                            "The source invoice must be completed and synchronized before its return can be synchronized."
+                        ));
+                    }
+                } else if (getInvoiceQueueStatus(sourceRow) !== "synced") {
+                    throw new Error(__(
+                        "The source invoice must be completed and synchronized before its return can be synchronized."
+                    ));
+                }
+
+                invoice.__wmn_return_against_offline_id = returnAgainst;
+                invoice.return_against = serverSourceName;
+                return invoice;
+            }
+
             async function syncInvoice(row) {
                 if (!online()) throw new Error("POS is offline");
                 if (!row) return row;
@@ -2658,6 +2707,7 @@ wmn_install_pos_pwa_app_css();
                 const flight = (async () => {
                     try {
                         await wmn_clean_doc_batch_serial_for_save(invoice);
+                        await resolveReturnAgainstForSync(row, invoice);
                         row.status = "syncing";
                         row.last_try_at = new Date().toISOString();
                         row.invoice = invoice;

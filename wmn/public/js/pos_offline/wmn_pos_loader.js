@@ -21,7 +21,7 @@ frappe.pages["point-of-sale"].on_page_load = function(wrapper) {
 
     frappe.require("point-of-sale.bundle.js", function() {
         const base = "/assets/wmn/js/pos_offline/";
-        const version = "20260818_pos_profile_settings_cashier_flow";
+        const version = "20260819_pos_profile_settings_cashier_flow";
         window.__wmn_pos_asset_version = version;
         const manifest = [
             "core/namespace.js",

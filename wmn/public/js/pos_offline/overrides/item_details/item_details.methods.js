@@ -56,6 +56,17 @@
                     const focus = () => {
                         const control = this.qty_control;
                         if (!control) return;
+
+                        // ERPNext activates the cart numpad field from a click on the
+                        // ItemDetails control. Programmatic focus alone does not run that
+                        // lifecycle, so trigger the same field click before focusing.
+                        const $field = control.$input?.closest?.(".input-with-feedback");
+                        if ($field?.length) {
+                            $field.trigger("click");
+                        } else if (this.events?.item_field_focused) {
+                            this.events.item_field_focused("qty");
+                        }
+
                         control.set_focus?.();
                         const input = control.$input?.get?.(0) || control.$input?.[0] || null;
                         if (input) {
