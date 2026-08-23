@@ -410,8 +410,8 @@ body:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {
 .wmn-mamsek-shell
 .point-of-sale-app:has(> .past-order-list[style*="display: flex"])
 > .past-order-summary {
-    grid-column: 2 !important;
-    grid-row: 1 !important;
+    grid-column: 2 ;
+    grid-row: 1 ;
 }
 
 .wmn-pos-nav {
@@ -1458,9 +1458,15 @@ body:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {
 }
 
 .wmn-mamsek-shell.wmn-button-view-active .wmn-card-media,
-.wmn-mamsek-shell.wmn-button-view-active .wmn-item-stepper,
-.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card .item-rate {
+.wmn-mamsek-shell.wmn-button-view-active .wmn-item-stepper {
 	display: none !important;
+}
+
+.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card .item-rate {
+	display: block !important;
+	margin-top: 2px !important;
+	font-size: 11px !important;
+	line-height: 14px !important;
 }
 
 .wmn-mamsek-shell.wmn-button-view-active .wmn-item-card .item-detail {
@@ -2350,9 +2356,12 @@ body.wmn-mamsek-pos-route:has(.wmn-mamsek-shell.wmn-button-view-active)
 	-webkit-line-clamp: 2;
 }
 
-.wmn-mamsek-shell.wmn-button-view-active .wmn-card-media,
-.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card .item-rate {
+.wmn-mamsek-shell.wmn-button-view-active .wmn-card-media {
 	display: none !important;
+}
+
+.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card .item-rate {
+	display: block !important;
 }
 
 /* 4) Live cart quantity badge using existing .wmn-item-count */
@@ -2751,7 +2760,8 @@ body.rtl-mode
 	.wmn-mamsek-shell.wmn-cart-context-active .wmn-cart-resizer {
 		position: absolute;
 		top: 0;
-		right: calc(var(--wmn-cart-width) - 5px);
+		inset-inline-end: calc(var(--wmn-cart-width) - 5px);
+		inset-inline-start: auto;
 		bottom: 0;
 		z-index: 120;
 		display: block;
@@ -2890,9 +2900,32 @@ body.rtl-mode .wmn-item-details-numpad-host {
 		width: 100% !important;
 	}
 
+	/* Recent Orders must use the same single-column breakpoint as the cart drawer.
+	 * ERPNext keeps PastOrderList at 4/10 columns until 620px, while WMN switches
+	 * the cart to drawer mode at 720px. Keep the list and summary fully readable
+	 * throughout the WMN small-screen range. */
+	.wmn-mamsek-shell > .point-of-sale-app:has(> .past-order-list[style*="display: flex"]) {
+		grid-template-columns: minmax(0, 1fr) !important;
+		grid-template-rows: auto auto !important;
+	}
 
+	.wmn-mamsek-shell > .point-of-sale-app > .past-order-list[style*="display: flex"],
+	.wmn-mamsek-shell > .point-of-sale-app > .past-order-summary[style*="display: flex"] {
+		grid-column: 1 / -1 !important;
+		width: 100% !important;
+		max-width: none !important;
+		min-width: 0 !important;
+		justify-self: stretch !important;
+		align-self: stretch !important;
+	}
 
+	.wmn-mamsek-shell > .point-of-sale-app > .past-order-list[style*="display: flex"] {
+		grid-row: 1 !important;
+	}
 
+	.wmn-mamsek-shell > .point-of-sale-app > .past-order-summary[style*="display: flex"] {
+		grid-row: 2 !important;
+	}
 
 	.wmn-mamsek-shell .customer-cart-container.wmn-order-sidebar {
 		position: fixed !important;
@@ -5268,4 +5301,13 @@ label {
     font-size: 12px;
     font-weight: 850;
     white-space: nowrap;
+}
+
+
+@media (max-width: 720px) {
+    .wmn-mamsek-shell > .point-of-sale-app > .past-order-summary[style*="display: flex"] {
+        grid-row: 2 !important;
+        grid-column: 1 !important;
+        grid-row: 2 !important;
+    }
 }
