@@ -124,7 +124,9 @@
             body.wmn-mamsek-pos-route .wmn-pos-manager-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
             body.wmn-mamsek-pos-route .wmn-pos-manager-button { display: flex; align-items: center; gap: 9px; min-height: 48px; padding: 9px 11px; border: 1px solid var(--border-color, #d1d8dd); border-radius: 10px; background: var(--card-bg, #fff); color: var(--text-color, #1f2937); text-align: start; cursor: pointer; }
             body.wmn-mamsek-pos-route .wmn-pos-manager-button:hover { border-color: var(--primary, #2490ef); background: var(--subtle-fg, #f8fafc); }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-button small { display: block; margin-top: 2px; color: var(--text-muted, #6c7680); font-size: 10px; }
+            body.wmn-mamsek-pos-route .wmn-pos-manager-button small { display: block; margin-top: 2px; color: var(--wmn-pos-menu-text, var(--text-muted, #6c7680)); font-size: 10px; opacity: .82; }
+            body.wmn-mamsek-pos-route .wmn-pos-manager-button.wmn-pos-manager-colored { background: var(--wmn-pos-menu-bg, var(--card-bg, #fff)); color: var(--wmn-pos-menu-text, var(--text-color, #1f2937)); border-color: var(--wmn-pos-menu-bg, var(--border-color, #d1d8dd)); }
+            body.wmn-mamsek-pos-route .wmn-pos-manager-button.wmn-pos-manager-colored:hover { background: var(--wmn-pos-menu-bg, var(--card-bg, #fff)); color: var(--wmn-pos-menu-text, var(--text-color, #1f2937)); filter: brightness(.96); }
             body.wmn-mamsek-pos-route .wmn-pos-manager-button .wmn-pos-manager-icon { flex: 0 0 auto; }
             body.wmn-mamsek-pos-route .wmn-pos-manager-offline-note { padding: 12px; border: 1px solid #f2d6a2; border-radius: 10px; background: #fff8e8; color: #8a5a00; }
             body.wmn-mamsek-pos-route .wmn-pos-doctype-shell {
@@ -289,12 +291,24 @@
         return icon("form");
     }
 
+    function safeMenuColor(value) {
+        const color = String(value || "").trim();
+        return /^#[0-9a-f]{3,8}$/i.test(color) ? color : "";
+    }
+
     function managerButtonHtml(item) {
         const permissionText = item.can_write || item.can_create
             ? __("Open list, add or edit")
             : __("Read only");
+        const buttonColor = safeMenuColor(item.button_color);
+        const textColor = safeMenuColor(item.text_color);
+        const hasCustomAppearance = Boolean(buttonColor || textColor);
+        const style = [
+            buttonColor ? `--wmn-pos-menu-bg:${buttonColor}` : "",
+            textColor ? `--wmn-pos-menu-text:${textColor}` : "",
+        ].filter(Boolean).join(";");
         return `
-            <button type="button" class="wmn-pos-manager-button wmn-pos-manager-doctype" data-doctype="${escapeHtml(item.doctype)}">
+            <button type="button" class="wmn-pos-manager-button wmn-pos-manager-doctype${hasCustomAppearance ? " wmn-pos-manager-colored" : ""}" data-doctype="${escapeHtml(item.doctype)}"${style ? ` style="${style}"` : ""}>
                 ${configuredIcon(item)}
                 <span><strong>${escapeHtml(item.label || item.doctype)}</strong><small>${escapeHtml(permissionText)}</small></span>
             </button>`;
@@ -755,7 +769,6 @@
             .app-switcher-menu,
             .workspace-sidebar,
             .wmn-global-workspace-header,
-            .body-sidebar-container,
             .form-footer {
                 display: none !important;
             }
@@ -958,6 +971,38 @@
             dialogScriptCache.set(key, promise);
         }
         return dialogScriptCache.get(key);
+    }
+
+    function restrictEmbeddedLinkCreation(frameWindow, frm) {
+        if (!frameWindow || !frm) return;
+
+        const markOnlySelect = (df) => {
+            if (!df || !["Link", "Dynamic Link"].includes(String(df.fieldtype || ""))) return;
+            df.only_select = 1;
+        };
+
+        for (const df of frm.meta?.fields || []) markOnlySelect(df);
+
+        for (const control of Object.values(frm.fields_dict || {})) {
+            markOnlySelect(control?.df);
+            const grid = control?.grid;
+            if (!grid) continue;
+            for (const childDf of grid.docfields || []) markOnlySelect(childDf);
+            for (const gridRow of grid.grid_rows || []) {
+                for (const childControl of Object.values(gridRow?.grid_form?.fields_dict || {})) {
+                    markOnlySelect(childControl?.df);
+                }
+            }
+        }
+
+        frm.__wmnPosDialogLinkCreateDisabled = true;
+    }
+
+    async function applyEmbeddedLinkPolicy(iframe, doctype) {
+        const frm = await waitForFrameForm(iframe, doctype);
+        const frameWindow = iframe?.contentWindow;
+        if (!frameWindow) return;
+        restrictEmbeddedLinkCreation(frameWindow, frm);
     }
 
     function waitForFrameForm(iframe, doctype, timeoutMs = 10000) {
@@ -1721,6 +1766,9 @@
                 const frameDocument = iframe.contentDocument || iframe.contentWindow?.document;
                 injectFrameStyles(frameDocument);
                 hideFrameChrome(frameDocument);
+                applyEmbeddedLinkPolicy(iframe, config.doctype).catch((error) => {
+                    console.warn("WMN POS could not restrict link creation inside the DocType dialog", error);
+                });
 
                 const markEdited = () => { formState.userEdited = true; };
                 frameDocument.addEventListener("input", markEdited, true);

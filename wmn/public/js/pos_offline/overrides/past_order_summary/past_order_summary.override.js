@@ -51,6 +51,18 @@
             return methods.FinalMethods.wmn_open_add_payment_dialog.apply(this, args);
         }
 
+        attach_items_info(...args) {
+            return methods.FinalMethods.attach_items_info.apply(this, args);
+        }
+
+        get_item_html(...args) {
+            return methods.FinalMethods.get_item_html.apply(this, args);
+        }
+
+        is_invoice_returnable(...args) {
+            return methods.FinalMethods.is_invoice_returnable.apply(this, args);
+        }
+
         get_condition_btn_map(...args) {
             return methods.FinalMethods.get_condition_btn_map.apply(this, args);
         }

@@ -23,6 +23,10 @@
             return methods.FinalMethods.wmn_setup_back_to_recent_orders_button.apply(this, args);
         }
 
+        render_payment_mode_dom(...args) {
+            return methods.FinalMethods.render_payment_mode_dom.apply(this, args);
+        }
+
         checkout(...args) {
             return methods.FinalMethods.checkout.apply(this, args);
         }

@@ -6,6 +6,10 @@
     const methods = ns.OverrideMethods.Controller;
 
     class WMNControllerOverride extends Base {
+        wmn_prepare_pos_frm_doc(...args) {
+            return methods.FinalMethods.wmn_prepare_pos_frm_doc.apply(this, args);
+        }
+
         constructor(...args) {
             super(...args);
             methods.initialize(this, args);
@@ -289,6 +293,22 @@
 
         set_item_quantity_from_selector(...args) {
             return methods.FinalMethods.set_item_quantity_from_selector.apply(this, args);
+        }
+
+        wmn_is_local_pricing_rule_engine_ignored(...args) {
+            return ns.Features.PricingRule.Common.ControllerMethods.wmn_is_local_pricing_rule_engine_ignored.apply(this, args);
+        }
+
+        wmn_get_local_pricing_rule_snapshot(...args) {
+            return ns.Features.PricingRule.Common.ControllerMethods.wmn_get_local_pricing_rule_snapshot.apply(this, args);
+        }
+
+        wmn_refresh_local_pricing_rules(...args) {
+            return ns.Features.PricingRule.Common.ControllerMethods.wmn_refresh_local_pricing_rules.apply(this, args);
+        }
+
+        wmn_assert_local_pricing_rules_supported(...args) {
+            return ns.Features.PricingRule.Common.ControllerMethods.wmn_assert_local_pricing_rules_supported.apply(this, args);
         }
 
         wmn_has_manual_additional_discount(...args) {

@@ -52,8 +52,12 @@
             const promotionAmount = Math.max(0, flt(doc.__wmn_promotion_discount_total || 0));
             const couponAmount = Math.max(0, flt(doc.__wmn_coupon_discount_total || 0));
             const couponCode = String(doc.__wmn_coupon_code || doc.__wmn_pos_coupon_rule?.coupon_code || "").trim();
-            const manualPercent = Math.max(0, flt(doc.additional_discount_percentage || 0));
-            const manualAmount = manualPercent > 0.000001 ? Math.max(0, flt(doc.discount_amount || 0)) : 0;
+            const isReturn = cint(doc.is_return || 0) === 1;
+            const manualPercent = Math.max(0, Math.abs(flt(doc.additional_discount_percentage || 0)));
+            const nativeReturnDiscount = isReturn ? Math.abs(flt(doc.discount_amount || 0)) : 0;
+            const manualAmount = isReturn
+                ? nativeReturnDiscount
+                : (manualPercent > 0.000001 ? Math.max(0, flt(doc.discount_amount || 0)) : 0);
             const taxes = Array.isArray(doc.taxes)
                 ? doc.taxes.map((row) => ({
                     label: String(row.description || row.account_head || row.charge_type || __("Tax")).trim(),
@@ -732,8 +736,11 @@
                     const currency = doc.currency || "";
                     const promotionAmount = Math.max(0, flt(doc.__wmn_promotion_discount_total || 0));
                     const couponAmount = Math.max(0, flt(doc.__wmn_coupon_discount_total || 0));
-                    const manualPercent = Math.max(0, flt(doc.additional_discount_percentage || 0));
-                    const manualAmount = manualPercent > 0.000001 ? Math.max(0, flt(doc.discount_amount || 0)) : 0;
+                    const isReturn = cint(doc.is_return || 0) === 1;
+                    const manualPercent = Math.max(0, Math.abs(flt(doc.additional_discount_percentage || 0)));
+                    const manualAmount = isReturn
+                        ? Math.abs(flt(doc.discount_amount || 0))
+                        : (manualPercent > 0.000001 ? Math.max(0, flt(doc.discount_amount || 0)) : 0);
                     const couponCode = String(doc.__wmn_coupon_code || "").trim();
                     const totalDiscount = promotionAmount + couponAmount + manualAmount;
 
@@ -785,14 +792,16 @@
                     const $coupon = this.$compact_cart_actions.find(".wmn-compact-coupon-btn");
                     const $details = this.$compact_cart_actions.find(".wmn-compact-details-btn");
 
-                    $discount.toggleClass("is-active", summary.manual_percent > 0.000001);
+                    $discount.toggleClass("is-active", summary.manual_percent > 0.000001 || summary.manual_amount > 0.000001);
                     $coupon.toggleClass("is-active", Boolean(summary.coupon_code));
 
                     $discount.attr(
                         "title",
                         summary.manual_percent > 0.000001
                             ? `${__("Manual Discount")}: ${summary.manual_percent}%`
-                            : __("Add Discount")
+                            : (summary.manual_amount > 0.000001
+                                ? `${__("Manual Discount")}: ${format_currency(summary.manual_amount, summary.currency)}`
+                                : __("Add Discount"))
                     );
                     $coupon.attr(
                         "title",

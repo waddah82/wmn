@@ -12,9 +12,9 @@
      */
 
 
-        function wmn_payment_is_credit_return(doc) {
+        function wmn_payment_is_zero_return(doc) {
             try {
-                return typeof wmn_is_credit_return_doc === "function" && wmn_is_credit_return_doc(doc, window.cur_pos);
+                return typeof wmn_is_zero_payment_return_doc === "function" && wmn_is_zero_payment_return_doc(doc, window.cur_pos);
             } catch (e) {
                 return false;
             }
@@ -30,6 +30,16 @@
                 if (typeof wmn_is_pos_offline === "function") return !!wmn_is_pos_offline();
             } catch (e) {}
             return window.__wmn_pos_effective_offline === true || navigator.onLine === false;
+        }
+
+        function wmn_attach_payment_gateway_ui(payment) {
+            const gatewayFeature = wmn_payment_is_offline()
+                ? window.WMN_POS?.Features?.PaymentGateway?.Offline
+                : window.WMN_POS?.Features?.PaymentGateway?.Online;
+            if (!gatewayFeature?.attach) return;
+            Promise.resolve(gatewayFeature.attach(payment)).catch((e) => {
+                console.warn("WMN payment gateway UI attach failed", e);
+            });
         }
 
         async function wmn_get_cached_invoice_fields() {
@@ -68,16 +78,16 @@
                     // coupon events, paid amount updates, loyalty and payment listeners.
                     super.bind_events();
 
-                    // Replace only the native Complete Order handler so WMN credit-return
-                    // behavior is added without duplicating the rest of ERPNext's lifecycle.
+                    // Replace only the native Complete Order handler so WMN zero-payment
+                    // return behavior is added without duplicating ERPNext v16 payment events.
                     this.$component.off("click", ".submit-order-btn");
                     this.$component.on("click.wmnSubmit", ".submit-order-btn", async () => {
                         const doc = this.events.get_frm().doc;
                         const paidAmount = flt(doc.paid_amount || 0);
                         const items = doc.items || [];
-                        const isCreditReturn = wmn_payment_is_credit_return(doc);
+                        const isZeroPaymentReturn = wmn_payment_is_zero_return(doc);
                         const zeroPaymentAllowed =
-                            isCreditReturn ||
+                            isZeroPaymentReturn ||
                             flt(doc.additional_discount_percentage || 0) === 100 ||
                             cint(this.allow_partial_payment || 0) === 1;
 
@@ -92,8 +102,18 @@
 
                         if (!this.validate_reqd_invoice_fields()) return;
 
-                        if (isCreditReturn && typeof wmn_prepare_credit_return_without_payment === "function") {
-                            wmn_prepare_credit_return_without_payment(doc);
+                        const gatewayService = window.WMN_POS?.Services?.PaymentGateway?.Service;
+                        if (gatewayService?.validateBeforeSubmit) {
+                            try {
+                                await gatewayService.validateBeforeSubmit(doc);
+                            } catch (error) {
+                                frappe.msgprint({ title: __("Electronic Payment"), indicator: "red", message: window.WMN_POS.Features.PaymentGateway.Common.errorMessage(error) });
+                                return;
+                            }
+                        }
+
+                        if (isZeroPaymentReturn && typeof wmn_prepare_zero_payment_return === "function") {
+                            wmn_prepare_zero_payment_return(doc);
                             this.update_totals_section(doc);
                         }
 
@@ -184,10 +204,32 @@
                 },
 
 
+        render_payment_mode_dom(...args) {
+                    const result = super.render_payment_mode_dom(...args);
+                    // ERPNext rebuilds the payment-mode DOM when the cashier changes an amount.
+                    // Re-attach gateway controls to the newly rendered rows without changing payment data.
+                    wmn_attach_payment_gateway_ui(this);
+                    return result;
+                },
+
+
         checkout() {
                     const result = super.checkout();
+                    const doc = this.events?.get_frm?.()?.doc || {};
+
+                    if (wmn_payment_is_zero_return(doc) && typeof wmn_prepare_zero_payment_return === "function") {
+                        wmn_prepare_zero_payment_return(doc);
+                        this.selected_mode = "";
+                        this.render_payment_mode_dom();
+                        this.update_totals_section(doc);
+                        this.$payment_modes.find(".mode-of-payment").removeClass("border-primary");
+                        this.$payment_modes.find(".mode-of-payment-control input").prop("disabled", true);
+                        this.$payment_modes.find(".cash-shortcuts").hide();
+                    }
+
                     this.wmn_setup_send_to_cashier_button();
                     this.wmn_setup_back_to_recent_orders_button();
+                    wmn_attach_payment_gateway_ui(this);
                     if (this.events && typeof this.events.after_checkout === "function") {
                         Promise.resolve(this.events.after_checkout()).catch((e) => {
                             console.warn("WMN Payment after_checkout skipped", e);
@@ -205,6 +247,7 @@
     FinalMethods.bind_events = UIMethods.bind_events || CoreMethods.bind_events;
     FinalMethods.wmn_setup_send_to_cashier_button = UIMethods.wmn_setup_send_to_cashier_button || CoreMethods.wmn_setup_send_to_cashier_button;
     FinalMethods.wmn_setup_back_to_recent_orders_button = UIMethods.wmn_setup_back_to_recent_orders_button || CoreMethods.wmn_setup_back_to_recent_orders_button;
+    FinalMethods.render_payment_mode_dom = UIMethods.render_payment_mode_dom || CoreMethods.render_payment_mode_dom;
     FinalMethods.checkout = UIMethods.checkout || CoreMethods.checkout;
 
     const initializeCore = null;

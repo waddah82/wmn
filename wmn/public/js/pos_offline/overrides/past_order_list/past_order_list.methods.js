@@ -21,6 +21,7 @@
         "Partly Paid",
         "Overdue",
         "Consolidated",
+        "Returnable",
         "Return",
     ];
 

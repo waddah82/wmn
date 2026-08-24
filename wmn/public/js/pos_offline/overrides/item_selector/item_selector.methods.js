@@ -343,9 +343,20 @@
                 batch_no,
                 actual_qty,
                 uom,
-                price_list_rate,
             } = item;
-            const precision = flt(price_list_rate, 2) % 1 !== 0 ? 2 : 0;
+            const effective_rate = flt(
+                item.price_list_rate !== undefined && item.price_list_rate !== null
+                    ? item.price_list_rate
+                    : item.rate || 0
+            );
+            const display_currency =
+                item.currency ||
+                this.events?.get_frm?.()?.doc?.currency ||
+                this.mamsek_settings?.currency ||
+                window.cur_pos?.frm?.doc?.currency ||
+                window.cur_pos?.settings?.currency ||
+                "";
+            const precision = flt(effective_rate, 2) % 1 !== 0 ? 2 : 0;
             const safe_name = escape_html(item.item_name || item.item_code || "");
             const safe_abbr = escape_html(frappe.get_abbr(item.item_name || item.item_code || ""));
             const stock_value = item.is_stock_item ? flt(actual_qty) : "";
@@ -357,11 +368,11 @@
             return `<article class="wmn-item-card"
                 data-item-code="${escape(item.item_code)}" data-serial-no="${escape(serial_no)}"
                 data-batch-no="${escape(batch_no)}" data-uom="${escape(uom)}"
-                data-rate="${escape(price_list_rate || 0)}" data-stock-uom="${escape(item.stock_uom)}">
+                data-rate="${escape(effective_rate)}" data-stock-uom="${escape(item.stock_uom)}">
                 <div class="item-wrapper"
                     data-item-code="${escape(item.item_code)}" data-serial-no="${escape(serial_no)}"
                     data-batch-no="${escape(batch_no)}" data-uom="${escape(uom)}"
-                    data-rate="${escape(price_list_rate || 0)}" data-stock-uom="${escape(item.stock_uom)}"
+                    data-rate="${escape(effective_rate)}" data-stock-uom="${escape(item.stock_uom)}"
                     title="${safe_name}">
                     <div class="wmn-card-media">
                         ${media}
@@ -370,7 +381,7 @@
                     </div>
                     <div class="item-detail">
                         <div class="item-name">${safe_name}</div>
-                        <div class="item-rate">${format_currency(price_list_rate, item.currency, precision) || 0}</div>
+                        <div class="item-rate">${format_currency(effective_rate, display_currency, precision) || 0}</div>
                     </div>
                 </div>
                 <div class="wmn-item-stepper" aria-label="${escape_html(__("Quantity"))}">
@@ -2468,7 +2479,10 @@
                 
 
                     .items-container.wmn-button-mode .item-wrapper .item-detail .item-rate {
-                        display: none;
+                        display: block;
+                        margin-top: 2px;
+                        font-size: 11px;
+                        line-height: 14px;
                     }
     .items-container.wmn-button-mode .item-wrapper {
         display: flex !important;

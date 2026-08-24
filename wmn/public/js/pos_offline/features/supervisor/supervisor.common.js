@@ -650,7 +650,7 @@
                     },
                     {
                         fieldname: "pin",
-                        fieldtype: "Password",
+                        fieldtype: "Data",
                         label: __("Supervisor PIN"),
                         reqd: 1,
                     },
@@ -708,6 +708,24 @@
             });
 
             window.WMN_POS?.UI?.Dialogs?.decorate?.(dialog, "wmn-pos-supervisor-dialog");
+
+            // Supervisor PIN is an application PIN, not a Frappe user password.
+            // Keep it visually masked without using ControlPassword, because that
+            // control triggers the server-side password-strength API on input.
+            const pinInput = dialog.fields_dict.pin?.$input;
+            if (pinInput?.length) {
+                pinInput.attr({
+                    type: "password",
+                    inputmode: "numeric",
+                    autocomplete: "off",
+                    pattern: "[0-9]*",
+                });
+                pinInput.on("input.wmnSupervisorPin", function () {
+                    const digits = String(this.value || "").replace(/\D+/g, "");
+                    if (this.value !== digits) this.value = digits;
+                });
+            }
+
             dialog.$wrapper.on("hidden.bs.modal", () => finish({ approved: false, required: true, action }));
             dialog.show();
             setTimeout(() => dialog.fields_dict.pin?.set_focus?.(), 50);

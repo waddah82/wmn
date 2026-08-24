@@ -15,7 +15,9 @@
                             default_customer: this.settings?.customer || "",
                             customer_group: doc.customer_group || this.customer_details?.customer_group || "",
                             coupon_code: doc.__wmn_coupon_code || "",
-                            manual_invoice_discount_active: this.wmn_has_manual_additional_discount?.() || false,
+                            manual_invoice_discount_active:
+                                (this.wmn_has_manual_additional_discount?.() || false) ||
+                                flt(doc.__wmn_pricing_rule_invoice_discount_total || 0) > 0.000001,
                         };
                     },
 
@@ -411,7 +413,15 @@
 
                         this.__wmn_promotion_refreshing = true;
                         try {
-                            if (cint(doc.is_return || 0) || !Array.isArray(doc.items) || !doc.items.length) {
+                            if (cint(doc.is_return || 0)) {
+                                // The return owns the already-applied source promotion
+                                // through its financial values. Clearing promotions here
+                                // would call the invoice discount composer and erase it.
+                                this.wmn_refresh_promotion_ui();
+                                return null;
+                            }
+
+                            if (!Array.isArray(doc.items) || !doc.items.length) {
                                 await this.wmn_clear_promotions({
                                     silent: true,
                                     defer_discount_sync: !!options.defer_discount_sync,

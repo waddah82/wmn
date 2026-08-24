@@ -107,11 +107,14 @@
                     const currency = doc.currency || "";
                     const promotionAmount = Math.max(0, flt(doc.__wmn_promotion_discount_total || 0));
                     const couponAmount = Math.max(0, flt(doc.__wmn_coupon_discount_total || 0));
-                    const manualPercent = Math.max(0, flt(doc.additional_discount_percentage || 0));
-                    const manualAmount = manualPercent > 0.000001 ? Math.max(0, flt(doc.discount_amount || 0)) : 0;
+                    const isReturn = cint(doc.is_return || 0) === 1;
+                    const manualPercent = Math.max(0, Math.abs(flt(doc.additional_discount_percentage || 0)));
+                    const manualAmount = isReturn
+                        ? Math.abs(flt(doc.discount_amount || 0))
+                        : (manualPercent > 0.000001 ? Math.max(0, flt(doc.discount_amount || 0)) : 0);
                     const couponCode = String(doc.__wmn_coupon_code || "").trim();
                     const knownTotal = promotionAmount + couponAmount + manualAmount;
-                    const invoiceDiscount = Math.max(0, flt(doc.discount_amount || 0));
+                    const invoiceDiscount = isReturn ? 0 : Math.max(0, flt(doc.discount_amount || 0));
                     const fallbackAmount = knownTotal <= 0.000001 ? invoiceDiscount : 0;
 
                     const rows = [];
@@ -121,8 +124,8 @@
                     if (couponCode || couponAmount > 0.000001) {
                         rows.push(`<div class="wmn-summary-discount-row"><span>${__("Coupon")}${couponCode ? ` · ${frappe.utils.escape_html(couponCode)}` : ""}</span><strong>-${format_currency(couponAmount, currency)}</strong></div>`);
                     }
-                    if (manualAmount > 0.000001) {
-                        rows.push(`<div class="wmn-summary-discount-row"><span>${__("Manual Discount")} · ${manualPercent}%</span><strong>-${format_currency(manualAmount, currency)}</strong></div>`);
+                    if (manualAmount > 0.000001 || manualPercent > 0.000001) {
+                        rows.push(`<div class="wmn-summary-discount-row"><span>${__("Manual Discount")}${manualPercent > 0.000001 ? ` · ${manualPercent}%` : ""}</span><strong>-${format_currency(manualAmount, currency)}</strong></div>`);
                     }
                     if (fallbackAmount > 0.000001) {
                         rows.push(`<div class="wmn-summary-discount-row"><span>${__("Invoice Discount")}</span><strong>-${format_currency(fallbackAmount, currency)}</strong></div>`);
@@ -334,9 +337,98 @@
                     dialog.show();
                 },
 
+
+
+        async attach_items_info(doc) {
+                    if (!wmn_summary_is_offline()) {
+                        return super.attach_items_info(doc);
+                    }
+
+                    const returnOffline = window.WMN_POS?.Features?.Return?.Offline;
+                    this.__wmn_offline_return_state = returnOffline?.getReturnState
+                        ? await returnOffline.getReturnState(doc)
+                        : null;
+
+                    this.$items_container.html("");
+                    for (const item of doc.items || []) {
+                        const itemDom = await this.get_item_html(doc, item);
+                        this.$items_container.append(itemDom);
+                        this.set_dynamic_rate_header_width();
+                    }
+                },
+
+        async get_item_html(doc, item_data) {
+                    if (!wmn_summary_is_offline()) {
+                        return super.get_item_html(doc, item_data);
+                    }
+
+                    const returnOffline = window.WMN_POS?.Features?.Return?.Offline;
+                    const cachedState = this.__wmn_offline_return_state;
+                    const cachedItemState = cachedState?.source === doc
+                        ? (cachedState.items || []).find((row) => String(row.source_row?.name || "") === String(item_data?.name || ""))
+                        : null;
+                    const returnedQty = cachedItemState
+                        ? flt(cachedItemState.returned_qty || 0)
+                        : (returnOffline?.getReturnedQty ? await returnOffline.getReturnedQty(doc, item_data) : 0);
+                    const itemRefundData = returnedQty > 0.000001
+                        ? `<div class="item-row-refund"><strong>${returnedQty}</strong> ${__("Returned")}</div>`
+                        : "";
+
+                    const rateHtml = item_data.rate && item_data.price_list_rate && item_data.rate !== item_data.price_list_rate
+                        ? `<span class="item-disc">(${item_data.discount_percentage || 0}% off)</span><div class="item-rate">${format_currency(item_data.rate, doc.currency)}</div>`
+                        : `<div class="item-rate">${format_currency(item_data.price_list_rate || item_data.rate, doc.currency)}</div>`;
+
+                    return `<div class="item-row-wrapper">
+                        <div class="item-row-data">
+                            <div class="item-name">${item_data.item_name}</div>
+                            <div class="item-qty">${item_data.qty || 0} ${item_data.uom || ""}</div>
+                            <div class="item-rate-disc">${rateHtml}</div>
+                        </div>
+                        ${itemRefundData}
+                    </div>`;
+                },
+
+        async is_invoice_returnable(doctype, invoice) {
+                    if (!wmn_summary_is_offline()) {
+                        return super.is_invoice_returnable(doctype, invoice);
+                    }
+
+                    const returnOffline = window.WMN_POS?.Features?.Return?.Offline;
+                    if (!returnOffline?.isInvoiceReturnable) return false;
+
+                    let sourceDoc = this.doc || null;
+                    const sourceIds = window.WMN_POS?.Features?.Return?.Common?.invoiceIdentities?.(sourceDoc) || new Set();
+                    if (!sourceDoc || (invoice && !sourceIds.has(String(invoice)))) {
+                        const cache = window.cur_pos?.wmn_cache?.();
+                        sourceDoc = cache?.getInvoiceFromCache
+                            ? await cache.getInvoiceFromCache(doctype, invoice)
+                            : await window.wmnPOSOffline?.getOfflineInvoice?.(invoice);
+                    }
+                    if (!sourceDoc) return false;
+                    if (this.__wmn_offline_return_state?.source === sourceDoc) {
+                        return !!this.__wmn_offline_return_state.returnable;
+                    }
+                    return await returnOffline.isInvoiceReturnable(sourceDoc);
+                },
+
         get_condition_btn_map(after_submission) {
                     if (this.after_submission === true || after_submission === true) {
                         return [{ condition: true, visible_btns: ["Print Receipt", "Email Receipt", "New Order"] }];
+                    }
+
+                    const doc = this.doc || {};
+                    if (cint(doc.docstatus || 0) === 0) {
+                        return [{ condition: true, visible_btns: ["Edit Order", "Delete Order"] }];
+                    }
+                    if (cint(doc.is_return || 0) === 1 && cint(doc.docstatus || 0) === 1) {
+                        return [{ condition: true, visible_btns: ["Print Receipt", "Email Receipt"] }];
+                    }
+                    if (cint(doc.docstatus || 0) === 1) {
+                        const visible = ["Print Receipt", "Email Receipt", "Return"];
+                        if (!wmn_summary_is_offline() && ["Partly Paid", "Overdue", "Unpaid"].includes(String(doc.status || ""))) {
+                            visible.push("Open in Form View");
+                        }
+                        return [{ condition: true, visible_btns: visible }];
                     }
                     return super.get_condition_btn_map(after_submission);
                 },
@@ -388,6 +480,9 @@
     FinalMethods.wmn_open_from_invoice_barcode = UIMethods.wmn_open_from_invoice_barcode || CoreMethods.wmn_open_from_invoice_barcode;
     FinalMethods.wmn_render_add_payment_button = UIMethods.wmn_render_add_payment_button || CoreMethods.wmn_render_add_payment_button;
     FinalMethods.wmn_open_add_payment_dialog = UIMethods.wmn_open_add_payment_dialog || CoreMethods.wmn_open_add_payment_dialog;
+    FinalMethods.attach_items_info = UIMethods.attach_items_info || CoreMethods.attach_items_info;
+    FinalMethods.get_item_html = UIMethods.get_item_html || CoreMethods.get_item_html;
+    FinalMethods.is_invoice_returnable = UIMethods.is_invoice_returnable || CoreMethods.is_invoice_returnable;
     FinalMethods.get_condition_btn_map = UIMethods.get_condition_btn_map || CoreMethods.get_condition_btn_map;
     FinalMethods.attach_document_info = UIMethods.attach_document_info || CoreMethods.attach_document_info;
     FinalMethods.print_receipt = UIMethods.print_receipt || CoreMethods.print_receipt;

@@ -26,27 +26,28 @@
         if (!hasContext(frm)) return;
         if (frm.__wmn_cash_movement_closing_inflight) return frm.__wmn_cash_movement_closing_inflight;
 
-        const request = frappe.call({
-            method: "wmn.features.cash_movement.pos_closing.get_cash_movement_closing_snapshot",
-            args: {
-                doc: JSON.stringify(frm.doc),
-                initialize_closing_amounts: initializeClosingAmounts ? 1 : 0,
-            },
-            freeze: false,
-        });
+        const inflight = (async () => {
+            try {
+                const response = await frappe.call({
+                    method: "wmn.features.cash_movement.pos_closing.get_cash_movement_closing_snapshot",
+                    args: {
+                        doc: JSON.stringify(frm.doc),
+                        initialize_closing_amounts: initializeClosingAmounts ? 1 : 0,
+                    },
+                    freeze: false,
+                });
 
-        frm.__wmn_cash_movement_closing_inflight = request.then(
-            (response) => {
                 const snapshot = response?.message || {};
                 setChildTable(frm, "payment_reconciliation", snapshot.payment_reconciliation || []);
                 setChildTable(frm, "wmn_cash_movements", snapshot.wmn_cash_movements || []);
                 return snapshot;
+            } finally {
+                frm.__wmn_cash_movement_closing_inflight = null;
             }
-        ).finally(() => {
-            frm.__wmn_cash_movement_closing_inflight = null;
-        });
+        })();
 
-        return frm.__wmn_cash_movement_closing_inflight;
+        frm.__wmn_cash_movement_closing_inflight = inflight;
+        return inflight;
     }
 
     function refreshAfterNativeLoad(frm) {
