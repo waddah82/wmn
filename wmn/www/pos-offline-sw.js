@@ -7,9 +7,9 @@
    - Avoids `exc: "Offline..."` strings because Frappe may try JSON.parse(exc).
 */
 
-const WMN_POS_SW_VERSION = "v16-port-20260819";
-const WMN_POS_CACHE = "wmn-pos-runtime-v16-port-20260819";
-const WMN_POS_API_CACHE = "wmn-pos-api-v16-port-20260819";
+const WMN_POS_SW_VERSION = "v16-discount-composition-policy-20260822-v5";
+const WMN_POS_CACHE = "wmn-pos-runtime-v16-payment-gateway-ui-mapping-20260822-v8";
+const WMN_POS_API_CACHE = "wmn-pos-api-v16-discount-composition-policy-20260822-v5";
 
 const SHELL_URLS = [
   "/desk",

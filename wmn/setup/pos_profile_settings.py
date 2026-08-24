@@ -10,6 +10,12 @@ LEGACY_PROFILE_FIELDS = (
 )
 
 ALLOWED_FIELDS = {
+    "ignore_pricing_rule",
+    "pricing_rule_promotion_policy",
+    "pricing_rule_coupon_policy",
+    "promotion_coupon_policy",
+    "pricing_rule_promotion_coupon_policy",
+    "combined_discount_representation",
     "default_item_view",
     "show_item_cart_counter",
     "enable_auto_silent_print",
@@ -46,6 +52,7 @@ ALLOWED_FIELDS = {
 }
 
 CHECK_FIELDS = {
+    "ignore_pricing_rule",
     "show_item_cart_counter",
     "enable_auto_silent_print",
     "print_after_cashier_completion",
@@ -67,6 +74,11 @@ INT_FIELDS = {
 
 SELECT_VALUES = {
     "default_item_view": {"Grid View", "Button View"},
+    "pricing_rule_promotion_policy": {"Pricing Rule Wins", "Promotion Wins", "Combine"},
+    "pricing_rule_coupon_policy": {"Pricing Rule Wins", "Coupon Wins", "Combine"},
+    "promotion_coupon_policy": {"Promotion Wins", "Coupon Wins", "Combine"},
+    "pricing_rule_promotion_coupon_policy": {"Pricing Rule Wins", "Promotion Wins", "Coupon Wins", "Combine"},
+    "combined_discount_representation": {"Amount Only", "Percentage Equivalent (Net Total)"},
     "wmn_silent_print_mode": {"raw_text", "html2canvas", "pdfmake"},
     "printing_method": {"legacy_bridge", "browser", "webusb", "webserial", "qz"},
     "fallback_method": {"none", "legacy_bridge", "browser", "webusb", "webserial", "qz"},
