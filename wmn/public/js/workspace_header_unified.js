@@ -12,13 +12,18 @@
     const WMN_NAV = {
         loaded: false,
         mode: "disabled",
+        contentSource: "workspace_page",
         settings: {},
         pageCache: {},
-        settingCacheKey: "wmn_workspace_nav_settings_v1",
+        sidebarViewCache: {},
+        settingCacheKey: "wmn_workspace_nav_settings_v2",
         settingLastCheckKey: "wmn_workspace_nav_settings_last_check_v1",
         settingCacheMs: 5 * 60 * 1000,
         activeHeaderWorkspace: null,
-        headerOverflowResizeObserver: null
+        headerOverflowResizeObserver: null,
+        nativeSidebarTopnavEnsureScheduled: false,
+        nativeTopnavUserPopupParent: null,
+        nativeTopnavUserPopupNextSibling: null,
     };
 
     window.WMN_WORKSPACE_NAV = WMN_NAV;
@@ -129,6 +134,25 @@
         return "disabled";
     }
 
+    function resolveWorkspaceContentSource(settings) {
+        const rawSource = String(
+            settings.workspace_content_source ||
+            settings.workspace_navigation_content_source ||
+            settings.workspace_data_source ||
+            "Workspace Page"
+        ).trim().toLowerCase();
+
+        if (
+            rawSource.includes("sidebar") ||
+            rawSource.includes("side bar") ||
+            rawSource.includes("workspace_sidebar")
+        ) {
+            return "workspace_sidebar";
+        }
+
+        return "workspace_page";
+    }
+
     function loadSettings(callback) {
         const now = Date.now();
         const lastCheck = parseInt(localStorage.getItem(WMN_NAV.settingLastCheckKey) || "0", 10);
@@ -211,6 +235,185 @@
                 }
             });
         });
+    }
+
+    function getWorkspaceSidebarItem(workspaceName) {
+        const sidebar = window.frappe && frappe.boot
+            ? frappe.boot.workspace_sidebar_item
+            : null;
+        if (!sidebar || !workspaceName) return null;
+
+        if (sidebar[workspaceName]) return sidebar[workspaceName];
+
+        const wanted = normalizeWorkspaceLabel(workspaceName);
+        const key = Object.keys(sidebar).find(name => {
+            const item = sidebar[name] || {};
+            return (
+                normalizeWorkspaceLabel(name) === wanted ||
+                normalizeWorkspaceLabel(item.name) === wanted ||
+                normalizeWorkspaceLabel(item.label) === wanted ||
+                normalizeWorkspaceLabel(item.title) === wanted
+            );
+        });
+
+        return key ? sidebar[key] : null;
+    }
+
+    function normalizeSidebarShortcut(item) {
+        return {
+            label: item.label || item.link_to || item.name || __("Link"),
+            name: item.name || item.label || item.link_to || "",
+            doc_view: item.doc_view || "",
+            link_to: item.link_to || item.name || "",
+            type: item.link_type || item.type || "Link",
+            link_type: item.link_type || item.type || "",
+            icon: item.icon || "",
+            url: item.url || "",
+            link: item.link || "",
+            doctype: item.doctype || item.document_type || "",
+            is_query_report: item.is_query_report || 0,
+            kanban_board: item.kanban_board || ""
+        };
+    }
+
+    function normalizeSidebarCardLink(item) {
+        return {
+            label: item.label || item.link_to || item.name || __("Link"),
+            name: item.name || item.label || item.link_to || "",
+            doc_view: item.doc_view || "",
+            type: "Link",
+            link_to: item.link_to || item.name || "",
+            link_type: item.link_type || item.type || "",
+            icon: item.icon || "",
+            url: item.url || "",
+            link: item.link || "",
+            doctype: item.doctype || item.document_type || "",
+            is_query_report: item.is_query_report || 0,
+            kanban_board: item.kanban_board || ""
+        };
+    }
+
+    function buildWorkspaceDataFromSidebar(workspaceName) {
+        const sidebarItem = getWorkspaceSidebarItem(workspaceName);
+        if (!sidebarItem || !Array.isArray(sidebarItem.items)) return null;
+
+        const data = {
+            shortcuts: { items: [] },
+            cards: { items: [] },
+            number_cards: { items: [] },
+            charts: { items: [] },
+            onboardings: { items: [] },
+            quick_lists: { items: [] },
+            custom_blocks: { items: [] }
+        };
+
+        let currentCard = null;
+
+        sidebarItem.items.forEach(item => {
+            if (!item) return;
+
+            if (item.type === "Link" && Number(item.child || 0) === 0 && item.link_type !== "Workspace") {
+                data.shortcuts.items.push(normalizeSidebarShortcut(item));
+                return;
+            }
+
+            if (item.type === "Section Break" && !item.link_to) {
+                currentCard = {
+                    label: item.label || workspaceName,
+                    name: item.label || workspaceName,
+                    icon: item.icon || "",
+                    links: []
+                };
+                data.cards.items.push(currentCard);
+                return;
+            }
+
+            if (item.type === "Link" && Number(item.child || 0) === 1 && item.link_type !== "Workspace") {
+                if (!currentCard) {
+                    currentCard = {
+                        label: workspaceName,
+                        name: workspaceName,
+                        icon: sidebarItem.header_icon || "",
+                        links: []
+                    };
+                    data.cards.items.push(currentCard);
+                }
+                currentCard.links.push(normalizeSidebarCardLink(item));
+            }
+        });
+
+        data.cards.items = data.cards.items.filter(card => Array.isArray(card.links) && card.links.length);
+        return data;
+    }
+
+    function buildWorkspaceBlocksFromSidebarData(data) {
+        const blocks = [];
+        const shortcuts = data && data.shortcuts && Array.isArray(data.shortcuts.items)
+            ? data.shortcuts.items
+            : [];
+        const cards = data && data.cards && Array.isArray(data.cards.items)
+            ? data.cards.items
+            : [];
+
+        if (shortcuts.length) {
+            blocks.push({ type: "header", data: { text: __("Your Shortcuts"), col: 12 } });
+            shortcuts.forEach(item => {
+                blocks.push({
+                    type: "shortcut",
+                    data: {
+                        shortcut_name: item.label || item.name || item.link_to || __("Shortcut"),
+                        col: 3
+                    }
+                });
+            });
+        }
+
+        if (cards.length) {
+            blocks.push({ type: "header", data: { text: __("Reports & Masters"), col: 12 } });
+            cards.forEach(card => {
+                blocks.push({
+                    type: "card",
+                    data: {
+                        card_name: card.label || card.name || __("Links"),
+                        col: 4
+                    }
+                });
+            });
+        }
+
+        return blocks;
+    }
+
+    function fetchWorkspaceSidebarView(name) {
+        if (WMN_NAV.sidebarViewCache[name]) {
+            return Promise.resolve(WMN_NAV.sidebarViewCache[name]);
+        }
+
+        const data = buildWorkspaceDataFromSidebar(name);
+        if (!data) return Promise.resolve(null);
+
+        const view = {
+            data: data,
+            blocks: buildWorkspaceBlocksFromSidebarData(data),
+            source: "workspace_sidebar"
+        };
+        WMN_NAV.sidebarViewCache[name] = view;
+        return Promise.resolve(view);
+    }
+
+    async function fetchWorkspaceView(name) {
+        if (WMN_NAV.contentSource === "workspace_sidebar") {
+            const sidebarView = await fetchWorkspaceSidebarView(name);
+            if (sidebarView) return sidebarView;
+            console.warn("WMN Workspace Nav: Workspace Sidebar data was not found. Falling back to Workspace Page for", name);
+        }
+
+        const data = await fetchDesktopPage(name);
+        return {
+            data: data,
+            blocks: parseWorkspaceContent(name),
+            source: "workspace_page"
+        };
     }
 
     function toDeskPath(route) {
@@ -588,7 +791,7 @@
             /* ---------------- Header mode ---------------- */
             .wmn-global-workspace-header {
                 position: sticky;
-                top: 0;
+                top: var(--wmn-native-navbar-height, 0px);
                 left: 0;
                 right: 0;
                 z-index: 10000;
@@ -1098,7 +1301,7 @@
    Chrome DevTools Style
    ------------------------------------------------------------
    - Natural width tabs
-   - Extra tabs go inside »
+   - Extra tabs go inside ï¿½
    - Colors are controlled by UI Theme
    - No JavaScript color detection required
    ============================================================ */
@@ -1170,7 +1373,7 @@
 .wmn-global-workspace-header {
     position: sticky !important;
 
-    top: 0;
+    top: var(--wmn-native-navbar-height, 0px);
     left: 0;
     right: 0;
 
@@ -1408,7 +1611,7 @@
 
 
 /* ============================================================
-   DEVTOOLS » BUTTON
+   DEVTOOLS ï¿½ BUTTON
    ============================================================ */
 
 .wmn-workspace-overflow-btn {
@@ -1459,7 +1662,7 @@
 }
 
 
-/* » */
+/* ï¿½ */
 
 .wmn-workspace-overflow-btn
 .wmn-overflow-chevrons {
@@ -1695,7 +1898,504 @@ body.rtl-mode
     direction: rtl !important;
 }
 
+            /* ---------------- Frappe v16 Native Sidebar as Top Navigation ---------------- */
+            body.wmn-native-sidebar-topnav-mode #wmn-native-sidebar-topnav-host {
+                position: sticky;
+
+                z-index: 1030;
+                width: 100%;
+                min-height: 46px;
+                height: auto;
+                display: flex;
+                align-items: flex-start;
+                overflow: visible !important;
+                background: var(--wmn-nav-surface, #fff);
+                border-bottom: 1px solid var(--wmn-nav-border, #e2e7e9);
+                box-shadow: 0 1px 3px rgba(0,0,0,.06);
+            }
+
+            /* The Frappe desktop route already owns its own desktop navbar.
+               Hide only the relocated native sidebar topnav there. */
+            body.wmn-native-sidebar-topnav-mode #wmn-native-sidebar-topnav-host.wmn-native-sidebar-topnav-route-hidden {
+                display: none !important;
+            }
+          /*  body:has(.point-of-sale-app)
+            #wmn-native-sidebar-topnav-host.wmn-native-sidebar-topnav-route-hidden {
+                display: block !important;
+                background: #161616 !important;
+                color: #f4f4f4 !important;
+            }    
+            */
+                
+
+            /* Dropdowns are promoted to the viewport by JS so they are not
+               clipped or positioned using the old vertical-sidebar geometry. */
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .wmn-topnav-floating-popup {
+                position: fixed !important;
+                right: auto !important;
+                bottom: auto !important;
+                z-index: 11050 !important;
+                overflow-x: hidden !important;
+                overflow-y: auto !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-source-container {
+                display: none !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode #wmn-native-sidebar-topnav-host > .wmn-native-sidebar-topnav {
+                position: relative !important;
+                inset: auto !important;
+                width: 100% !important;
+                max-width: none !important;
+                min-height: 46px !important;
+                height: auto !important;
+                display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: wrap !important;
+                align-items: center !important;
+                gap: 4px !important;
+                padding: 0 10px !important;
+                margin: 0 !important;
+                overflow: visible !important;
+                background: transparent !important;
+                color: var(--wmn-nav-text, #20272c) !important;
+                border: 0 !important;
+                box-shadow: none !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .sidebar-header {
+                flex: 0 0 auto !important;
+                width: auto !important;
+                min-width: max-content !important;
+                height: 46px !important;
+                display: flex !important;
+                align-items: center !important;
+                padding: 0 8px !important;
+                margin: 0 !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .sidebar-header .title-container {
+                display: flex !important;
+                align-items: baseline !important;
+                gap: 5px !important;
+                width: auto !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .sidebar-header .header-subtitle {
+                display: none !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .standard-items-sections,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .body-sidebar-bottom,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .sidebar-footer {
+                flex: 0 0 auto !important;
+                width: auto !important;
+                min-width: 0 !important;
+                height: 46px !important;
+                display: flex !important;
+                flex-direction: row !important;
+                align-items: center !important;
+                gap: 2px !important;
+                overflow: visible !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            /* Workspace navigation is already provided by WMN Workspace Header.
+               Keep only Frappe global controls (Search / Notifications / User). */
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .body-sidebar-top,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .sidebar-items {
+                display: none !important;
+            }
+
+            /* Keep Search near the workspace title and push Notification + User
+               controls to the far inline-end of the native top navigation. */
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .standard-items-sections {
+                flex: 1 1 auto !important;
+                width: auto !important;
+                min-width: 0 !important;
+                display: flex !important;
+                align-items: center !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .sidebar-notification {
+                margin-inline-start: auto !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .body-sidebar-bottom,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .sidebar-footer {
+                flex: 0 0 auto !important;
+                margin-inline-start: 0 !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .standard-sidebar-item,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .sidebar-item-container,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .navbar-search-bar,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .sidebar-notification {
+                position: relative !important;
+                flex: 0 0 auto !important;
+                width: auto !important;
+                min-width: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .item-anchor {
+                position: relative !important;
+                width: auto !important;
+                min-width: max-content !important;
+                max-width: 220px !important;
+                min-height: 34px !important;
+                display: inline-flex !important;
+                align-items: center !important;
+                gap: 7px !important;
+                margin: 0 !important;
+                padding: 5px 9px !important;
+                border-radius: var(--wmn-nav-radius, 7px) !important;
+                white-space: nowrap !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .item-anchor:hover {
+                background: var(--wmn-nav-hover-bg) !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .sidebar-item-label {
+                max-width: 165px !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+                white-space: nowrap !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .sidebar-child-item:not(.show),
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .nested-container:not(.show) {
+                display: none;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .sidebar-item-container,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .standard-sidebar-item,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .standard-items-sections,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .body-sidebar-top,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .body-sidebar-bottom,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .sidebar-footer {
+                overflow: visible !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .sidebar-item-container:has(> .sidebar-child-item.show),
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .sidebar-item-container:has(> .nested-container.show) {
+                z-index: 1040 !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .sidebar-child-item.show,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .nested-container.show {
+                position: absolute !important;
+                top: calc(100% + 2px) !important;
+                left: 0 !important;
+                right: auto !important;
+                z-index: 1040 !important;
+                min-width: 240px !important;
+                width: max-content !important;
+                max-width: min(420px, 90vw) !important;
+                max-height: min(72vh, 620px) !important;
+                overflow-y: auto !important;
+                overflow-x: hidden !important;
+                padding: 6px !important;
+                background: var(--wmn-nav-surface, #fff) !important;
+                border: 1px solid var(--wmn-nav-border, #e2e7e9) !important;
+                border-radius: var(--wmn-nav-radius, 8px) !important;
+                box-shadow: 0 10px 28px rgba(0,0,0,.18) !important;
+            }
+
+            body.rtl-mode.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .sidebar-child-item.show,
+            body.rtl-mode.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .nested-container.show {
+                left: auto !important;
+                right: 0 !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .collapse-sidebar-link,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .edit-mode,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .show-in-edit-mode {
+                display: none !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .standard-items-sections {
+                position: relative !important;
+                z-index: 1040 !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .dropdown-notifications {
+                position: absolute !important;
+                top: 46px !important;
+                right: 0 !important;
+                left: auto !important;
+                width: 360px !important;
+                height: auto !important;
+                overflow: visible !important;
+                z-index: 1045 !important;
+            }
+
+            body.rtl-mode.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .dropdown-notifications {
+                right: auto !important;
+                left: 0 !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .dropdown-notifications.hidden {
+                display: none !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .dropdown-notifications:not(.hidden) {
+                display: block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                pointer-events: auto !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .notifications-list {
+                position: relative !important;
+                inset: auto !important;
+                width: 360px !important;
+                max-width: min(360px, 92vw) !important;
+                max-height: min(72vh, 620px) !important;
+                overflow-y: auto !important;
+                background: var(--wmn-nav-surface, #fff) !important;
+                border: 1px solid var(--wmn-nav-border, #e2e7e9) !important;
+                border-radius: var(--wmn-nav-radius, 8px) !important;
+                box-shadow: 0 10px 28px rgba(0,0,0,.18) !important;
+                z-index: 1045 !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .dropdown-menu {
+                position: absolute !important;
+                top: calc(100% + 2px) !important;
+                right: 0 !important;
+                left: auto !important;
+                z-index: 1045 !important;
+                max-height: min(72vh, 620px) !important;
+                overflow-y: auto !important;
+            }
+
+            body.rtl-mode.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .dropdown-menu {
+                right: auto !important;
+                left: 0 !important;
+            }
+
+            /* ---------------------------------------------------------
+               WMN native topnav final alignment
+               - Workspace identity stays at the inline-start.
+               - Search is centered independently of the side controls.
+               - Notification and user controls are icon-only at inline-end.
+               --------------------------------------------------------- */
+            body.wmn-native-sidebar-topnav-mode #wmn-native-sidebar-topnav-host > .wmn-native-sidebar-topnav {
+                position: relative !important;
+                flex-wrap: nowrap !important;
+                min-height: 50px !important;
+                height: 50px !important;
+                padding-inline: 10px !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .standard-items-sections {
+                position: static !important;
+                flex: 1 1 auto !important;
+                width: auto !important;
+                min-width: 0 !important;
+                height: 50px !important;
+                /* Keep this wide flex item below independent controls. */
+                z-index: 1 !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .navbar-search-bar {
+                position: absolute !important;
+                left: 50% !important;
+                right: auto !important;
+                top: 50% !important;
+                transform: translate(-50%, -50%) !important;
+                width: min(420px, 42vw) !important;
+                max-width: 420px !important;
+                z-index: 2 !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .navbar-search-bar .standard-sidebar-item,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .navbar-search-bar .item-anchor {
+                width: 100% !important;
+                max-width: none !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .sidebar-notification {
+                position: absolute !important;
+                top: 50% !important;
+                right: 58px !important;
+                left: auto !important;
+                transform: translateY(-50%) !important;
+                margin: 0 !important;
+                z-index: 3 !important;
+            }
+
+            body.rtl-mode.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .sidebar-notification {
+                right: auto !important;
+                left: 58px !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .sidebar-notification .item-anchor {
+                width: 38px !important;
+                min-width: 38px !important;
+                height: 38px !important;
+                min-height: 38px !important;
+                padding: 0 !important;
+                justify-content: center !important;
+                gap: 0 !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .sidebar-notification .sidebar-item-label,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .sidebar-notification .sidebar-item-suffix {
+                display: none !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .body-sidebar-bottom,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .sidebar-footer {
+                position: absolute !important;
+                top: 50% !important;
+                right: 8px !important;
+                left: auto !important;
+                transform: translateY(-50%) !important;
+                width: 42px !important;
+                min-width: 42px !important;
+                height: 42px !important;
+                overflow: visible !important;
+                z-index: 3 !important;
+            }
+
+            body.rtl-mode.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .body-sidebar-bottom,
+            body.rtl-mode.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .sidebar-footer {
+                right: auto !important;
+                left: 8px !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .body-sidebar-bottom .sidebar-item-label,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .body-sidebar-bottom .sidebar-item-suffix,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .body-sidebar-bottom .title-container,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .sidebar-footer .sidebar-item-label,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .sidebar-footer .sidebar-item-suffix,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .sidebar-footer .title-container {
+                display: none !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .body-sidebar-bottom .item-anchor,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav > .sidebar-footer .item-anchor {
+                width: 42px !important;
+                min-width: 42px !important;
+                height: 42px !important;
+                min-height: 42px !important;
+                padding: 0 !important;
+                justify-content: center !important;
+                gap: 0 !important;
+            }
+
+            /* Runtime-resolved native user control. Frappe v16 may nest the
+               account control differently between Desk routes, so the JS
+               marks the actual control that owns the avatar. */
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .wmn-topnav-user-control {
+                position: absolute !important;
+                top: 50% !important;
+                right: 8px !important;
+                left: auto !important;
+                transform: translateY(-50%) !important;
+                width: 42px !important;
+                min-width: 42px !important;
+                max-width: 42px !important;
+                height: 42px !important;
+                min-height: 42px !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: visible !important;
+                z-index: 30 !important;
+                pointer-events: auto !important;
+            }
+
+            body.rtl-mode.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .wmn-topnav-user-control {
+                right: auto !important;
+                left: 8px !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .wmn-topnav-user-control .title-container,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .wmn-topnav-user-control .sidebar-item-label,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .wmn-topnav-user-control .sidebar-item-suffix,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .wmn-topnav-user-control .user-name,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .wmn-topnav-user-control .user-email,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .wmn-topnav-user-control .avatar-name-email,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .wmn-topnav-user-control [class*="subtitle"],
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .wmn-topnav-user-control [class*="user-fullname"] {
+                display: none !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .wmn-topnav-user-control > a,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .wmn-topnav-user-control > button,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .wmn-topnav-user-control .item-anchor,
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .wmn-topnav-user-control .standard-sidebar-item {
+                width: 42px !important;
+                min-width: 42px !important;
+                max-width: 42px !important;
+                height: 42px !important;
+                min-height: 42px !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                gap: 0 !important;
+                overflow: visible !important;
+                pointer-events: auto !important;
+                cursor: pointer !important;
+            }
+
+            body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .wmn-topnav-user-control .avatar {
+                margin: 0 !important;
+                flex: 0 0 auto !important;
+            }
+
+            #toolbar-user.wmn-topnav-user-portal {
+                position: fixed !important;
+                z-index: 100000 !important;
+                min-width: 200px !important;
+                width: max-content !important;
+                overflow: visible !important;
+            }
+
+            .wmn-topnav-user-popup {
+                position: fixed !important;
+                display: block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                pointer-events: auto !important;
+                transform: none !important;
+                min-width: 180px !important;
+                width: max-content !important;
+                max-width: min(320px, calc(100vw - 16px)) !important;
+                z-index: 10080 !important;
+                overflow-y: auto !important;
+            }
+
+            @media (max-width: 900px) {
+                body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav .navbar-search-bar {
+                    width: min(300px, 38vw) !important;
+                }
+            }
+
+            /* Keep the native Desk shell and Page Header fully owned by Frappe. */
+            body.wmn-native-sidebar-topnav-mode .wmn-global-workspace-header {
+                top: 0 !important;
+                z-index: 1035 !important;
+            }
+
             @media (max-width: 768px) {
+                body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav-container {
+                    min-height: 44px !important;
+                }
+                body.wmn-native-sidebar-topnav-mode .wmn-native-sidebar-topnav {
+                    height: 44px !important;
+                    min-height: 44px !important;
+                    padding-inline: 6px !important;
+                }
+                .wmn-global-topbar-shortcut { display: none; }
                 .wmn-custom-sidebar { width: 92vw; max-width: 320px; }
                 .wmn-custom-sidebar.collapsed { width: 10px; }
                 .wmn-card-groups,
@@ -1709,8 +2409,12 @@ body.rtl-mode
     }
 
     function cleanupUI() {
-        document.querySelectorAll(".wmn-global-workspace-header, .wmn-custom-sidebar, .wmn-floating-sidebar-btn").forEach(el => el.remove());
+        document.querySelectorAll(".wmn-global-workspace-header, .wmn-custom-sidebar, .wmn-floating-sidebar-btn, #wmn-global-desk-topbar").forEach(el => el.remove());
         document.body.classList.remove("wmn-hide-standard-sidebar", "custom-loaded");
+
+        if (WMN_NAV.mode !== "header") {
+            restoreNativeSidebarFromTopnav();
+        }
     }
 
     function getDeskShell() {
@@ -1723,6 +2427,404 @@ body.rtl-mode
             mainSection: mainSection || null,
             bodyContainer: bodyContainer || null
         };
+    }
+
+    function getNativeSidebarContainer() {
+        return document.querySelector(".body-sidebar-container");
+    }
+
+    function getNativeSidebar() {
+        const hosted = document.querySelector("#wmn-native-sidebar-topnav-host > .body-sidebar");
+        if (hosted) return hosted;
+        const container = getNativeSidebarContainer();
+        return container ? container.querySelector(".body-sidebar") : document.querySelector(".body-sidebar");
+    }
+
+    function getNativeSidebarTopnavHost() {
+        return document.getElementById("wmn-native-sidebar-topnav-host");
+    }
+
+    function restoreNativeSidebarFromTopnav() {
+        const currentSidebar = getNativeSidebar();
+        if (currentSidebar) closeNativeTopnavUserPopup(currentSidebar);
+
+        const host = getNativeSidebarTopnavHost();
+        const sidebar = host ? host.querySelector(".body-sidebar") : null;
+        const sourceContainer = document.querySelector(".body-sidebar-container.wmn-native-sidebar-source-container");
+
+        if (sidebar) {
+            sidebar.querySelectorAll(".wmn-topnav-floating-popup").forEach(clearNativeTopnavPopupPosition);
+        }
+        if (sidebar && sourceContainer) sourceContainer.appendChild(sidebar);
+        if (host) host.remove();
+        if (sourceContainer) sourceContainer.classList.remove("wmn-native-sidebar-source-container");
+        if (sidebar) sidebar.classList.remove("wmn-native-sidebar-topnav");
+        document.body.classList.remove("wmn-native-sidebar-topnav-mode");
+    }
+
+    function isNativeSidebarTopnavHiddenRoute() {
+        const path = String(window.location.pathname || "")
+            .replace(/\/+$/, "") || "/";
+        const normalized = path.toLowerCase().replace(/_/g, "-");
+
+        // Frappe owns the Desktop navbar on /desk, and the POS page should
+        // remain distraction-free without the converted native sidebar bar.
+        return normalized === "/desk" ||
+            normalized === "/desk/point-of-sale" ||
+            normalized.startsWith("/desk/point-of-sale/");
+    }
+
+    function syncNativeSidebarTopnavRouteVisibility(host) {
+        host = host || getNativeSidebarTopnavHost();
+        if (!host) return;
+        host.classList.toggle(
+            "wmn-native-sidebar-topnav-route-hidden",
+            isNativeSidebarTopnavHiddenRoute()
+        );
+    }
+
+    function clearNativeTopnavPopupPosition(popup) {
+        if (!popup) return;
+        popup.classList.remove("wmn-topnav-floating-popup");
+        ["top", "left", "right", "bottom", "maxHeight"].forEach(function (name) {
+            popup.style.removeProperty(name);
+        });
+    }
+
+    function positionNativeTopnavPopup(trigger, popup) {
+        if (!trigger || !popup || isNativeSidebarTopnavHiddenRoute()) return;
+
+        const rect = trigger.getBoundingClientRect();
+        const rtl = document.body.classList.contains("rtl-mode") ||
+            getComputedStyle(document.documentElement).direction === "rtl";
+        const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+        const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
+        const margin = 8;
+
+        popup.classList.add("wmn-topnav-floating-popup");
+        popup.style.top = `${Math.max(margin, Math.round(rect.bottom + 4))}px`;
+        popup.style.maxHeight = `${Math.max(160, Math.round(viewportHeight - rect.bottom - 16))}px`;
+
+        const popupWidth = Math.min(
+            Math.max(popup.getBoundingClientRect().width || popup.offsetWidth || 240, 180),
+            Math.max(180, viewportWidth - margin * 2)
+        );
+        let left = rtl ? rect.right - popupWidth : rect.left;
+        left = Math.max(margin, Math.min(left, viewportWidth - popupWidth - margin));
+        popup.style.left = `${Math.round(left)}px`;
+        popup.style.right = "auto";
+    }
+
+    function findVisibleNativeTopnavPopup(sidebar, trigger) {
+        if (!sidebar) return null;
+
+        if (trigger && trigger.closest(".sidebar-notification")) {
+            const notifications = sidebar.querySelector(".dropdown-notifications");
+            if (notifications && !notifications.classList.contains("hidden")) return notifications;
+        }
+
+        const candidates = sidebar.querySelectorAll([
+            ".dropdown-menu.show",
+            ".dropdown-menu[style*='display: block']",
+            ".sidebar-child-item.show",
+            ".nested-container.show",
+            ".popover.show"
+        ].join(","));
+
+        return Array.from(candidates).find(function (popup) {
+            const style = getComputedStyle(popup);
+            return style.display !== "none" && style.visibility !== "hidden";
+        }) || null;
+    }
+
+    function getNativeTopnavUserControl(sidebar) {
+        if (!sidebar) return null;
+
+        const marked = sidebar.querySelector(".wmn-topnav-user-control");
+        if (marked) return marked;
+
+        const scopes = [
+            sidebar.querySelector(".body-sidebar-bottom"),
+            sidebar.querySelector(".sidebar-footer"),
+            sidebar
+        ].filter(Boolean);
+
+        for (const scope of scopes) {
+            const avatars = Array.from(scope.querySelectorAll(".avatar, .avatar-frame, [data-user], [data-user-email]"));
+            for (const avatar of avatars) {
+                const control = avatar.closest([
+                    ".dropdown",
+                    ".sidebar-item-container",
+                    ".standard-sidebar-item",
+                    ".user-menu",
+                    ".sidebar-user",
+                    ".body-sidebar-bottom",
+                    ".sidebar-footer"
+                ].join(","));
+                if (control && sidebar.contains(control)) {
+                    control.classList.add("wmn-topnav-user-control");
+                    return control;
+                }
+            }
+        }
+
+        const fallback = sidebar.querySelector([
+            ".body-sidebar-bottom .dropdown",
+            ".sidebar-footer .dropdown",
+            ".body-sidebar-bottom [data-label*=\"User\"]",
+            ".sidebar-footer [data-label*=\"User\"]"
+        ].join(","));
+        if (fallback) fallback.classList.add("wmn-topnav-user-control");
+        return fallback || null;
+    }
+
+    function findNativeTopnavUserPopup(userControl) {
+        const toolbarUser = document.getElementById("toolbar-user");
+        if (toolbarUser) return toolbarUser;
+        if (!userControl) return null;
+        return userControl.querySelector('.dropdown-menu[role="menu"], .dropdown-menu');
+    }
+
+    function moveNativeTopnavUserPopupToBody(popup) {
+        if (!popup || popup.parentElement === document.body) return;
+
+        WMN_NAV.nativeTopnavUserPopupParent = popup.parentElement || null;
+        WMN_NAV.nativeTopnavUserPopupNextSibling = popup.nextSibling || null;
+        document.body.appendChild(popup);
+        popup.classList.add("wmn-topnav-user-portal");
+    }
+
+    function restoreNativeTopnavUserPopupParent(popup) {
+        if (!popup || !popup.classList.contains("wmn-topnav-user-portal")) return;
+
+        const parent = WMN_NAV.nativeTopnavUserPopupParent;
+        const nextSibling = WMN_NAV.nativeTopnavUserPopupNextSibling;
+        if (parent && parent.isConnected) {
+            if (nextSibling && nextSibling.parentNode === parent) parent.insertBefore(popup, nextSibling);
+            else parent.appendChild(popup);
+        }
+
+        popup.classList.remove("wmn-topnav-user-portal");
+        WMN_NAV.nativeTopnavUserPopupParent = null;
+        WMN_NAV.nativeTopnavUserPopupNextSibling = null;
+    }
+
+    function isNativeTopnavPopupOpen(popup) {
+        if (!popup) return false;
+        if (popup.classList.contains("show")) return true;
+        if (popup.classList.contains("hidden")) return false;
+        return getComputedStyle(popup).display !== "none";
+    }
+
+    function closeNativeTopnavUserPopup(sidebar) {
+        const userControl = getNativeTopnavUserControl(sidebar);
+        const popup = findNativeTopnavUserPopup(userControl);
+        if (!popup) return;
+        popup.classList.remove("show", "wmn-topnav-user-popup");
+        popup.style.setProperty("display", "none", "important");
+        popup.style.removeProperty("visibility");
+        popup.style.removeProperty("opacity");
+        popup.style.removeProperty("pointer-events");
+        popup.style.removeProperty("transform");
+        popup.setAttribute("aria-hidden", "true");
+        clearNativeTopnavPopupPosition(popup);
+        restoreNativeTopnavUserPopupParent(popup);
+        const button = userControl && userControl.querySelector('[data-toggle="dropdown"]');
+        if (button) button.setAttribute("aria-expanded", "false");
+    }
+
+    function openNativeTopnavUserPopup(sidebar) {
+        const userControl = getNativeTopnavUserControl(sidebar);
+        const popup = findNativeTopnavUserPopup(userControl);
+        if (!userControl || !popup) return false;
+
+        const notifications = sidebar.querySelector(".dropdown-notifications");
+        if (notifications) {
+            notifications.classList.add("hidden");
+            clearNativeTopnavPopupPosition(notifications);
+        }
+
+        moveNativeTopnavUserPopupToBody(popup);
+        popup.classList.add("show", "wmn-topnav-user-popup");
+        popup.style.setProperty("display", "block", "important");
+        popup.style.setProperty("visibility", "visible", "important");
+        popup.style.setProperty("opacity", "1", "important");
+        popup.style.setProperty("pointer-events", "auto", "important");
+        popup.style.setProperty("transform", "none", "important");
+        popup.setAttribute("aria-hidden", "false");
+        positionNativeTopnavPopup(userControl, popup);
+        const button = userControl.querySelector('[data-toggle="dropdown"]');
+        if (button) button.setAttribute("aria-expanded", "true");
+        return true;
+    }
+
+    function toggleNativeTopnavUserPopup(sidebar) {
+        const userControl = getNativeTopnavUserControl(sidebar);
+        const popup = findNativeTopnavUserPopup(userControl);
+        if (!popup) return;
+        if (isNativeTopnavPopupOpen(popup)) closeNativeTopnavUserPopup(sidebar);
+        else openNativeTopnavUserPopup(sidebar);
+    }
+
+    function closeNativeTopnavNotifications(sidebar) {
+        const notifications = sidebar && sidebar.querySelector(".dropdown-notifications");
+        if (!notifications) return;
+        notifications.classList.add("hidden");
+        clearNativeTopnavPopupPosition(notifications);
+    }
+
+    function openNativeTopnavNotifications(sidebar, trigger) {
+        const notifications = sidebar && sidebar.querySelector(".dropdown-notifications");
+        if (!notifications || !trigger) return false;
+        closeNativeTopnavUserPopup(sidebar);
+        notifications.classList.remove("hidden");
+        positionNativeTopnavPopup(trigger, notifications);
+        return true;
+    }
+
+    function toggleNativeTopnavNotifications(sidebar, trigger) {
+        const notifications = sidebar && sidebar.querySelector(".dropdown-notifications");
+        if (!notifications) return;
+        if (notifications.classList.contains("hidden")) openNativeTopnavNotifications(sidebar, trigger);
+        else closeNativeTopnavNotifications(sidebar);
+    }
+
+    function bindNativeSidebarTopnavPopups(sidebar) {
+        if (!sidebar) return;
+        getNativeTopnavUserControl(sidebar);
+        if (sidebar.dataset.wmnTopnavPopupBound === "1") return;
+        sidebar.dataset.wmnTopnavPopupBound = "1";
+
+        sidebar.addEventListener("click", function (event) {
+            const notificationTrigger = event.target.closest(".sidebar-notification");
+            if (notificationTrigger && sidebar.contains(notificationTrigger)) {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleNativeTopnavNotifications(sidebar, notificationTrigger);
+                return;
+            }
+
+            if (event.target.closest(".close-notification-dialogue")) {
+                event.preventDefault();
+                event.stopPropagation();
+                closeNativeTopnavNotifications(sidebar);
+            }
+        }, true);
+
+        // Capture the native user-menu button before Frappe/Bootstrap
+        // consumes the moved sidebar dropdown event. The native #toolbar-user
+        // menu itself is still used; only its open/close lifecycle is owned here.
+        if (!window.__WMN_NATIVE_TOPNAV_USER_CAPTURE_BOUND__) {
+            window.__WMN_NATIVE_TOPNAV_USER_CAPTURE_BOUND__ = true;
+            window.addEventListener("click", function (event) {
+                const target = event.target instanceof Element ? event.target : null;
+                const userButton = target && target.closest(
+                    '.wmn-topnav-user-control [aria-label="User Menu"], ' +
+                    '.wmn-topnav-user-control [data-toggle="dropdown"]'
+                );
+                if (!userButton) return;
+
+                const currentSidebar = getNativeSidebar();
+                if (!currentSidebar || !currentSidebar.classList.contains("wmn-native-sidebar-topnav")) return;
+                const userControl = getNativeTopnavUserControl(currentSidebar);
+                if (!userControl || !userControl.contains(userButton)) return;
+
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                toggleNativeTopnavUserPopup(currentSidebar);
+            }, true);
+        }
+
+        if (!window.__WMN_NATIVE_TOPNAV_OUTSIDE_CLOSE_BOUND__) {
+            window.__WMN_NATIVE_TOPNAV_OUTSIDE_CLOSE_BOUND__ = true;
+            document.addEventListener("click", function (event) {
+                const currentSidebar = getNativeSidebar();
+                if (!currentSidebar || !currentSidebar.classList.contains("wmn-native-sidebar-topnav")) return;
+
+                const userControl = getNativeTopnavUserControl(currentSidebar);
+                const userPopup = findNativeTopnavUserPopup(userControl);
+                const notifications = currentSidebar.querySelector(".dropdown-notifications");
+                const notificationTrigger = currentSidebar.querySelector(".sidebar-notification");
+
+                if (userPopup && isNativeTopnavPopupOpen(userPopup) &&
+                    !(userControl && userControl.contains(event.target)) && !userPopup.contains(event.target)) {
+                    closeNativeTopnavUserPopup(currentSidebar);
+                }
+
+                if (notifications && !notifications.classList.contains("hidden") &&
+                    !(notificationTrigger && notificationTrigger.contains(event.target)) && !notifications.contains(event.target)) {
+                    closeNativeTopnavNotifications(currentSidebar);
+                }
+            });
+        }
+    }
+
+    function ensureNativeSidebarTopnav() {
+        if (WMN_NAV.mode === "sidebar") {
+            restoreNativeSidebarFromTopnav();
+            return false;
+        }
+
+        const shell = getDeskShell();
+        const sourceContainer = getNativeSidebarContainer();
+        const sidebar = getNativeSidebar();
+        if (!shell.mainSection || !shell.bodyContainer || !sourceContainer || !sidebar) return false;
+
+        const oldTopbar = document.getElementById("wmn-global-desk-topbar");
+        if (oldTopbar) oldTopbar.remove();
+
+        let host = getNativeSidebarTopnavHost();
+        if (!host) {
+            host = document.createElement("div");
+            host.id = "wmn-native-sidebar-topnav-host";
+        }
+
+        const workspaceHeader = shell.mainSection.querySelector(".wmn-global-workspace-header");
+        if (workspaceHeader) {
+            if (workspaceHeader.parentElement !== shell.mainSection) {
+                shell.mainSection.insertBefore(workspaceHeader, shell.bodyContainer);
+            }
+            if (host.parentElement !== shell.mainSection || workspaceHeader.nextElementSibling !== host) {
+                workspaceHeader.insertAdjacentElement("afterend", host);
+            }
+        } else if (host.parentElement !== shell.mainSection) {
+            shell.mainSection.insertBefore(host, shell.bodyContainer);
+        }
+
+        if (sidebar.parentElement !== host) host.appendChild(sidebar);
+
+        sourceContainer.classList.add("wmn-native-sidebar-source-container");
+        sidebar.classList.add("wmn-native-sidebar-topnav");
+        document.body.classList.add("wmn-native-sidebar-topnav-mode");
+        syncNativeSidebarTopnavRouteVisibility(host);
+        getNativeTopnavUserControl(sidebar);
+        bindNativeSidebarTopnavPopups(sidebar);
+
+        return true;
+    }
+
+    function scheduleNativeSidebarTopnavEnsure() {
+        if (WMN_NAV.nativeSidebarTopnavEnsureScheduled) return;
+        WMN_NAV.nativeSidebarTopnavEnsureScheduled = true;
+        requestAnimationFrame(function () {
+            WMN_NAV.nativeSidebarTopnavEnsureScheduled = false;
+            ensureNativeSidebarTopnav();
+        });
+    }
+
+    function startNativeSidebarTopnavObserver() {
+        if (window.__WMN_NATIVE_SIDEBAR_TOPNAV_OBSERVER__ || !window.MutationObserver) return;
+        window.__WMN_NATIVE_SIDEBAR_TOPNAV_OBSERVER__ = new MutationObserver(function () {
+            if (WMN_NAV.mode === "sidebar") return;
+            const sidebar = getNativeSidebar();
+            const host = getNativeSidebarTopnavHost();
+            const sourceContainer = getNativeSidebarContainer();
+            if (!sidebar || !host || sidebar.parentElement !== host ||
+                !sourceContainer || !sourceContainer.classList.contains("wmn-native-sidebar-source-container")) {
+                scheduleNativeSidebarTopnavEnsure();
+            }
+        });
+        window.__WMN_NATIVE_SIDEBAR_TOPNAV_OBSERVER__.observe(document.body, { childList: true, subtree: true });
     }
 
     function mountHeaderInDeskShell(html) {
@@ -2004,7 +3106,10 @@ body.rtl-mode
     }
 
     function renderWorkspaceBodyNative(pageData, container, workspaceName, options) {
-        let blocks = parseWorkspaceContent(workspaceName);
+        options = options || {};
+        let blocks = Array.isArray(options.blocks)
+            ? options.blocks.map(block => ({ ...block, data: { ...(block.data || {}) } }))
+            : parseWorkspaceContent(workspaceName);
         if (!blocks.length) return false;
 
         blocks = addCustomCardsToWorkspaceLayout(blocks, pageData);
@@ -2018,6 +3123,7 @@ body.rtl-mode
         const page = document.createElement("div");
         page.className = "wmn-native-workspace desk-page page-main-content";
         page.dataset.workspace = workspaceName || "";
+        page.dataset.contentSource = options.contentSource || WMN_NAV.contentSource || "workspace_page";
 
         const editor = document.createElement("div");
         editor.className = "codex-editor";
@@ -2206,7 +3312,9 @@ body.rtl-mode
             </div>
         `;
         
+        ensureNativeSidebarTopnav();
         if (!mountHeaderInDeskShell(html)) return;
+        ensureNativeSidebarTopnav();
         bindHeaderOutsideClick();
         bindHeaderOverflowMenu();
 
@@ -2435,9 +3543,11 @@ body.rtl-mode
 
         renderHeaderTabs(name, tabHeader);
         content.innerHTML = `<div class="wmn-loading"><i class="fa fa-spinner fa-spin"></i></div>`;
-        const data = await fetchDesktopPage(name);
-        renderWorkspaceBody(data, content, {
+        const view = await fetchWorkspaceView(name);
+        renderWorkspaceBody(view.data, content, {
             workspaceName: name,
+            blocks: view.blocks,
+            contentSource: view.source,
             afterNavigate: function () {
                 const dropdown = document.getElementById("wmn-workspace-dropdown");
                 if (dropdown) dropdown.classList.remove("show");
@@ -2594,9 +3704,10 @@ body.rtl-mode
             const shouldLoad = !content.dataset.loaded;
             toggleBlock(content, this);
             if (shouldLoad) {
-                const data = await fetchDesktopPage(ws.name);
-                renderSidebarWorkspaceContent(data, content, ws.name);
+                const view = await fetchWorkspaceView(ws.name);
+                renderSidebarWorkspaceContent(view.data, content, ws.name);
                 content.dataset.loaded = "1";
+                content.dataset.contentSource = view.source;
             }
         };
         return item;
@@ -2668,15 +3779,22 @@ body.rtl-mode
         WMN_NAV.loaded = true;
 
         waitForDesk(function () {
+            addUnifiedStyles();
+
             loadSettings(function (settings) {
                 WMN_NAV.settings = settings || {};
                 WMN_NAV.mode = resolveMode(WMN_NAV.settings);
+                WMN_NAV.contentSource = resolveWorkspaceContentSource(WMN_NAV.settings);
 
                 if (WMN_NAV.mode === "header") {
+                    ensureNativeSidebarTopnav();
+                    startNativeSidebarTopnavObserver();
                     initHeaderMode();
                 } else if (WMN_NAV.mode === "sidebar") {
                     initSidebarMode();
                 } else {
+                    ensureNativeSidebarTopnav();
+                    startNativeSidebarTopnavObserver();
                     cleanupUI();
                     console.log("WMN Workspace Navigation disabled by settings.");
                 }
@@ -2685,6 +3803,10 @@ body.rtl-mode
     }
 
     function refreshOnRouteChange() {
+        requestAnimationFrame(ensureNativeSidebarTopnav);
+        setTimeout(ensureNativeSidebarTopnav, 120);
+        setTimeout(ensureNativeSidebarTopnav, 350);
+
         if (!WMN_NAV.mode || WMN_NAV.mode === "disabled") return;
 
         // Native Workspace widgets navigate on their own. Close the header
@@ -2698,6 +3820,7 @@ body.rtl-mode
         setTimeout(function () {
             if (WMN_NAV.mode === "header" && !document.querySelector(".wmn-global-workspace-header")) initHeaderMode();
             if (WMN_NAV.mode === "sidebar" && !document.querySelector(".wmn-custom-sidebar")) initSidebarMode();
+            ensureNativeSidebarTopnav();
         }, 300);
     }
 
