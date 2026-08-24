@@ -23,6 +23,13 @@
    "options": "\nsidebar\nheader"
   },
   {
+   "default": "Workspace Sidebar",
+   "fieldname": "workspace_content_source",
+   "fieldtype": "Select",
+   "label": "Workspace Content Source",
+   "options": "Workspace Page\nWorkspace Sidebar"
+  },
+  {
    "default": "1",
    "fieldname": "enable_pos_offline",
    "fieldtype": "Check",

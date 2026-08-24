@@ -1,0 +1,166 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-08-22 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "gateway_profile",
+  "provider",
+  "action",
+  "status",
+  "transaction_time",
+  "pos_profile",
+  "sales_invoice",
+  "client_reference",
+  "mode_of_payment",
+  "amount",
+  "currency",
+  "terminal_id",
+  "merchant_id",
+  "transaction_id",
+  "reference_number",
+  "authorization_code",
+  "payment_network",
+  "original_transaction_id",
+  "gateway_response"
+ ],
+ "fields": [
+  {
+   "fieldname": "gateway_profile",
+   "fieldtype": "Link",
+   "label": "Gateway Profile",
+   "options": "WMN Payment Gateway Profile",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "provider",
+   "fieldtype": "Data",
+   "label": "Provider",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "action",
+   "fieldtype": "Select",
+   "label": "Action",
+   "options": "Authorize\nRefund\nVoid\nStatus",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Pending\nApproved\nDeclined\nError\nCancelled\nRefunded\nVoided",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "transaction_time",
+   "fieldtype": "Datetime",
+   "label": "Transaction Time",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "pos_profile",
+   "fieldtype": "Link",
+   "label": "POS Profile",
+   "options": "POS Profile"
+  },
+  {
+   "fieldname": "sales_invoice",
+   "fieldtype": "Link",
+   "label": "Sales Invoice",
+   "options": "Sales Invoice"
+  },
+  {
+   "fieldname": "client_reference",
+   "fieldtype": "Data",
+   "label": "Client Reference"
+  },
+  {
+   "fieldname": "mode_of_payment",
+   "fieldtype": "Link",
+   "label": "Mode of Payment",
+   "options": "Mode of Payment"
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Amount",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency"
+  },
+  {
+   "fieldname": "terminal_id",
+   "fieldtype": "Data",
+   "label": "Terminal ID"
+  },
+  {
+   "fieldname": "merchant_id",
+   "fieldtype": "Data",
+   "label": "Merchant ID"
+  },
+  {
+   "fieldname": "transaction_id",
+   "fieldtype": "Data",
+   "label": "Transaction ID",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "reference_number",
+   "fieldtype": "Data",
+   "label": "RRN / Reference Number"
+  },
+  {
+   "fieldname": "authorization_code",
+   "fieldtype": "Data",
+   "label": "Authorization Code"
+  },
+  {
+   "fieldname": "payment_network",
+   "fieldtype": "Data",
+   "label": "Payment Network"
+  },
+  {
+   "fieldname": "original_transaction_id",
+   "fieldtype": "Data",
+   "label": "Original Transaction ID"
+  },
+  {
+   "fieldname": "gateway_response",
+   "fieldtype": "Long Text",
+   "label": "Gateway Response",
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-08-22 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Wmn",
+ "name": "WMN Payment Gateway Transaction",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "format:WMN-PGT-{#####}"
+}

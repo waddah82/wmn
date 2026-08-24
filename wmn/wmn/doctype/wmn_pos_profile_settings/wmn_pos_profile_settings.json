@@ -9,6 +9,15 @@
   "section_1",
   "default_item_view",
   "show_item_cart_counter",
+  "ignore_pricing_rule",
+  "commercial_discount_composition_section",
+  "pricing_rule_promotion_policy",
+  "pricing_rule_coupon_policy",
+  "promotion_coupon_policy",
+  "pricing_rule_promotion_coupon_policy",
+  "combined_discount_representation",
+  "payment_gateway_section",
+  "payment_gateways",
   "section_2",
   "enable_auto_silent_print",
   "wmn_silent_print_mode",
@@ -74,6 +83,65 @@
    "label": "Show Item Cart Quantity Counter",
    "fieldtype": "Check",
    "default": "0"
+  },
+  {
+   "fieldname": "ignore_pricing_rule",
+   "label": "Ignore Pricing Rule",
+   "fieldtype": "Check",
+   "default": "0",
+   "description": "When enabled, WMN POS disables the WMN local Pricing Rule engine. ERPNext native Pricing Rule execution remains disabled in WMN POS, so no Pricing Rules are applied."
+  },
+  {
+   "fieldname": "commercial_discount_composition_section",
+   "fieldtype": "Section Break",
+   "label": "Commercial Discount Composition"
+  },
+  {
+   "default": "Combine",
+   "fieldname": "pricing_rule_promotion_policy",
+   "fieldtype": "Select",
+   "label": "Pricing Rule + Promotion",
+   "options": "Pricing Rule Wins\nPromotion Wins\nCombine"
+  },
+  {
+   "default": "Combine",
+   "fieldname": "pricing_rule_coupon_policy",
+   "fieldtype": "Select",
+   "label": "Pricing Rule + Coupon",
+   "options": "Pricing Rule Wins\nCoupon Wins\nCombine"
+  },
+  {
+   "default": "Combine",
+   "fieldname": "promotion_coupon_policy",
+   "fieldtype": "Select",
+   "label": "Promotion + Coupon",
+   "options": "Promotion Wins\nCoupon Wins\nCombine"
+  },
+  {
+   "default": "Combine",
+   "fieldname": "pricing_rule_promotion_coupon_policy",
+   "fieldtype": "Select",
+   "label": "Pricing Rule + Promotion + Coupon",
+   "options": "Pricing Rule Wins\nPromotion Wins\nCoupon Wins\nCombine"
+  },
+  {
+   "default": "Amount Only",
+   "description": "Used only when the selected conflict policy is Combine. Percentage Equivalent converts the final combined amount to one invoice-level percentage on Net Total.",
+   "fieldname": "combined_discount_representation",
+   "fieldtype": "Select",
+   "label": "Combined Discount Representation",
+   "options": "Amount Only\nPercentage Equivalent (Net Total)"
+  },
+  {
+   "fieldname": "payment_gateway_section",
+   "fieldtype": "Section Break",
+   "label": "Electronic Payment Gateways"
+  },
+  {
+   "fieldname": "payment_gateways",
+   "fieldtype": "Table",
+   "label": "Payment Gateways",
+   "options": "WMN POS Payment Gateway"
   },
   {
    "fieldtype": "Section Break",

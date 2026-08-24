@@ -9,7 +9,11 @@
   "section",
   "display_order",
   "custom_label",
-  "icon"
+  "icon",
+  "choose_icon",
+  "icon_preview",
+  "button_color",
+  "text_color"
  ],
  "fields": [
   {
@@ -52,7 +56,29 @@
    "fieldname": "icon",
    "fieldtype": "Data",
    "label": "Icon",
-   "description": "Optional Frappe icon name."
+   "description": "Selected Frappe icon name. Use Choose Icon to browse visually."
+  },
+  {
+   "fieldname": "choose_icon",
+   "fieldtype": "Button",
+   "label": "Choose Icon"
+  },
+  {
+   "fieldname": "icon_preview",
+   "fieldtype": "HTML",
+   "label": "Icon Preview"
+  },
+  {
+   "fieldname": "button_color",
+   "fieldtype": "Color",
+   "label": "Button Color",
+   "description": "Optional. Leave empty to use the current WMN POS menu style."
+  },
+  {
+   "fieldname": "text_color",
+   "fieldtype": "Color",
+   "label": "Text Color",
+   "description": "Optional. Applies to the menu label and icon."
   }
  ],
  "modified": "2026-08-15 19:05:00.000000",
