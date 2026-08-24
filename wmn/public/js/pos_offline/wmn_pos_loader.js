@@ -21,7 +21,7 @@ frappe.pages["point-of-sale"].on_page_load = function(wrapper) {
 
     frappe.require("point-of-sale.bundle.js", function() {
         const base = "/assets/wmn/js/pos_offline/";
-        const version = "20260819_erpnext_v16_port";
+        const version = "20260823_android_app_bridge_v12";
         window.__wmn_pos_asset_version = version;
         const manifest = [
             "core/namespace.js",
@@ -37,6 +37,15 @@ frappe.pages["point-of-sale"].on_page_load = function(wrapper) {
             "ui/dialog_manager.js",
             "services/offline/document_adapter.js",
             "services/payment/offline_payment.js",
+            "features/payment_gateway/payment_gateway.common.js",
+            "services/payment_gateway/model_registry.js",
+            "services/payment_gateway/providers/provider_base.js",
+            "services/payment_gateway/providers/geidea.js",
+            "services/payment_gateway/providers/stc_softpos.js",
+            "services/payment_gateway/providers/generic.js",
+            "services/payment_gateway/payment_gateway_service.js",
+            "features/payment_gateway/payment_gateway.online.js",
+            "features/payment_gateway/payment_gateway.offline.js",
             "services/stock/offline_stock.js",
             "services/offline/invoice_manager.js",
             "services/printing/raw_renderer.js",
@@ -63,6 +72,8 @@ frappe.pages["point-of-sale"].on_page_load = function(wrapper) {
             "features/invoice_handoff/invoice_handoff.common.js",
             "features/invoice_handoff/invoice_handoff.online.js",
             "features/invoice_handoff/invoice_handoff.offline.js",
+            "features/return/return.common.js",
+            "features/return/return.offline.js",
             "features/cashier_completion/cashier_completion.common.js",
             "features/sync/sync.common.js",
             "features/sync/sync.online.js",
@@ -71,9 +82,12 @@ frappe.pages["point-of-sale"].on_page_load = function(wrapper) {
             "services/cache/controller_cache.js",
             "services/cache/pos_cache_registry.js",
             "services/cache/pos_cache_adapter.js",
+            "services/item/free_item_row.js",
             "features/pos_cache_manager/pos_cache_manager.common.js",
             "features/pos_cache_manager/pos_cache_manager.online.js",
             "features/pos_cache_manager/pos_cache_manager.offline.js",
+            "features/pricing_rule/pricing_rule.common.js",
+            "features/pricing_rule/pricing_rule.controller.common.js",
             "features/discount/discount.common.js",
             "features/ui_preferences/ui_preferences.common.js",
             "features/coupon/coupon.common.js",

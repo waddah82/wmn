@@ -109,8 +109,13 @@
         function wmn_normalize_all_offline_cart_rows(doc, fallbackWarehouse) {
             if (!doc) return doc;
 
+            const isReturn = cint(doc.is_return || 0) === 1;
             doc.items = (doc.items || [])
-                .filter(row => row && row.item_code && flt(row.qty || 0) > 0)
+                .filter((row) => {
+                    if (!row || !row.item_code) return false;
+                    const qty = flt(row.qty || 0);
+                    return isReturn ? qty < 0 : qty > 0;
+                })
                 .map((row, idx) => wmn_normalize_offline_cart_row(row, doc, idx, fallbackWarehouse));
 
             return doc;
@@ -176,7 +181,6 @@
             ctrl = ctrl || window.cur_pos || {};
             const settings = ctrl.settings || {};
             const doc = ctrl.frm && ctrl.frm.doc ? ctrl.frm.doc : {};
-
             if (["Sales Invoice", "POS Invoice"].includes(doc.doctype)) return doc.doctype;
             if (["Sales Invoice", "POS Invoice"].includes(settings.frm_doctype)) return settings.frm_doctype;
             if (["Sales Invoice", "POS Invoice"].includes(settings.invoice_type)) return settings.invoice_type;
@@ -186,12 +190,6 @@
 
         function wmn_pos_item_doctype(invoiceDoctype) {
             return invoiceDoctype === "Sales Invoice" ? "Sales Invoice Item" : "POS Invoice Item";
-        }
-
-        function wmn_pos_return_method(invoiceDoctype) {
-            return invoiceDoctype === "Sales Invoice"
-                ? "erpnext.accounts.doctype.sales_invoice.sales_invoice.make_sales_return"
-                : "erpnext.accounts.doctype.pos_invoice.pos_invoice.make_sales_return";
         }
 
         function wmn_safe_settings(settings) {

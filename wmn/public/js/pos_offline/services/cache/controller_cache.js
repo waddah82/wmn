@@ -379,35 +379,75 @@
         }
 
         async makeReturnInvoiceOffline(sourceDoc) {
-            // Base stage: no server call. Return locally only if sourceDoc is already a cached/local invoice.
+            // Offline changes only the data source. Return business behavior belongs
+            // to Features.Return and mirrors ERPNext make_return_doc semantics.
             if (!sourceDoc || !sourceDoc.__offline_pos) {
                 frappe.throw({
                     title: __("Offline"),
                     message: __("Return invoice is available offline only for locally cached invoices."),
                 });
             }
-            const frm = await this.makeOfflineFrm(sourceDoc.doctype || (this.ctrl && this.ctrl.settings && this.ctrl.settings.frm_doctype) || "POS Invoice");
-            frm.doc.is_return = 1;
-            frm.doc.return_against = sourceDoc.name;
+
+            const returnOffline = window.WMN_POS?.Features?.Return?.Offline;
+            if (!returnOffline?.getReturnState || !returnOffline?.buildReturnDocument) {
+                frappe.throw({
+                    title: __("Offline Return"),
+                    message: __("Offline return service is not available."),
+                });
+            }
+
+            const returnState = await returnOffline.getReturnState(sourceDoc);
+            if (!returnState.returnable) {
+                frappe.throw({
+                    title: __("Invalid Return"),
+                    message: __("All the items have been already returned."),
+                });
+            }
+
+            const frm = await this.makeOfflineFrm(
+                sourceDoc.doctype || (this.ctrl && this.ctrl.settings && this.ctrl.settings.frm_doctype) || "POS Invoice"
+            );
+            frm.doc.__wmn_return_source_payment_state = typeof wmn_source_invoice_payment_state === "function"
+                ? wmn_source_invoice_payment_state(sourceDoc)
+                : "paid";
             frm.doc.__wmn_return_against_credit = typeof wmn_source_invoice_is_credit === "function"
                 ? wmn_source_invoice_is_credit(sourceDoc)
                 : false;
+            frm.doc.__wmn_return_zero_payment = typeof wmn_source_invoice_requires_zero_return_payment === "function"
+                ? wmn_source_invoice_requires_zero_return_payment(sourceDoc)
+                : frm.doc.__wmn_return_against_credit === true;
+
             if (this.ctrl) {
                 this.ctrl.__wmn_return_against_credit = frm.doc.__wmn_return_against_credit === true;
+                this.ctrl.__wmn_return_zero_payment = frm.doc.__wmn_return_zero_payment === true;
+                this.ctrl.__wmn_return_source_payment_state = frm.doc.__wmn_return_source_payment_state;
             }
-            frm.doc.customer = sourceDoc.customer;
-            frm.doc.customer_name = sourceDoc.customer_name;
-            frm.doc.items = (sourceDoc.items || []).map((row, idx) => Object.assign({}, row, {
-                name: "OFFLINE-RETURN-ROW-" + Date.now() + "-" + idx,
-                qty: -Math.abs(flt(row.qty || 0)),
-                amount: -Math.abs(flt(row.amount || 0)),
-                parent: frm.doc.name,
-                parenttype: frm.doc.doctype,
-                idx: idx + 1,
-            }));
 
+            const zeroPaymentReturn = frm.doc.__wmn_return_zero_payment === true;
+            let fallbackPaymentMethod = null;
+            const sourceHasPaymentRows = (sourceDoc.payments || []).some(
+                (row) => row?.mode_of_payment && Math.abs(flt(row.amount || 0)) > 0.000001
+            );
+            if (!zeroPaymentReturn && Math.abs(flt(sourceDoc.paid_amount || 0)) > 0.000001 && !sourceHasPaymentRows) {
+                const cachedPaymentMethods = await this.getPaymentMethods();
+                fallbackPaymentMethod = (cachedPaymentMethods || []).find((row) => cint(row.default || 0) === 1)
+                    || (cachedPaymentMethods || [])[0]
+                    || null;
+            }
+
+            returnOffline.buildReturnDocument(sourceDoc, frm.doc, returnState, {
+                zero_payment_return: zeroPaymentReturn,
+                fallback_payment_method: fallbackPaymentMethod,
+            });
+
+            if (zeroPaymentReturn && typeof wmn_prepare_zero_payment_return === "function") {
+                wmn_prepare_zero_payment_return(frm.doc);
+            }
             if (typeof wmn_recalculate_offline_doc === "function") {
                 wmn_recalculate_offline_doc(frm.doc);
+            }
+            if (zeroPaymentReturn && typeof wmn_prepare_zero_payment_return === "function") {
+                wmn_prepare_zero_payment_return(frm.doc);
             }
             return frm;
         }

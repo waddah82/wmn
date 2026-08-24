@@ -6,6 +6,12 @@
     ns.Services.Settings = ns.Services.Settings || {};
 
     const DEFAULTS = Object.freeze({
+        ignore_pricing_rule: 0,
+        pricing_rule_promotion_policy: "Combine",
+        pricing_rule_coupon_policy: "Combine",
+        promotion_coupon_policy: "Combine",
+        pricing_rule_promotion_coupon_policy: "Combine",
+        combined_discount_representation: "Amount Only",
         default_item_view: "Grid View",
         show_item_cart_counter: 0,
         enable_auto_silent_print: 0,
@@ -42,6 +48,7 @@
     });
 
     const NUMERIC_KEYS = new Set([
+        "ignore_pricing_rule",
         "show_item_cart_counter",
         "enable_auto_silent_print",
         "print_after_cashier_completion",
@@ -56,6 +63,16 @@
         "webserial_baud_rate",
         "webserial_data_bits",
         "webserial_stop_bits",
+    ]);
+
+    // Business-critical profile flags must never diverge per browser/device.
+    const SERVER_ONLY_KEYS = new Set([
+        "ignore_pricing_rule",
+        "pricing_rule_promotion_policy",
+        "pricing_rule_coupon_policy",
+        "promotion_coupon_policy",
+        "pricing_rule_promotion_coupon_policy",
+        "combined_discount_representation",
     ]);
 
     let currentProfile = "";
@@ -167,7 +184,9 @@
     function getLocalOverride(profile) {
         const normalizedProfile = resolveProfile(profile);
         if (!normalizedProfile) return {};
-        return normalize(readJson(localOverrideKey(normalizedProfile), {}));
+        const local = normalize(readJson(localOverrideKey(normalizedProfile), {}));
+        SERVER_ONLY_KEYS.forEach((key) => delete local[key]);
+        return local;
     }
 
     function getServerSettings(profile) {
@@ -267,6 +286,7 @@
         if (!normalizedProfile) throw new Error("POS Profile is required before saving browser settings.");
         const current = getLocalOverride(normalizedProfile);
         const normalizedPatch = normalize(patch || {});
+        SERVER_ONLY_KEYS.forEach((key) => delete normalizedPatch[key]);
         const next = Object.assign({}, current, normalizedPatch);
         writeJson(localOverrideKey(normalizedProfile), next);
         window.dispatchEvent(new CustomEvent("wmn:pos-profile-settings-changed", {
@@ -317,6 +337,11 @@
         };
     }
 
+    function isLocalPricingRuleEngineIgnored(profile) {
+        const effective = getEffective(profile);
+        return cint(effective.ignore_pricing_rule || 0) === 1;
+    }
+
     function applyLegacySettings(target, profile) {
         const effective = getEffective(profile);
         target = target || {};
@@ -339,5 +364,6 @@
         isOnline,
         resolveProfile,
         applyLegacySettings,
+        isLocalPricingRuleEngineIgnored,
     };
 })();

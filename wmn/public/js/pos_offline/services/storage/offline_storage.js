@@ -194,7 +194,7 @@ wmn_install_pos_pwa_app_css();
 
             const LEGACY_DB_NAME = "wmn_erpnext_pos_offline";
             const DB_NAME = "wmn_erpnext_pos_offline__" + getSiteKey();
-            const DB_VERSION = 85;
+            const DB_VERSION = 86;
             const STORES = {
                 items: "items",
                 customers: "customers",
@@ -206,6 +206,7 @@ wmn_install_pos_pwa_app_css();
                 payment_methods: "payment_methods",
                 coupons: "coupons",
                 promotions: "promotions",
+                pricing_rules: "pricing_rules",
                 settings: "settings",
                 pos_profile: "pos_profile",
                 pos_settings: "pos_settings",
@@ -248,6 +249,7 @@ wmn_install_pos_pwa_app_css();
                 STORES.barcode_structures,
                 STORES.coupons,
                 STORES.promotions,
+                STORES.pricing_rules,
             ]);
 
             function invalidateMasterReadCache(storeName) {
@@ -334,6 +336,14 @@ wmn_install_pos_pwa_app_css();
                             store.createIndex("company", "company", { unique: false });
                             store.createIndex("pos_profile", "pos_profile", { unique: false });
                             store.createIndex("apply_scope", "apply_scope", { unique: false });
+                        }
+
+                        if (!db.objectStoreNames.contains(STORES.pricing_rules)) {
+                            const store = db.createObjectStore(STORES.pricing_rules, { keyPath: "name" });
+                            store.createIndex("apply_on", "apply_on", { unique: false });
+                            store.createIndex("company", "company", { unique: false });
+                            store.createIndex("price_or_product_discount", "price_or_product_discount", { unique: false });
+                            store.createIndex("priority", "priority", { unique: false });
                         }
 
                         if (!db.objectStoreNames.contains(STORES.settings)) {
@@ -1177,6 +1187,8 @@ wmn_install_pos_pwa_app_css();
                     const paymentMethods = (data.payment_methods || []).filter(d => d && d.mode_of_payment);
                     const coupons = (data.pos_coupons || data.coupons || []).map(normalizeCoupon).filter(d => d.coupon_code);
                     const promotions = (data.pos_promotions || data.promotions || []).map(normalizePromotion).filter(d => d.promotion_code);
+                    const pricingRules = (data.pricing_rules || []).filter(d => d && d.name);
+                    const pricingRuleContext = clone(data.pricing_rule_context || {});
                     const supervisorBundle = clone(data.pos_supervisor_bundle || {});
                     supervisorBundleMemory = supervisorBundle;
                     window.__wmn_pos_supervisor_bundle = supervisorBundle;
@@ -1303,6 +1315,7 @@ wmn_install_pos_pwa_app_css();
                     await bulkPut(STORES.payment_methods, paymentMethods);
                     await replaceAll(STORES.coupons, coupons);
                     await replaceAll(STORES.promotions, promotions);
+                    await replaceAll(STORES.pricing_rules, pricingRules);
                     await bulkPut(STORES.item_groups, itemGroups);
                     await bulkPut(STORES.pos_profile, [posProfile]);
                     await bulkPut(STORES.pos_settings, [posSettings]);
@@ -1323,6 +1336,7 @@ wmn_install_pos_pwa_app_css();
                         { key: "pos_supervisor_bundle", value: supervisorBundle },
                         { key: "cash_movement_context", value: cashMovementContext },
                         { key: "cash_movement_summary", value: clone(cashMovementContext.summary || {}) },
+                        { key: "pricing_rule_context", value: pricingRuleContext },
                     ];
 
                     if (wmnPrintFormat && wmnPrintFormat.name) {
@@ -1336,6 +1350,13 @@ wmn_install_pos_pwa_app_css();
                     }
 
                     await bulkPut(STORES.settings, settingsRows);
+                    window.dispatchEvent(new CustomEvent("wmn:pricing-rule-snapshot-updated", {
+                        detail: {
+                            version: pricingRuleContext.version || "",
+                            count: pricingRules.length,
+                            pos_profile: posProfile.pos_profile || posProfile.name || "",
+                        },
+                    }));
 
                     lastPreloadKey = preloadKey;
                     preloadLoaded = true;
@@ -2017,6 +2038,37 @@ wmn_install_pos_pwa_app_css();
                 return await getAllCached(STORES.promotions);
             }
 
+            async function getPricingRules() {
+                return await getAllCached(STORES.pricing_rules);
+            }
+
+            async function getPricingRuleContext() {
+                return await getSetting("pricing_rule_context") || {};
+            }
+
+            async function savePricingRuleSnapshot(snapshot) {
+                snapshot = snapshot || {};
+                const rules = (snapshot.rules || []).filter(row => row && row.name);
+                const context = {
+                    schema_version: snapshot.schema_version || 0,
+                    version: snapshot.version || "",
+                    erpnext_reference: snapshot.erpnext_reference || "",
+                    transaction_order_mode: snapshot.transaction_order_mode || "",
+                    company: snapshot.company || "",
+                    price_list: snapshot.price_list || "",
+                    trees: clone(snapshot.trees || {}),
+                    uom_conversions: clone(snapshot.uom_conversions || {}),
+                    item_meta: clone(snapshot.item_meta || {}),
+                    condition_ast_mode: snapshot.condition_ast_mode || "",
+                };
+                await replaceAll(STORES.pricing_rules, rules);
+                await setSetting("pricing_rule_context", context);
+                window.dispatchEvent(new CustomEvent("wmn:pricing-rule-snapshot-updated", {
+                    detail: { version: context.version, count: rules.length },
+                }));
+                return { rules, context };
+            }
+
             async function markCustomerPOSPurchase(customer, postingDate) {
                 const customerName = String(customer || "").trim();
                 if (!customerName) return null;
@@ -2152,6 +2204,9 @@ wmn_install_pos_pwa_app_css();
                 if (typeof window.wmn_notify_offline_queue_changed === "function") {
                     window.wmn_notify_offline_queue_changed();
                 }
+                window.dispatchEvent(new CustomEvent("wmn:pricing-rule-cumulative-history-changed", {
+                    detail: { server_committed: false, offline_id: offlineId, source: "offline_save" },
+                }));
                 return row;
             }
 
@@ -2360,6 +2415,8 @@ wmn_install_pos_pwa_app_css();
                 const displayName = String(invoiceRow.erpnext_name || invoiceRow.server_name || invoiceRow.offline_id || doc.name || "");
 
                 doc.__wmn_queue_offline_id = invoiceRow.offline_id || "";
+                doc.__offline_pos = 1;
+                doc.offline_pos = 1;
                 doc.__wmn_queue_status = getInvoiceQueueStatus(invoiceRow);
                 doc.__wmn_server_name = invoiceRow.erpnext_name || invoiceRow.server_name || "";
                 doc.__wmn_local_submitted = invoiceRow.queue_kind !== "draft";
@@ -2393,7 +2450,11 @@ wmn_install_pos_pwa_app_css();
                     const doc = decorateInvoiceQueueRow(invoiceRow, paymentRows);
                     if (!doc) continue;
                     const invoiceStatus = String(doc.__wmn_display_status || doc.status || "").trim();
-                    if (wantedStatus && invoiceStatus !== wantedStatus) continue;
+                    if (wantedStatus === "Returnable") {
+                        if (cint(doc.docstatus || 0) !== 1 || cint(doc.is_return || 0) === 1) continue;
+                    } else if (wantedStatus && invoiceStatus !== wantedStatus) {
+                        continue;
+                    }
 
                     const displayName = String(doc.__wmn_display_name || invoiceRow.offline_id || doc.name || "");
                     if (search) {
@@ -2640,6 +2701,51 @@ wmn_install_pos_pwa_app_css();
                 return { syncId, invoice };
             }
 
+            async function resolveReturnAgainstForSync(row, invoice) {
+                if (!invoice || cint(invoice.is_return || 0) !== 1) return invoice;
+
+                const returnAgainst = String(invoice.return_against || "").trim();
+                if (!returnAgainst) return invoice;
+
+                const sourceRow = await findInvoiceQueueRow(returnAgainst);
+                if (!sourceRow) {
+                    // A server invoice name does not need local remapping. The server API
+                    // performs a final defensive resolution for legacy offline IDs.
+                    return invoice;
+                }
+
+                const sourceOfflineId = String(sourceRow.offline_id || "").trim();
+                const currentOfflineId = String(row?.offline_id || "").trim();
+                if (sourceOfflineId && currentOfflineId && sourceOfflineId === currentOfflineId) {
+                    throw new Error(__("A return invoice cannot reference itself."));
+                }
+
+                let serverSourceName = String(
+                    sourceRow.erpnext_name || sourceRow.server_name || ""
+                ).trim();
+
+                if (!serverSourceName) {
+                    const syncedSourceRow = await syncInvoice(sourceRow);
+                    serverSourceName = String(
+                        syncedSourceRow?.erpnext_name || syncedSourceRow?.server_name || ""
+                    ).trim();
+
+                    if (getInvoiceQueueStatus(syncedSourceRow) !== "synced") {
+                        throw new Error(__(
+                            "The source invoice must be completed and synchronized before its return can be synchronized."
+                        ));
+                    }
+                } else if (getInvoiceQueueStatus(sourceRow) !== "synced") {
+                    throw new Error(__(
+                        "The source invoice must be completed and synchronized before its return can be synchronized."
+                    ));
+                }
+
+                invoice.__wmn_return_against_offline_id = returnAgainst;
+                invoice.return_against = serverSourceName;
+                return invoice;
+            }
+
             async function syncInvoice(row) {
                 if (!online()) throw new Error("POS is offline");
                 if (!row) return row;
@@ -2658,6 +2764,7 @@ wmn_install_pos_pwa_app_css();
                 const flight = (async () => {
                     try {
                         await wmn_clean_doc_batch_serial_for_save(invoice);
+                        await resolveReturnAgainstForSync(row, invoice);
                         row.status = "syncing";
                         row.last_try_at = new Date().toISOString();
                         row.invoice = invoice;
@@ -2706,6 +2813,11 @@ wmn_install_pos_pwa_app_css();
                         );
                         row.invoice = invoice;
                         await updateQueueRow(row);
+                        if (!syncAsDraft && serverDocstatus === 1) {
+                            window.dispatchEvent(new CustomEvent("wmn:pricing-rule-cumulative-history-changed", {
+                                detail: { server_committed: true, offline_id: syncId, source: "offline_sync" },
+                            }));
+                        }
                         return row;
                     } catch (e) {
                         row.status = "pending";
@@ -2796,6 +2908,9 @@ wmn_install_pos_pwa_app_css();
                 getCoupon,
                 getCoupons,
                 getPromotions,
+                getPricingRules,
+                getPricingRuleContext,
+                savePricingRuleSnapshot,
                 markCustomerPOSPurchase,
                 getSupervisorBundle,
                 getCashMovementContext,

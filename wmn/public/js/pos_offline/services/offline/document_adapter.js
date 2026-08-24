@@ -213,6 +213,9 @@
                 account_head: row.account_head || "",
                 description: row.description || row.account_head || "Tax",
                 rate: flt(row.rate || 0),
+                add_deduct_tax: row.add_deduct_tax || "Add",
+                category: row.category || "Total",
+                row_id: cint(row.row_id || 0),
                 tax_amount: 0,
                 base_tax_amount: 0,
                 tax_amount_after_discount_amount: 0,
@@ -285,6 +288,9 @@
                         account_head: t.account_head || "",
                         description: t.description || t.account_head || "Tax",
                         rate: flt(t.rate || 0),
+                        add_deduct_tax: t.add_deduct_tax || "Add",
+                        category: t.category || "Total",
+                        row_id: cint(t.row_id || 0),
                         included_in_print_rate: cint(t.included_in_print_rate || 0),
                         cost_center: t.cost_center || "",
                     }));
@@ -295,6 +301,9 @@
                     charge_type: r.charge_type,
                     account_head: r.account_head,
                     rate: r.rate,
+                    add_deduct_tax: r.add_deduct_tax,
+                    category: r.category,
+                    row_id: r.row_id,
                     included_in_print_rate: r.included_in_print_rate,
                 })));
 
@@ -392,7 +401,169 @@
             return taxes;
         }
 
-        function wmn_apply_offline_taxes_and_discount(doc, total_qty, net_total, round_total) {
+        function wmn_calculate_offline_return_taxes(doc, taxes, items, netTotal) {
+            let runningTotal = flt(netTotal || 0);
+            let totalTaxes = 0;
+
+            taxes.forEach((tax, idx) => {
+                const chargeType = String(tax.charge_type || "On Net Total");
+                let taxAmount = 0;
+
+                if (chargeType === "Actual") {
+                    taxAmount = flt(tax.tax_amount || tax.base_tax_amount || 0);
+                } else if (chargeType === "On Previous Row Amount") {
+                    const previous = taxes[Math.max(0, cint(tax.row_id || 0) - 1)];
+                    taxAmount = flt(previous?.tax_amount || 0) * flt(tax.rate || 0) / 100;
+                } else if (chargeType === "On Previous Row Total") {
+                    const previous = taxes[Math.max(0, cint(tax.row_id || 0) - 1)];
+                    taxAmount = flt(previous?.total || 0) * flt(tax.rate || 0) / 100;
+                } else if (chargeType === "On Item Quantity") {
+                    taxAmount = items.reduce((sum, row) => {
+                        const rate = wmn_get_item_tax_rate_for_account(row, tax.account_head, tax.rate);
+                        return sum + (flt(row.qty || 0) * flt(rate || 0));
+                    }, 0);
+                } else {
+                    taxAmount = items.reduce((sum, row) => {
+                        const rate = wmn_get_item_tax_rate_for_account(row, tax.account_head, tax.rate);
+                        return sum + (flt(row.net_amount || 0) * flt(rate || 0) / 100);
+                    }, 0);
+                }
+
+                tax.idx = idx + 1;
+                tax.tax_amount = taxAmount;
+                tax.base_tax_amount = taxAmount;
+                tax.tax_amount_after_discount_amount = taxAmount;
+                tax.base_tax_amount_after_discount_amount = taxAmount;
+                let totalContribution = taxAmount;
+                if (String(tax.category || "") === "Valuation") totalContribution = 0;
+                if (String(tax.add_deduct_tax || "") === "Deduct") totalContribution *= -1;
+
+                runningTotal += totalContribution;
+                tax.total = runningTotal;
+                tax.base_total = runningTotal;
+                totalTaxes += totalContribution;
+            });
+
+            return { taxes, totalTaxes, grandTotal: flt(netTotal || 0) + totalTaxes };
+        }
+
+        function wmn_get_offline_return_discount_distribution_base(taxes, grandTotal, netTotal, applyDiscountOn) {
+            if (applyDiscountOn === "Net Total" || !(taxes || []).length) {
+                return flt(netTotal || 0);
+            }
+
+            // Mirrors ERPNext get_total_for_discount_amount for Actual / quantity
+            // charges and taxes whose base is one of those non-discountable charges.
+            let totalActualTax = 0;
+            const actualTaxRows = {};
+            (taxes || []).forEach((tax) => {
+                const idx = cint(tax.idx || 0);
+                const chargeType = String(tax.charge_type || "");
+                let amount = null;
+
+                if (["Actual", "On Item Quantity"].includes(chargeType)) {
+                    amount = flt(tax.tax_amount || 0);
+                } else if (tax.row_id && actualTaxRows[cint(tax.row_id || 0)]) {
+                    const baseRow = actualTaxRows[cint(tax.row_id || 0)];
+                    const baseAmount = chargeType === "On Previous Row Amount"
+                        ? baseRow.tax_amount
+                        : baseRow.cumulative_tax_amount;
+                    amount = flt(baseAmount || 0) * flt(tax.rate || 0) / 100;
+                }
+
+                if (amount === null) return;
+                if (String(tax.add_deduct_tax || "") === "Deduct") amount *= -1;
+                if (String(tax.category || "") !== "Valuation") totalActualTax += amount;
+                actualTaxRows[idx] = {
+                    tax_amount: amount,
+                    cumulative_tax_amount: totalActualTax,
+                };
+            });
+
+            return flt(grandTotal || 0) - totalActualTax;
+        }
+
+        function wmn_apply_offline_return_taxes_and_discount(doc, total_qty, raw_total, raw_net_total, taxes, round_total) {
+            const items = doc.items || [];
+            const applyDiscountOn = doc.apply_discount_on === "Net Total" ? "Net Total" : "Grand Total";
+            const discountPercentage = flt(doc.additional_discount_percentage || 0);
+
+            let initial = wmn_calculate_offline_return_taxes(doc, taxes, items, raw_net_total);
+            let discountAmount = flt(doc.discount_amount || 0);
+            const percentageBase = applyDiscountOn === "Net Total" ? raw_net_total : initial.grandTotal;
+
+            if (discountPercentage) {
+                discountAmount = flt(percentageBase || 0) * discountPercentage / 100;
+            } else if (discountAmount > 0) {
+                discountAmount = -discountAmount;
+            }
+
+            const distributionBase = wmn_get_offline_return_discount_distribution_base(
+                initial.taxes,
+                initial.grandTotal,
+                raw_net_total,
+                applyDiscountOn
+            );
+
+            if (Math.abs(discountAmount) > 0.000001 && Math.abs(distributionBase) > 0.000001) {
+                items.forEach((row) => {
+                    const beforeDiscount = flt(row.net_amount || 0);
+                    const distributed = discountAmount * beforeDiscount / distributionBase;
+                    row.distributed_discount_amount = distributed;
+                    row.net_amount = beforeDiscount - distributed;
+                    row.net_rate = flt(row.qty || 0) ? row.net_amount / flt(row.qty || 0) : 0;
+                    row.base_net_amount = row.net_amount;
+                    row.base_net_rate = row.net_rate;
+                });
+            } else {
+                items.forEach((row) => {
+                    row.distributed_discount_amount = 0;
+                });
+            }
+
+            const finalNetTotal = items.reduce((sum, row) => sum + flt(row.net_amount || 0), 0);
+            const finalTaxes = wmn_calculate_offline_return_taxes(doc, initial.taxes, items, finalNetTotal);
+            const grandTotal = finalNetTotal + finalTaxes.totalTaxes;
+            const roundedTotal = round_total ? Math.round(grandTotal) : grandTotal;
+
+            doc.taxes = finalTaxes.taxes;
+            wmn_fill_offline_tax_cost_centers(doc);
+            doc.total_taxes_and_charges = finalTaxes.totalTaxes;
+            doc.base_total_taxes_and_charges = finalTaxes.totalTaxes;
+            doc.apply_discount_on = applyDiscountOn;
+            doc.additional_discount_percentage = discountPercentage;
+            doc.discount_amount = discountAmount;
+            doc.base_discount_amount = discountAmount;
+            doc.total_qty = total_qty;
+            doc.total = raw_total;
+            doc.net_total = finalNetTotal;
+            doc.base_total = raw_total;
+            doc.base_net_total = finalNetTotal;
+            doc.grand_total = grandTotal;
+            doc.rounded_total = roundedTotal;
+            doc.base_grand_total = grandTotal;
+            doc.base_rounded_total = roundedTotal;
+
+            let paid = 0;
+            let basePaid = 0;
+            (doc.payments || []).forEach((payment) => {
+                payment.amount = flt(payment.amount || 0);
+                payment.base_amount = flt(
+                    payment.base_amount !== undefined ? payment.base_amount : payment.amount || 0
+                );
+                paid += payment.amount;
+                basePaid += payment.base_amount;
+            });
+            const payable = flt(doc.rounded_total || doc.grand_total || 0);
+            doc.paid_amount = paid;
+            doc.base_paid_amount = basePaid;
+            doc.outstanding_amount = payable - paid;
+            doc.change_amount = 0;
+            doc.base_change_amount = 0;
+            return doc;
+        }
+
+        function wmn_apply_offline_taxes_and_discount(doc, total_qty, net_total, round_total, raw_total) {
             doc = doc || {};
             const items = doc.items || [];
             const taxes = wmn_add_missing_item_tax_rows_to_offline_taxes(
@@ -406,6 +577,17 @@
             let discountAmount = flt(doc.discount_amount || 0);
             const rawNetTotal = flt(net_total || 0);
             const isReturn = cint(doc.is_return || 0) === 1 || rawNetTotal < 0;
+
+            if (isReturn) {
+                return wmn_apply_offline_return_taxes_and_discount(
+                    doc,
+                    total_qty,
+                    raw_total === undefined ? rawNetTotal : flt(raw_total || 0),
+                    rawNetTotal,
+                    taxes,
+                    round_total
+                );
+            }
 
             if (applyDiscountOn === "Net Total") {
                 if (discountPercentage > 0) {
@@ -527,6 +709,8 @@
 
             let total_qty = 0;
             let total = 0;
+            let net_total = 0;
+            const isReturn = cint(doc.is_return || 0) === 1;
 
             (doc.items || []).forEach((row, idx) => {
                 row.idx = idx + 1;
@@ -534,17 +718,25 @@
                 row.rate = flt(row.rate || row.price_list_rate || 0);
                 row.price_list_rate = flt(row.price_list_rate || row.rate || 0);
                 row.amount = flt(row.qty * row.rate);
-                row.net_rate = flt(row.net_rate || row.rate);
+                row.net_rate = isReturn
+                    ? flt(row.__wmn_return_base_net_rate !== undefined ? row.__wmn_return_base_net_rate : row.rate)
+                    : flt(row.net_rate || row.rate);
                 row.net_amount = flt(row.qty * row.net_rate);
                 row.base_rate = flt(row.base_rate || row.rate);
-                row.base_amount = flt(row.base_amount || row.amount);
-                row.base_net_rate = flt(row.base_net_rate || row.net_rate);
-                row.base_net_amount = flt(row.base_net_amount || row.net_amount);
+                row.base_amount = isReturn ? flt(row.qty * row.base_rate) : flt(row.base_amount || row.amount);
+                row.base_net_rate = isReturn ? row.net_rate : flt(row.base_net_rate || row.net_rate);
+                row.base_net_amount = isReturn ? flt(row.qty * row.base_net_rate) : flt(row.base_net_amount || row.net_amount);
                 total_qty += row.qty;
-                total += row.net_amount;
+                total += row.amount;
+                net_total += row.net_amount;
             });
 
-            wmn_apply_offline_taxes_and_discount(doc, total_qty, total, false);
+            wmn_apply_offline_taxes_and_discount(doc, total_qty, net_total, false, total);
+
+            if (isReturn) {
+                const returnOffline = window.WMN_POS?.Features?.Return?.Offline;
+                returnOffline?.applyExactFinancialSnapshotIfEligible?.(doc);
+            }
 
             if (typeof wmn_normalize_all_offline_cart_rows === "function") {
                 wmn_normalize_all_offline_cart_rows(doc, doc.set_warehouse || doc.warehouse || "");

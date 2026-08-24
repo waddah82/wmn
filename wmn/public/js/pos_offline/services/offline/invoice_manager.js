@@ -148,7 +148,10 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                 }
 
                 pos.frm = wmn_make_offline_frm(doc);
-                wmn_prepare_pos_frm_doc(pos);
+                if (typeof pos.wmn_prepare_pos_frm_doc !== "function") {
+                    throw new Error("WMN Controller form preparation method is unavailable");
+                }
+                pos.wmn_prepare_pos_frm_doc();
 
                 window.cur_frm = pos.frm;
                 window.cur_pos = pos;
