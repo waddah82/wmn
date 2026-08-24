@@ -62,11 +62,15 @@ page_js = {
 
 doctype_js = {
     "POS Closing Entry": "public/js/pos_offline/features/cash_movement/pos_closing.js",
+    "POS Profile": "public/js/pos_offline/features/pricing_rule/pos_profile.js",
 }
 
 doc_events = {
     "POS Closing Entry": {
         "validate": "wmn.features.cash_movement.pos_closing.apply_cash_movement_to_closing",
+    },
+    "POS Profile": {
+        "validate": "wmn.features.pricing_rule.pricing_rule.force_native_pricing_rule_engine_disabled",
     },
 }
 override_whitelisted_methods = {

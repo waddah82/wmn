@@ -8,6 +8,7 @@ import secrets
 
 
 from frappe.utils import cint, flt, get_datetime, getdate, now_datetime, today
+from wmn.features.pricing_rule.pricing_rule import build_pricing_rule_snapshot
 from erpnext.stock.doctype.batch.batch import get_batch_qty
 from erpnext.accounts.doctype.pos_invoice.pos_invoice import get_item_group as get_pos_profile_item_groups
 
@@ -2840,6 +2841,9 @@ def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
     stock_settings["name"] = "Stock Settings"
     stock_settings["allow_negative_stock"] = cint(stock_settings.get("allow_negative_stock") or 0)
     stock_settings["allow_negative_stock_for_batch"] = cint(stock_settings.get("allow_negative_stock_for_batch") or 0)
+
+    pricing_rule_snapshot = build_pricing_rule_snapshot(company, selling_price_list)
+
     return {
         "server_time": str(now_datetime()),
         "pos_profile_name": profile.name,
@@ -2862,6 +2866,19 @@ def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
         "payment_methods": payment_methods,
         "pos_coupons": get_active_pos_coupons_for_offline(company),
         "pos_promotions": get_active_pos_promotions_for_offline(company, profile.name, default_warehouse),
+        "pricing_rules": pricing_rule_snapshot.get("rules") or [],
+        "pricing_rule_context": {
+            "schema_version": pricing_rule_snapshot.get("schema_version") or 0,
+            "version": pricing_rule_snapshot.get("version") or "",
+            "erpnext_reference": pricing_rule_snapshot.get("erpnext_reference") or "",
+            "transaction_order_mode": pricing_rule_snapshot.get("transaction_order_mode") or "",
+            "company": pricing_rule_snapshot.get("company") or company or "",
+            "price_list": pricing_rule_snapshot.get("price_list") or selling_price_list or "",
+            "trees": pricing_rule_snapshot.get("trees") or {},
+            "uom_conversions": pricing_rule_snapshot.get("uom_conversions") or {},
+            "item_meta": pricing_rule_snapshot.get("item_meta") or {},
+            "condition_ast_mode": pricing_rule_snapshot.get("condition_ast_mode") or "",
+        },
         "pos_supervisor_bundle": _wmn_get_pos_supervisor_bundle(profile.name, include_hashes=True),
         "cash_movement_context": {
             "config": _wmn_get_cash_movement_profile(profile.name),
@@ -4094,7 +4111,7 @@ def _wmn_replace_offline_invoice_draft_payload(doc, clean_invoice):
 
 @frappe.whitelist()
 def sync_offline_pos_invoice(invoice, submit=1):
-    """Synchronize an offline invoice as Draft or finalize it by Submit."""
+    """Synchronize normal offline invoices or reconstruct returns from their server source."""
     if isinstance(invoice, str):
         invoice = frappe.parse_json(invoice)
 
@@ -4107,6 +4124,33 @@ def sync_offline_pos_invoice(invoice, submit=1):
         frappe.throw(_("Missing WMN offline sync ID"))
 
     supervisor_approvals = invoice.get("__wmn_supervisor_approvals") or []
+
+    doctype = invoice.get("doctype") or "POS Invoice"
+    if doctype not in ("POS Invoice", "Sales Invoice"):
+        frappe.throw(_("Invalid invoice doctype"))
+
+    stage = str(invoice.get("wmn_pos_stage") or "").strip()
+    if stage == "AWAITING_CASHIER" and submit_invoice:
+        frappe.throw(_("Awaiting Cashier draft cannot be submitted before Complete Order"))
+
+    _wmn_validate_offline_invoice_sync_schema(doctype)
+
+    if cint(invoice.get("is_return") or 0):
+        from wmn.offline_sync.return_sync import sync_offline_return_intent
+
+        result = sync_offline_return_intent(
+            invoice=invoice,
+            doctype=doctype,
+            offline_id=offline_id,
+            submit_invoice=submit_invoice,
+            offline_sync_field=WMN_OFFLINE_SYNC_FIELD,
+        )
+        if supervisor_approvals and cint(result.get("docstatus") or 0) == 1:
+            _wmn_register_offline_supervisor_approvals(
+                supervisor_approvals, doctype, result.get("name"), offline_id
+            )
+        return result
+
     coupon_code = str(invoice.get("__wmn_coupon_code") or "").strip()
     coupon_discount_amount = max(0, flt(invoice.get("__wmn_coupon_discount_total") or 0))
     promotion_invoice_discount_amount = max(0, flt(invoice.get("__wmn_promotion_invoice_discount_total") or 0))
@@ -4118,15 +4162,6 @@ def sync_offline_pos_invoice(invoice, submit=1):
             (locked_coupon.name,),
         )
 
-    doctype = invoice.get("doctype") or "POS Invoice"
-    if doctype not in ("POS Invoice", "Sales Invoice"):
-        frappe.throw(_("Invalid invoice doctype"))
-
-    stage = str(invoice.get("wmn_pos_stage") or "").strip()
-    if stage == "AWAITING_CASHIER" and submit_invoice:
-        frappe.throw(_("Awaiting Cashier draft cannot be submitted before Complete Order"))
-
-    _wmn_validate_offline_invoice_sync_schema(doctype)
     clean_invoice = _wmn_prepare_offline_invoice_sync_payload(invoice, doctype, offline_id)
 
     existing = frappe.db.exists(doctype, {WMN_OFFLINE_SYNC_FIELD: offline_id})
@@ -4510,6 +4545,8 @@ def get_past_order_list(search_term, status, limit=20):
         "posting_time",
         "posting_date",
         "status",
+        "paid_amount",
+        "outstanding_amount",
         "docstatus",
         "is_return",
         "wmn_pos_stage",
@@ -4530,6 +4567,13 @@ def get_past_order_list(search_term, status, limit=20):
 
         if status == "Draft":
             filters["docstatus"] = 0
+            return filters
+
+        if status == "Returnable":
+            filters["docstatus"] = 1
+            filters["is_return"] = 0
+            if doctype == "Sales Invoice":
+                filters["pos_closing_entry"] = ["is", "not set"]
             return filters
 
         if doctype == "Sales Invoice":
