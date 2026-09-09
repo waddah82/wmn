@@ -8,7 +8,10 @@ This checklist certifies a real provider adapter without changing POS business l
 - Approved authorization permits Complete Order.
 - Declined, timeout, and provider error do not create an approval and block completion when an electronic amount exists.
 - Changing the electronic amount after approval invalidates the old authorization until the new amount is approved.
-- Offline mode never fabricates electronic approval unless a certified provider SDK explicitly supports offline authorization.
+- ERPNext Offline does not disable a certified local LAN/SDK payment transport.
+- Cloud Server API remains unavailable when ERPNext/server connectivity is unavailable.
+- A local approval remains valid if ERPNext drops before the gateway audit record is sent; sync records the result without re-authorizing.
+- Repeated synchronization with the same `client_reference` must not create duplicate gateway transaction records.
 - Gateway transaction log stores no PAN, CVV/CVC, PIN, track data, password, or secret.
 
 ## Geidea sandbox certification
@@ -36,5 +39,5 @@ Required scenarios:
 - Return to WMN with transaction/reference data.
 - Retry after app interruption.
 - Partial payment amount preservation.
-- Certified offline behavior, if the supplied SDK explicitly supports it.
+- ERPNext-offline behavior through the local SDK/bridge, when the supplied SDK/bridge supports direct device execution.
 - Refund only after WMN Return runtime certification.

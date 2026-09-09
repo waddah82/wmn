@@ -29,10 +29,16 @@ def _get_menu_entries():
     settings = frappe.get_single(MENU_SETTINGS_DOCTYPE)
     entries = []
     for row in settings.menu_items or []:
-        if not row.enabled or not row.doctype_name:
+        if not row.enabled:
+            continue
+        item_type = (getattr(row, "item_type", "") or "DocType").strip() or "DocType"
+        target_name = (getattr(row, "report_name", "") or "").strip() if item_type == "Report" else (row.doctype_name or "").strip()
+        if not target_name:
             continue
         entries.append({
-            "doctype": row.doctype_name,
+            "item_type": "Report" if item_type == "Report" else "DocType",
+            "doctype": target_name if item_type != "Report" else "",
+            "report_name": target_name if item_type == "Report" else "",
             "section": (row.section or "Setup").strip() or "Setup",
             "order": int(row.display_order or 0),
             "custom_label": (row.custom_label or "").strip(),
@@ -188,11 +194,44 @@ def _serialize_row(row, model):
 
 @frappe.whitelist()
 def get_available_pos_doctypes():
-    """Return configured WMN POS management DocTypes allowed for the current user."""
+    """Return configured WMN POS menu entries allowed for the current user."""
     result = []
     offline_modes = _get_enabled_offline_mode_map()
+    user_roles = set(frappe.get_roles(frappe.session.user))
 
     for entry in _get_menu_entries():
+        if entry["item_type"] == "Report":
+            report_name = entry["report_name"]
+            if not frappe.db.exists("Report", report_name):
+                continue
+            report = frappe.get_doc("Report", report_name)
+            if getattr(report, "disabled", 0):
+                continue
+            reference_doctype = (getattr(report, "ref_doctype", "") or "").strip()
+            if reference_doctype and not frappe.has_permission(reference_doctype, ptype="read"):
+                continue
+            allowed_roles = {row.role for row in (getattr(report, "roles", None) or []) if row.role}
+            if allowed_roles and not allowed_roles.intersection(user_roles):
+                continue
+            result.append({
+                "item_type": "Report",
+                "report_name": report_name,
+                "report_type": (getattr(report, "report_type", "") or "").strip(),
+                "reference_doctype": reference_doctype,
+                "label": entry["custom_label"] or _(report_name),
+                "section": entry["section"],
+                "order": entry["order"],
+                "icon": entry["icon"],
+                "button_color": entry["button_color"],
+                "text_color": entry["text_color"],
+                "can_read": 1,
+                "can_create": 0,
+                "can_write": 0,
+                "offline_enabled": 0,
+                "offline_mode": "",
+            })
+            continue
+
         doctype = entry["doctype"]
         try:
             meta = frappe.get_meta(doctype)
@@ -205,6 +244,7 @@ def get_available_pos_doctypes():
         offline_mode = offline_modes.get(doctype, "")
         label = entry["custom_label"] or _(doctype)
         result.append({
+            "item_type": "DocType",
             "doctype": doctype,
             "label": label,
             "section": entry["section"],

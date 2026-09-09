@@ -9,6 +9,7 @@ import secrets
 
 from frappe.utils import cint, flt, get_datetime, getdate, now_datetime, today
 from wmn.features.pricing_rule.pricing_rule import build_pricing_rule_snapshot
+from wmn.payment_gateway.service import get_pos_payment_gateway_mappings
 from erpnext.stock.doctype.batch.batch import get_batch_qty
 from erpnext.accounts.doctype.pos_invoice.pos_invoice import get_item_group as get_pos_profile_item_groups
 
@@ -2864,6 +2865,7 @@ def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
         "item_batches": batches,
         "serial_nos": serial_rows,
         "payment_methods": payment_methods,
+        "payment_gateway_mappings": get_pos_payment_gateway_mappings(profile.name),
         "pos_coupons": get_active_pos_coupons_for_offline(company),
         "pos_promotions": get_active_pos_promotions_for_offline(company, profile.name, default_warehouse),
         "pricing_rules": pricing_rule_snapshot.get("rules") or [],
@@ -3974,9 +3976,12 @@ def _wmn_get_offline_invoice_sync_id(invoice):
 
 
 def _wmn_prepare_offline_invoice_sync_payload(invoice, doctype, offline_id):
+    from wmn.offline_sync.tax_integrity import normalize_invoice_tax_payload
+
     clean_invoice = dict(invoice)
     clean_invoice = _wmn_apply_coupon_to_offline_invoice_payload(clean_invoice)
     clean_invoice = _wmn_strip_promotion_transients(clean_invoice)
+    clean_invoice = normalize_invoice_tax_payload(clean_invoice)
     for key in list(clean_invoice.keys()):
         if key.startswith("__"):
             clean_invoice.pop(key, None)
@@ -4109,6 +4114,12 @@ def _wmn_replace_offline_invoice_draft_payload(doc, clean_invoice):
     return doc
 
 
+def _wmn_record_synced_gateway_authorizations(invoice_payload, invoice_name):
+    from wmn.payment_gateway.service import record_offline_invoice_authorizations
+
+    return record_offline_invoice_authorizations(invoice_payload, invoice_name)
+
+
 @frappe.whitelist()
 def sync_offline_pos_invoice(invoice, submit=1):
     """Synchronize normal offline invoices or reconstruct returns from their server source."""
@@ -4178,6 +4189,7 @@ def sync_offline_pos_invoice(invoice, submit=1):
                 doc.submit()
 
         doc.reload()
+        _wmn_record_synced_gateway_authorizations(invoice, doc.name)
         if coupon_code and doc.docstatus == 1:
             _wmn_register_pos_coupon_redemption(
                 coupon_code=coupon_code,
@@ -4231,6 +4243,7 @@ def sync_offline_pos_invoice(invoice, submit=1):
         doc.submit()
 
     doc.reload()
+    _wmn_record_synced_gateway_authorizations(invoice, doc.name)
     if coupon_code and doc.docstatus == 1:
         _wmn_register_pos_coupon_redemption(
             coupon_code=coupon_code,

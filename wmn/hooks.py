@@ -14,7 +14,10 @@ app_license = "mit"
 # app_include_js = "/assets/wmn/js/ui_setting.js"
 app_include_js = [
     #"/assets/wmn/js/ui_setting.js",
-    "/assets/wmn/js/pos_barcode_override.js",
+    #"/assets/wmn/js/pos_barcode_override.js",
+    "/assets/wmn/js/features/mobile_barcode_scanner/mobile_barcode_scanner.common.js",
+    "/assets/wmn/js/overrides/barcode_scanner/barcode_scanner.methods.js",
+    "/assets/wmn/js/overrides/barcode_scanner/barcode_scanner.override.js",
     "/assets/wmn/js/silent_print.js",
     "assets/wmn/js/workspace_header_unified.js",
     "/assets/wmn/js/global_new_override.js",
@@ -61,8 +64,10 @@ page_js = {
 
 
 doctype_js = {
+
     "POS Closing Entry": "public/js/pos_offline/features/cash_movement/pos_closing.js",
     "POS Profile": "public/js/pos_offline/features/pricing_rule/pos_profile.js",
+    "Item": "public/js/features/item_barcode_capture/item_barcode_capture.common.js",
 }
 
 doc_events = {
@@ -85,7 +90,11 @@ override_whitelisted_methods = {
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
-
+extend_doctype_class = {
+    "Sales Invoice": [
+        "wmn.overrides.sales_invoice.SalesInvoiceOverride"
+    ]
+}
 #after_install = "wmn.setup.offline_sync.ensure_offline_sync_fields"
 #after_migrate = "wmn.setup.offline_sync.ensure_offline_sync_fields"
 #after_migrate = "wmn.setup.pos_menu.ensure_default_pos_menu_settings"

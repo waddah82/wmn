@@ -7,9 +7,9 @@
    - Avoids `exc: "Offline..."` strings because Frappe may try JSON.parse(exc).
 */
 
-const WMN_POS_SW_VERSION = "v16-discount-composition-policy-20260822-v5";
-const WMN_POS_CACHE = "wmn-pos-runtime-v16-payment-gateway-ui-mapping-20260822-v8";
-const WMN_POS_API_CACHE = "wmn-pos-api-v16-discount-composition-policy-20260822-v5";
+const WMN_POS_SW_VERSION = "v16-direct-device-fast-shell-20260826-v18";
+const WMN_POS_CACHE = "wmn-pos-runtime-v16-direct-device-fast-shell-20260826-v18";
+const WMN_POS_API_CACHE = "wmn-pos-api-v16-direct-device-fast-shell-20260826-v18";
 
 const SHELL_URLS = [
   "/desk",
@@ -285,19 +285,38 @@ function fallbackApi(url, request) {
 async function networkFirstApi(event) {
   const request = event.request;
   const url = new URL(request.url);
+  const cache = await caches.open(WMN_POS_API_CACHE);
+  const key = await apiKey(request);
+
+  // Desk metadata is immutable enough for POS startup and is already cached for
+  // offline use. Serve it immediately, then refresh the same cache in background.
+  if ([
+    "/api/method/frappe.desk.form.load.getdoctype",
+    "/api/method/frappe.desk.desk_page.getpage",
+  ].includes(url.pathname)) {
+    const cached = await cache.match(key);
+    if (cached) {
+      event.waitUntil(
+        fetch(request.clone())
+          .then(async (response) => {
+            if (response && response.ok) await cache.put(key, response.clone());
+          })
+          .catch(() => null)
+      );
+      return cached;
+    }
+  }
 
   try {
     const response = await fetch(request.clone());
 
     if (response && response.ok) {
-      const cache = await caches.open(WMN_POS_API_CACHE);
-      await cache.put(await apiKey(request), response.clone());
+      await cache.put(key, response.clone());
     }
 
     return response;
   } catch (e) {
-    const cache = await caches.open(WMN_POS_API_CACHE);
-    const cached = await cache.match(await apiKey(request));
+    const cached = await cache.match(key);
     if (cached) return cached;
 
     return fallbackApi(url, request);
@@ -361,28 +380,35 @@ self.addEventListener("fetch", (event) => {
 
   if (request.method === "GET") {
     if (isAppNavigation(url, request)) {
-      event.respondWith(
-        fetch(request)
-          .then(async (response) => {
-            if (response && response.ok) {
-              const cache = await caches.open(WMN_POS_CACHE);
-              await cache.put(request, response.clone());
-            }
-            return response;
-          })
-          .catch(async () => {
-            const cache = await caches.open(WMN_POS_CACHE);
-            return (
-              await cache.match(request) ||
-              await cache.match("/desk/point-of-sale") ||
-              await cache.match("/desk") ||
-              new Response("<!doctype html><html><body><h3>POS offline shell is not cached yet. Open POS online once first.</h3></body></html>", {
-                status: 200,
-                headers: { "Content-Type": "text/html; charset=utf-8", "X-WMN-POS-SW": WMN_POS_SW_VERSION }
+      event.respondWith((async () => {
+        const cache = await caches.open(WMN_POS_CACHE);
+        const cached =
+          await cache.match(request) ||
+          await cache.match("/desk/point-of-sale") ||
+          await cache.match("/desk");
+
+        if (cached) {
+          event.waitUntil(
+            fetch(request)
+              .then(async (response) => {
+                if (response && response.ok) await cache.put(request, response.clone());
               })
-            );
-          })
-      );
+              .catch(() => null)
+          );
+          return cached;
+        }
+
+        try {
+          const response = await fetch(request);
+          if (response && response.ok) await cache.put(request, response.clone());
+          return response;
+        } catch (e) {
+          return new Response("<!doctype html><html><body><h3>POS offline shell is not cached yet. Open POS online once first.</h3></body></html>", {
+            status: 200,
+            headers: { "Content-Type": "text/html; charset=utf-8", "X-WMN-POS-SW": WMN_POS_SW_VERSION }
+          });
+        }
+      })());
       return;
     }
 

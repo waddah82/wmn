@@ -1,0 +1,27 @@
+{
+ "app": "wmn",
+ "creation": "2026-05-01 20:09:55.732630",
+ "docstatus": 0,
+ "doctype": "Workspace Sidebar",
+ "idx": 0,
+ "items": [
+  {
+   "child": 0,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "jkkk",
+   "link_to": "WMN Settings",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-08-25 04:33:18.550162",
+ "modified_by": "Administrator",
+ "module": "Wmn",
+ "name": "wmn",
+ "owner": "Administrator",
+ "standard": 1,
+ "title": "wmn"
+}

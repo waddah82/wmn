@@ -486,3 +486,95 @@
 "workspace_navigation_mode","وضع التنقل في مساحة العمل",""
 "Workspaces","مساحات العمل",""
 "You do not have permission to update this POS Profile.","ليس لديك صلاحية لتحديث ملف تعريف نقطة البيع هذا.",""
+"Price Checker","فاحص الأسعار",""
+"WMN Price Checker","فاحص أسعار WMN",""
+"Scan an item barcode to display its current POS price and stock.","امسح باركود الصنف لعرض سعر نقطة البيع الحالي والمخزون.",""
+"Scan barcode or enter item code...","امسح الباركود أو أدخل كود الصنف...",""
+"Ready to scan","جاهز للمسح",""
+"Keep the barcode field focused and scan an item.","أبقِ حقل الباركود نشطًا وامسح الصنف.",""
+"Looking up item...","جارٍ البحث عن الصنف...",""
+"Item not found","الصنف غير موجود",""
+"The scanned barcode is not available for this POS Profile.","الباركود الممسوح غير متاح في ملف نقطة البيع هذا.",""
+"Unable to check price","تعذر فحص السعر",""
+"In Stock","متوفر في المخزون",""
+"Out of Stock","غير متوفر في المخزون",""
+"Offline data","بيانات أوفلاين",""
+"Online data","بيانات أونلاين",""
+"Barcode Printer","طابعة الباركود",""
+"WMN Barcode Printer","طابعة باركود WMN",""
+"Barcode Labels","ملصقات الباركود",""
+"Search item name, code, or barcode...","ابحث باسم الصنف أو الكود أو الباركود...",""
+"Custom size","مقاس مخصص",""
+"Width mm","العرض مم",""
+"Height mm","الارتفاع مم",""
+"Show price on label","إظهار السعر على الملصق",""
+"Search for items to add labels.","ابحث عن أصناف لإضافة ملصقات.",""
+"No items selected.","لم يتم اختيار أصناف.",""
+"Print Labels","طباعة الملصقات",""
+"No items found.","لم يتم العثور على أصناف.",""
+"Searching...","جارٍ البحث...",""
+"barcode(s)","باركود",""
+"label(s)","ملصق",""
+"Remove","حذف",""
+"Select at least one item to print.","اختر صنفًا واحدًا على الأقل للطباعة.",""
+"Invalid barcode","باركود غير صالح",""
+"Barcode renderer is not cached yet. Open Barcode Printer once while Online, then it can be used Offline.","محرك الباركود غير مخزن محليًا بعد. افتح طابعة الباركود مرة واحدة أثناء الأونلاين ثم يمكن استخدامها أوفلاين.",""
+"Frappe barcode renderer is not available.","محرك باركود Frappe غير متاح.",""
+"WMN offline POS data is not loaded. Open POS online once to preload local data.","بيانات نقطة البيع المحلية غير محملة. افتح نقطة البيع أونلاين مرة واحدة لتحميل البيانات المحلية.",""
+"Price Checker is not loaded.","فاحص الأسعار غير محمل.",""
+"Barcode Printer is not loaded.","طابعة الباركود غير محملة.",""
+Frappe (Auto),Frappe (تلقائي),
+Add Manual Barcode,إضافة باركود يدوي,
+Barcode Number,رقم الباركود,
+Barcode Type,نوع الباركود,
+Label Text,نص الملصق,
+Price,السعر,
+Add Barcode,إضافة باركود,
+Manual barcode must contain numbers only.,يجب أن يحتوي الباركود اليدوي على أرقام فقط.,
+Manual Barcode,باركود يدوي,
+Manual barcode - no Item required,باركود يدوي - لا يتطلب صنفًا,
+No printable barcode for this item.,لا يوجد باركود قابل للطباعة لهذا الصنف.,
+No printable barcode,لا يوجد باركود قابل للطباعة,
+A selected barcode cannot be printed.,لا يمكن طباعة أحد الباركودات المحددة.,
+Select at least one barcode to print.,اختر باركودًا واحدًا على الأقل للطباعة.,
+No barcodes selected.,لم يتم اختيار باركودات.,
+Invalid barcode.,باركود غير صالح.,
+Sheet / Grid,صفحة / شبكة,
+One Label Per Page,ملصق واحد في كل صفحة,
+Custom page,صفحة مخصصة,
+Page width mm,عرض الصفحة مم,
+Page height mm,ارتفاع الصفحة مم,
+Labels / Page,الملصقات / الصفحة,
+Total Pages,إجمالي الصفحات,
+Print Limit,حد الطباعة,
+Add Barcode Range,إضافة رنج باركود,
+Paste Barcode List,لصق قائمة باركودات,
+Barcode Range,رنج باركود,
+Pasted Barcode List,قائمة باركودات ملصقة,
+unique barcode(s),باركود فريد,
+From Barcode,من باركود,
+To Barcode,إلى باركود,
+Copies per Barcode,عدد النسخ لكل باركود,
+Maximum for current print mode,الحد الأقصى لوضع الطباعة الحالي,
+Add Range,إضافة الرنج,
+Barcodes,الباركودات,
+"Separate barcodes by a new line, comma, or Arabic comma.",افصل الباركودات بسطر جديد أو فاصلة أو فاصلة عربية.,
+Add List,إضافة القائمة,
+Ignored {0} duplicate barcode(s).,تم تجاهل {0} باركود مكرر.,
+This print mode allows a maximum of {0} labels.,يسمح وضع الطباعة هذا بحد أقصى {0} ملصق.,
+Qty Next Scan,كمية للمسح التالي,
+Qty Next Scan: ON,كمية للمسح التالي: مفعّل,
+Quantity dialog for next ordinary barcode scan (F8),نافذة الكمية لأول باركود عادي يتم مسحه لاحقًا (F8),
+Scan with Camera,مسح بالكاميرا,
+Camera,الكاميرا,
+Camera Scanner,ماسح الكاميرا,
+Camera barcode scanner is not available in this session.,ماسح الباركود بالكاميرا غير متاح في هذه الجلسة.,
+Quantity for {0},الكمية للصنف {0},
+Enter a valid quantity greater than zero.,أدخل كمية صحيحة أكبر من صفر.,
+Scan Barcodes,مسح الباركودات,
+Scan barcode and press Enter,امسح الباركود ثم اضغط Enter,
+Ready to scan barcodes.,جاهز لمسح الباركودات.,
+Barcode {0} is already on this Item.,الباركود {0} موجود بالفعل في هذا الصنف.,
+Barcode {0} is already assigned to Item {1}.,الباركود {0} مرتبط بالفعل بالصنف {1}.,
+Barcode {0} is already saved on this Item.,الباركود {0} محفوظ بالفعل في هذا الصنف.,
+Added barcode {0}.,تمت إضافة الباركود {0}.,

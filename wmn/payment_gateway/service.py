@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 
-import requests
 import frappe
 from frappe import _
 from frappe.utils import flt, now_datetime
@@ -105,6 +104,28 @@ def safe_profile(profile):
     }
 
 
+def get_pos_payment_gateway_mappings(pos_profile):
+    """Return the browser-safe payment gateway mapping snapshot for a POS Profile."""
+    if not pos_profile:
+        return []
+    settings_name = frappe.db.get_value("WMN POS Profile Settings", {"pos_profile": pos_profile}, "name")
+    if not settings_name:
+        return []
+    settings = frappe.get_doc("WMN POS Profile Settings", settings_name)
+    rows = []
+    for row in settings.get("payment_gateways") or []:
+        if not row.enabled or not row.gateway_profile:
+            continue
+        profile = get_profile(row.gateway_profile)
+        rows.append({
+            "enabled": 1,
+            "mode_of_payment": row.mode_of_payment,
+            "is_default": int(row.is_default or 0),
+            "gateway": safe_profile(profile),
+        })
+    return rows
+
+
 def provider_for(profile):
     cls = PROVIDERS.get(profile.provider)
     if not cls:
@@ -139,78 +160,6 @@ def create_transaction(profile, action, payload, result=None, status="Pending"):
 
 
 
-def run_bridge_action(action, profile_name, payload_value):
-    profile = get_profile(profile_name)
-    if profile.transport != "Android App Bridge":
-        frappe.throw(_("Gateway profile {0} does not use Android App Bridge transport.").format(profile.name))
-    if profile.provider not in {"Generic", "STC SoftPOS"}:
-        frappe.throw(_("Android App Bridge is not supported for provider {0}.").format(profile.provider))
-
-    base_url = (profile.connector_url or "").strip().rstrip("/")
-    if not base_url:
-        frappe.throw(_("Local Connector URL is required for Android App Bridge."))
-    token = profile.get_password("connector_token", raise_exception=False) or ""
-    if not token:
-        frappe.throw(_("Bridge Token is required for Android App Bridge."))
-
-    payload = _json(payload_value)
-    amount_minor = int(round(flt(payload.get("amount") or 0) * 100))
-    if amount_minor <= 0:
-        frappe.throw(_("Electronic payment amount must be greater than zero."))
-
-    endpoint_by_action = {
-        "authorize": "/v1/payments/purchase",
-        "refund": "/v1/payments/refund",
-        "void": "/v1/payments/reverse",
-    }
-    endpoint = endpoint_by_action.get(action)
-    if not endpoint:
-        frappe.throw(_("Unsupported Android App Bridge action {0}.").format(action))
-
-    bridge_payload = {
-        "request_id": payload.get("client_reference") or frappe.generate_hash(length=20),
-        "amount_minor": amount_minor,
-        "currency": payload.get("currency") or "SAR",
-        "invoice": payload.get("sales_invoice") or payload.get("client_reference") or "WMN-POS",
-        "provider": (profile.bridge_provider or "TEST").upper(),
-        "customer_reference_number": payload.get("sales_invoice") or payload.get("client_reference") or "",
-    }
-    if action in {"refund", "void"}:
-        bridge_payload["original_transaction_uuid"] = payload.get("original_transaction_id") or ""
-
-    timeout = max(5, int(profile.timeout_seconds or 60))
-    try:
-        response = requests.post(
-            f"{base_url}{endpoint}",
-            json=bridge_payload,
-            headers={"X-WMN-Bridge-Token": token, "Content-Type": "application/json"},
-            timeout=timeout,
-        )
-    except requests.Timeout as exc:
-        raise PaymentProviderError("WMN Payment Bridge timeout") from exc
-    except requests.RequestException as exc:
-        raise PaymentProviderError(f"WMN Payment Bridge connection failed: {exc}") from exc
-
-    try:
-        result = response.json()
-    except ValueError as exc:
-        raise PaymentProviderError(f"WMN Payment Bridge returned invalid JSON (HTTP {response.status_code})") from exc
-
-    if not isinstance(result, dict):
-        raise PaymentProviderError("WMN Payment Bridge returned an invalid response")
-
-    status = str(result.get("status") or "").strip().lower()
-    if not status and response.status_code >= 400:
-        raise PaymentProviderError(result.get("error") or result.get("message") or f"WMN Payment Bridge HTTP {response.status_code}")
-
-    normalized = sanitize_gateway_response(dict(result))
-    normalized["status"] = status or result.get("status") or "Error"
-    normalized["amount"] = flt((result.get("amount_minor") or amount_minor) / 100)
-    normalized["payment_network"] = result.get("network") or ""
-    normalized["authorization_code"] = result.get("auth_code") or ""
-    normalized["reference_number"] = result.get("rrn") or ""
-    normalized["transaction_id"] = result.get("transaction_id") or result.get("transaction_uuid") or ""
-    return normalized
 
 def run_server_action(action, profile_name, payload_value):
     profile = get_profile(profile_name)
@@ -239,12 +188,86 @@ def run_server_action(action, profile_name, payload_value):
         tx.save(ignore_permissions=True)
         raise
 
+def _existing_device_transaction(profile_name, action, client_reference):
+    reference = str(client_reference or "").strip()
+    if not reference:
+        return None
+    name = frappe.db.get_value(
+        "WMN Payment Gateway Transaction",
+        {
+            "gateway_profile": profile_name,
+            "action": str(action or "authorize").title(),
+            "client_reference": reference,
+        },
+        "name",
+    )
+    return frappe.get_doc("WMN Payment Gateway Transaction", name) if name else None
 
 def record_device_result(profile_name, action, payload_value, result_value):
+    """Record a device result without executing the payment again.
+
+    client_reference is the idempotency key. Repeated invoice synchronization
+    updates the same transaction instead of creating another payment record.
+    """
     profile = get_profile(profile_name)
     payload = _json(payload_value)
     result = sanitize_gateway_response(_json(result_value))
     raw_status = result.get("status") or result.get("payment_status") or ""
     status = normalize_transaction_status(raw_status, default="Declined")
-    tx = create_transaction(profile, action, payload, result, status=status)
+
+    tx = _existing_device_transaction(profile.name, action, payload.get("client_reference"))
+    if tx is None:
+        tx = create_transaction(profile, action, payload, result, status=status)
+    else:
+        tx.status = status
+        sales_invoice = str(payload.get("sales_invoice") or "").strip()
+        if sales_invoice and frappe.db.exists("Sales Invoice", sales_invoice):
+            tx.sales_invoice = sales_invoice
+        tx.transaction_id = result.get("transaction_id") or result.get("id") or tx.transaction_id
+        tx.reference_number = result.get("reference_number") or result.get("rrn") or tx.reference_number
+        tx.authorization_code = result.get("authorization_code") or result.get("auth_code") or tx.authorization_code
+        tx.payment_network = result.get("payment_network") or result.get("scheme") or tx.payment_network
+        tx.gateway_response = frappe.as_json(result)
+        tx.transaction_time = now_datetime()
+        tx.save(ignore_permissions=True)
+
     return {"name": tx.name, "status": tx.status}
+
+
+def record_offline_invoice_authorizations(invoice_payload, invoice_name):
+    """Persist LAN/SDK payment approvals carried by an offline invoice.
+
+    This function records already-completed device results only. It never calls
+    authorize/refund/void and therefore can safely run during invoice sync.
+    """
+    if not isinstance(invoice_payload, dict):
+        return []
+    authorizations = invoice_payload.get("__wmn_gateway_authorizations") or {}
+    if not isinstance(authorizations, dict):
+        return []
+
+    recorded = []
+    for mode_of_payment, approval in authorizations.items():
+        if not isinstance(approval, dict):
+            continue
+        if normalize_transaction_status(approval.get("status"), default="Declined") != "Approved":
+            continue
+        gateway_profile = str(approval.get("gateway_profile") or "").strip()
+        client_reference = str(approval.get("client_reference") or "").strip()
+        if not gateway_profile or not client_reference:
+            continue
+
+        payload = {
+            "client_reference": client_reference,
+            "mode_of_payment": mode_of_payment or approval.get("mode_of_payment") or "",
+            "amount": flt(approval.get("amount") or 0),
+            "currency": approval.get("currency") or invoice_payload.get("currency") or "SAR",
+            "pos_profile": approval.get("pos_profile") or invoice_payload.get("pos_profile") or "",
+            "terminal_id": approval.get("terminal_id") or "",
+            "merchant_id": approval.get("merchant_id") or "",
+            "sales_invoice": invoice_name or "",
+        }
+        result = dict(approval)
+        result.pop("__wmn_server_record_pending", None)
+        recorded.append(record_device_result(gateway_profile, "authorize", payload, result))
+    return recorded
