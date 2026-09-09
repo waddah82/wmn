@@ -9,6 +9,8 @@ const loader = fs.readFileSync(path.join(root, "public/js/pos_offline/wmn_pos_pa
 const legacyLoader = fs.readFileSync(path.join(root, "public/js/pos_offline/wmn_pos_loader.js"), "utf8");
 const boot = fs.readFileSync(path.join(root, "public/js/pos_offline/core/wmn_page_boot.js"), "utf8");
 const controller = fs.readFileSync(path.join(root, "public/js/pos_offline/overrides/controller/controller.methods.js"), "utf8");
+const cleanController = fs.readFileSync(path.join(root, "public/js/pos_offline/classes/controller/controller.methods.js"), "utf8");
+const cleanControllerClass = fs.readFileSync(path.join(root, "public/js/pos_offline/classes/controller/controller.class.js"), "utf8");
 const classRegistry = fs.readFileSync(path.join(root, "public/js/pos_offline/core/class_registry.js"), "utf8");
 const dataSource = fs.readFileSync(path.join(root, "public/js/pos_offline/services/data/pos_data_source.js"), "utf8");
 
@@ -23,6 +25,8 @@ assert.ok(
   "Data-source boundary must load before Controller methods"
 );
 assert.ok(!loader.includes('"patches/patch_registry.js"'), "Owned page loader must not load patch registry");
+assert.ok(!loader.includes("overrides/"), "Owned page loader must not load override files");
+assert.ok(loader.includes("classes/controller/controller.class.js"), "Owned page loader must load WMN class files");
 assert.ok(!loader.includes("wmn_pos_boot(wrapper)"), "Owned page loader must not use replacement boot");
 assert.ok(loader.includes("wmn_pos_page_boot(wrapper)"), "Owned page loader must use clean WMN page boot");
 assert.ok(!boot.includes("EnabledPatches.applyAll"), "Owned page boot must not apply patches");
@@ -36,6 +40,10 @@ assert.ok(dataSource.includes("class LocalStorageBackend"), "Data-source boundar
 assert.ok(dataSource.includes("class LocalDBBackend"), "Data-source boundary must be prepared for local DB drivers");
 assert.ok(dataSource.includes("registerBackend(BACKEND.LOCAL_DB"), "Local DB backend must be registered as a selectable local backend");
 assert.ok(dataSource.includes("Offline POS data source has no local method"), "Offline calls must reject unmapped server methods");
+assert.ok(cleanController.includes("ns.ClassMethods.Controller"), "Clean Controller methods must use ClassMethods");
+assert.ok(cleanControllerClass.includes("ns.Classes.Controller = WMNControllerClass"), "Clean Controller class must register only as a WMN class");
+assert.ok(!cleanControllerClass.includes("ns.Overrides"), "Clean Controller class must not register overrides");
+assert.ok(!cleanController.includes("OverrideMethods"), "Clean Controller methods must not use OverrideMethods");
 assert.ok(controller.includes("this.wmn_data_source = ns.Services?.Data?.createForController"), "Controller must own a POS data source");
 assert.ok(controller.includes("this.wmn_data_source?.controllerCache?.()"), "Controller cache access must go through the data source");
 assert.ok(controller.includes('createPOSComponent("Payment"'), "Controller must create Payment through the WMN class registry");

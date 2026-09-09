@@ -2,6 +2,8 @@
 
 `/app/wmn-pos` owns the POS page boot and class creation. It does not replace
 ERPNext POS classes at runtime and it does not apply patch registries.
+It loads WMN-owned files from `classes/*`; `overrides/*` is not part of the
+owned WMN POS page.
 
 ## Runtime boundary
 

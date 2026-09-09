@@ -5,6 +5,7 @@
     const ns = window.WMN_POS;
     ns.Base = ns.Base || {};
     ns.Classes = ns.Classes || {};
+    ns.ClassMethods = ns.ClassMethods || {};
     ns.Overrides = ns.Overrides || {};
     ns.OverrideMethods = ns.OverrideMethods || {};
     ns.Features = ns.Features || {};
