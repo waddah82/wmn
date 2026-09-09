@@ -18,10 +18,12 @@
         sidebarViewCache: {},
         settingCacheKey: "wmn_workspace_nav_settings_v2",
         settingLastCheckKey: "wmn_workspace_nav_settings_last_check_v1",
-        settingCacheMs: 5 * 60 * 1000,
+        // Read WMN Settings fresh on every full Desk load so toggles apply immediately after refresh.
+        settingCacheMs: 0,
         activeHeaderWorkspace: null,
         headerOverflowResizeObserver: null,
         nativeSidebarTopnavEnsureScheduled: false,
+        nativeSidebarTopnavEnabled: false,
         nativeTopnavUserPopupParent: null,
         nativeTopnavUserPopupNextSibling: null,
     };
@@ -103,6 +105,12 @@
         return false;
     }
 
+    function resolveNativeSidebarTopnavEnabled(settings) {
+        return getSettingBool(settings, [
+            "enable_native_sidebar_topnav"
+        ]);
+    }
+
     function resolveMode(settings) {
         const rawMode = String(
             settings.workspace_navigation_mode ||
@@ -113,8 +121,8 @@
             ""
         ).toLowerCase();
 
-        if (rawMode.includes("sidebar") || rawMode.includes("side") || rawMode.includes("Ø³Ø§ÙŠØ¯")) return "sidebar";
-        if (rawMode.includes("header") || rawMode.includes("top") || rawMode.includes("Ù‡ÙŠØ¯Ø±")) return "header";
+        if (rawMode.includes("sidebar") || rawMode.includes("side") || rawMode.includes("Ã˜Â³Ã˜Â§Ã™Å Ã˜Â¯")) return "sidebar";
+        if (rawMode.includes("header") || rawMode.includes("top") || rawMode.includes("Ã™â€¡Ã™Å Ã˜Â¯Ã˜Â±")) return "header";
 
         const enableSidebar = getSettingBool(settings, [
             "enable_workspace_sidebar",
@@ -1301,7 +1309,7 @@
    Chrome DevTools Style
    ------------------------------------------------------------
    - Natural width tabs
-   - Extra tabs go inside �
+   - Extra tabs go inside ï¿½
    - Colors are controlled by UI Theme
    - No JavaScript color detection required
    ============================================================ */
@@ -1611,7 +1619,7 @@
 
 
 /* ============================================================
-   DEVTOOLS � BUTTON
+   DEVTOOLS ï¿½ BUTTON
    ============================================================ */
 
 .wmn-workspace-overflow-btn {
@@ -1662,7 +1670,7 @@
 }
 
 
-/* � */
+/* ï¿½ */
 
 .wmn-workspace-overflow-btn
 .wmn-overflow-chevrons {
@@ -2412,7 +2420,7 @@ body.rtl-mode
         document.querySelectorAll(".wmn-global-workspace-header, .wmn-custom-sidebar, .wmn-floating-sidebar-btn, #wmn-global-desk-topbar").forEach(el => el.remove());
         document.body.classList.remove("wmn-hide-standard-sidebar", "custom-loaded");
 
-        if (WMN_NAV.mode !== "header") {
+        if (!WMN_NAV.nativeSidebarTopnavEnabled || WMN_NAV.mode !== "header") {
             restoreNativeSidebarFromTopnav();
         }
     }
@@ -2760,7 +2768,7 @@ body.rtl-mode
     }
 
     function ensureNativeSidebarTopnav() {
-        if (WMN_NAV.mode === "sidebar") {
+        if (!WMN_NAV.nativeSidebarTopnavEnabled || WMN_NAV.mode === "sidebar") {
             restoreNativeSidebarFromTopnav();
             return false;
         }
@@ -2804,6 +2812,10 @@ body.rtl-mode
     }
 
     function scheduleNativeSidebarTopnavEnsure() {
+        if (!WMN_NAV.nativeSidebarTopnavEnabled || WMN_NAV.mode === "sidebar") {
+            restoreNativeSidebarFromTopnav();
+            return;
+        }
         if (WMN_NAV.nativeSidebarTopnavEnsureScheduled) return;
         WMN_NAV.nativeSidebarTopnavEnsureScheduled = true;
         requestAnimationFrame(function () {
@@ -2812,10 +2824,26 @@ body.rtl-mode
         });
     }
 
+    function stopNativeSidebarTopnavObserver() {
+        const observer = window.__WMN_NATIVE_SIDEBAR_TOPNAV_OBSERVER__;
+        if (observer && typeof observer.disconnect === "function") {
+            observer.disconnect();
+        }
+        window.__WMN_NATIVE_SIDEBAR_TOPNAV_OBSERVER__ = null;
+    }
+
     function startNativeSidebarTopnavObserver() {
+        if (!WMN_NAV.nativeSidebarTopnavEnabled || WMN_NAV.mode === "sidebar") {
+            stopNativeSidebarTopnavObserver();
+            restoreNativeSidebarFromTopnav();
+            return;
+        }
         if (window.__WMN_NATIVE_SIDEBAR_TOPNAV_OBSERVER__ || !window.MutationObserver) return;
         window.__WMN_NATIVE_SIDEBAR_TOPNAV_OBSERVER__ = new MutationObserver(function () {
-            if (WMN_NAV.mode === "sidebar") return;
+            if (!WMN_NAV.nativeSidebarTopnavEnabled || WMN_NAV.mode === "sidebar") {
+                restoreNativeSidebarFromTopnav();
+                return;
+            }
             const sidebar = getNativeSidebar();
             const host = getNativeSidebarTopnavHost();
             const sourceContainer = getNativeSidebarContainer();
@@ -2825,6 +2853,18 @@ body.rtl-mode
             }
         });
         window.__WMN_NATIVE_SIDEBAR_TOPNAV_OBSERVER__.observe(document.body, { childList: true, subtree: true });
+    }
+
+    function applyNativeSidebarTopnavSetting() {
+        if (!WMN_NAV.nativeSidebarTopnavEnabled || WMN_NAV.mode === "sidebar") {
+            stopNativeSidebarTopnavObserver();
+            restoreNativeSidebarFromTopnav();
+            return false;
+        }
+
+        const mounted = ensureNativeSidebarTopnav();
+        startNativeSidebarTopnavObserver();
+        return mounted;
     }
 
     function mountHeaderInDeskShell(html) {
@@ -3297,7 +3337,7 @@ body.rtl-mode
                     </div>
                     <div class="wmn-workspace-overflow" id="wmn-workspace-overflow">
                         <button class="wmn-workspace-overflow-btn" id="wmn-workspace-overflow-btn" type="button" title="${esc(__("More Workspaces"))}" aria-label="${esc(__("More Workspaces"))}">
-                            <span class="wmn-overflow-chevrons">»</span>
+                            <span class="wmn-overflow-chevrons">Â»</span>
                         </button>
                         <div class="wmn-workspace-overflow-menu" id="wmn-workspace-overflow-menu"></div>
                     </div>
@@ -3599,7 +3639,7 @@ body.rtl-mode
                     <div class="wmn-loading">${esc(__("Loading menu..."))}</div>
                 </div>
             </div>
-            <div class="wmn-floating-sidebar-btn" id="wmn-floating-sidebar-btn">☰</div>
+            <div class="wmn-floating-sidebar-btn" id="wmn-floating-sidebar-btn">â˜°</div>
         `;
         document.body.insertAdjacentHTML("afterbegin", sidebarHTML);
 
@@ -3785,17 +3825,23 @@ body.rtl-mode
                 WMN_NAV.settings = settings || {};
                 WMN_NAV.mode = resolveMode(WMN_NAV.settings);
                 WMN_NAV.contentSource = resolveWorkspaceContentSource(WMN_NAV.settings);
+                WMN_NAV.nativeSidebarTopnavEnabled = resolveNativeSidebarTopnavEnabled(WMN_NAV.settings);
+
+                applyNativeSidebarTopnavSetting();
 
                 if (WMN_NAV.mode === "header") {
-                    ensureNativeSidebarTopnav();
-                    startNativeSidebarTopnavObserver();
                     initHeaderMode();
                 } else if (WMN_NAV.mode === "sidebar") {
                     initSidebarMode();
                 } else {
-                    ensureNativeSidebarTopnav();
-                    startNativeSidebarTopnavObserver();
                     cleanupUI();
+
+                    // cleanupUI() restores the native sidebar when top navigation is disabled.
+                    // If the independent setting is enabled, mount it again after cleanup.
+                    if (WMN_NAV.nativeSidebarTopnavEnabled) {
+                        applyNativeSidebarTopnavSetting();
+                    }
+
                     console.log("WMN Workspace Navigation disabled by settings.");
                 }
             });
@@ -3803,9 +3849,13 @@ body.rtl-mode
     }
 
     function refreshOnRouteChange() {
-        requestAnimationFrame(ensureNativeSidebarTopnav);
-        setTimeout(ensureNativeSidebarTopnav, 120);
-        setTimeout(ensureNativeSidebarTopnav, 350);
+        if (WMN_NAV.nativeSidebarTopnavEnabled) {
+            requestAnimationFrame(applyNativeSidebarTopnavSetting);
+            setTimeout(applyNativeSidebarTopnavSetting, 120);
+            setTimeout(applyNativeSidebarTopnavSetting, 350);
+        } else {
+            restoreNativeSidebarFromTopnav();
+        }
 
         if (!WMN_NAV.mode || WMN_NAV.mode === "disabled") return;
 
@@ -3820,7 +3870,7 @@ body.rtl-mode
         setTimeout(function () {
             if (WMN_NAV.mode === "header" && !document.querySelector(".wmn-global-workspace-header")) initHeaderMode();
             if (WMN_NAV.mode === "sidebar" && !document.querySelector(".wmn-custom-sidebar")) initSidebarMode();
-            ensureNativeSidebarTopnav();
+            applyNativeSidebarTopnavSetting();
         }, 300);
     }
 
