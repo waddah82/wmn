@@ -1,4 +1,4 @@
-/* Single production override for ERPNext PointOfSale.Payment. */
+/* Single production WMN POS Payment class. */
 (function () {
     "use strict";
     const ns = window.WMN_POS;
@@ -32,5 +32,6 @@
         }
     }
 
+    ns.Classes.Payment = WMNPaymentOverride;
     ns.Overrides.Payment = WMNPaymentOverride;
 })();

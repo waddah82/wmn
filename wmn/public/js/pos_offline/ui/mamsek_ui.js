@@ -5,6 +5,7 @@ frappe.provide("wmn.MamsekPOS");
 	"use strict";
 
 	const PAGE_NAME = "point-of-sale";
+	const PAGE_NAMES = ["point-of-sale", "wmn-pos"];
 	const ACTIVE_BODY_CLASS = "wmn-mamsek-pos-route";
 	const STYLE_ID = "wmn-mamsek-pos-style";
 	const EXTENSION_STYLE_ID = "wmn-mamsek-pos-extension-style";
@@ -25,7 +26,7 @@ frappe.provide("wmn.MamsekPOS");
 
 	function current_route_is_pos() {
 		const route = frappe.get_route_str ? frappe.get_route_str() : "";
-		return route === PAGE_NAME;
+		return PAGE_NAMES.includes(route);
 	}
 
 	function sync_route_class() {
@@ -438,7 +439,7 @@ frappe.provide("wmn.MamsekPOS");
 	}
 
     window.WMN_POS.UI.Mamsek = {
-        PAGE_NAME, ACTIVE_BODY_CLASS, STYLE_ID, EXTENSION_STYLE_ID, STYLE_URL,
+        PAGE_NAME, PAGE_NAMES, ACTIVE_BODY_CLASS, STYLE_ID, EXTENSION_STYLE_ID, STYLE_URL,
         escape_html, current_route_is_pos, sync_route_class, ensure_stylesheet, ensure_extension_styles, icon,
         category_emoji, read_item_data, parse_quantity,
         setup() {

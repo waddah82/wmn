@@ -1,4 +1,4 @@
-/* Single production override for ERPNext PointOfSale.PastOrderList. */
+/* Single production WMN POS PastOrderList class. */
 (function () {
     "use strict";
     const ns = window.WMN_POS;
@@ -28,5 +28,6 @@
         }
     }
 
+    ns.Classes.PastOrderList = WMNPastOrderListOverride;
     ns.Overrides.PastOrderList = WMNPastOrderListOverride;
 })();

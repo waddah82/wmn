@@ -14,6 +14,8 @@ const WMN_POS_API_CACHE = "wmn-pos-api-v16-direct-device-fast-shell-20260826-v18
 const SHELL_URLS = [
   "/desk",
   "/desk/point-of-sale",
+  "/app",
+  "/app/wmn-pos",
   "/pos-offline-manifest.json"
 ];
 
@@ -55,7 +57,10 @@ function isAppNavigation(url, request) {
   return request.mode === "navigate" && (
     url.pathname === "/desk" ||
     url.pathname === "/desk/" ||
-    url.pathname === "/desk/point-of-sale"
+    url.pathname === "/desk/point-of-sale" ||
+    url.pathname === "/app" ||
+    url.pathname === "/app/" ||
+    url.pathname === "/app/wmn-pos"
   );
 }
 
@@ -384,6 +389,8 @@ self.addEventListener("fetch", (event) => {
         const cache = await caches.open(WMN_POS_CACHE);
         const cached =
           await cache.match(request) ||
+          await cache.match("/app/wmn-pos") ||
+          await cache.match("/app") ||
           await cache.match("/desk/point-of-sale") ||
           await cache.match("/desk");
 

@@ -1,4 +1,4 @@
-/* Single production override for ERPNext PointOfSale.PastOrderSummary. */
+/* Single production WMN POS PastOrderSummary class. */
 (function () {
     "use strict";
     const ns = window.WMN_POS;
@@ -80,5 +80,6 @@
         }
     }
 
+    ns.Classes.PastOrderSummary = WMNPastOrderSummaryOverride;
     ns.Overrides.PastOrderSummary = WMNPastOrderSummaryOverride;
 })();

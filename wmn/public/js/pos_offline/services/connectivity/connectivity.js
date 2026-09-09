@@ -10,7 +10,9 @@
         function wmn_pos_is_page() {
             return !!(
                 location.pathname.includes("point-of-sale") ||
-                location.hash.includes("point-of-sale")
+                location.pathname.includes("wmn-pos") ||
+                location.hash.includes("point-of-sale") ||
+                location.hash.includes("wmn-pos")
             );
         }
 

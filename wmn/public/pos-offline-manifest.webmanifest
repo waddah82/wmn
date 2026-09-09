@@ -1,8 +1,8 @@
 {
-  "name": "ERPNext POS Offline",
-  "short_name": "POS Offline",
-  "description": "ERPNext Point of Sale with offline cache and IndexedDB invoice queue",
-  "start_url": "/app/point-of-sale",
+  "name": "WMN POS Offline",
+  "short_name": "WMN POS",
+  "description": "WMN Point of Sale with offline cache and IndexedDB invoice queue",
+  "start_url": "/app/wmn-pos",
   "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",

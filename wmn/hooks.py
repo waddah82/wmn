@@ -59,7 +59,8 @@ app_include_js = [
 
 page_js = {
     #"point-of-sale": "public/js/mamsek.js"
-    "point-of-sale": "public/js/pos_offline/wmn_pos_loader.js"
+    "point-of-sale": "public/js/pos_offline/wmn_pos_loader.js",
+    "wmn-pos": "public/js/pos_offline/wmn_pos_page_loader.js",
 }
 
 

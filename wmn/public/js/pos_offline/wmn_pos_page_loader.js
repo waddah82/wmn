@@ -1,6 +1,6 @@
 frappe.provide("erpnext.PointOfSale");
-frappe.pages["point-of-sale"].on_page_load = function(wrapper) {
-    frappe.ui.make_app_page({ parent: wrapper, title: __("Point of Sale"), single_column: true, hide_sidebar: true });
+frappe.pages["wmn-pos"].on_page_load = function(wrapper) {
+    frappe.ui.make_app_page({ parent: wrapper, title: __("WMN POS"), single_column: true, hide_sidebar: true });
 
     function loadScript(src) {
         return new Promise((resolve, reject) => {
@@ -27,7 +27,6 @@ frappe.pages["point-of-sale"].on_page_load = function(wrapper) {
             "core/namespace.js",
             "core/base_registry.js",
             "core/class_registry.js",
-            "patches/patch_registry.js",
             "services/storage/offline_storage.js",
             "services/retail/retail_context.js",
             "features/price_checker/price_checker.online.js",
@@ -140,23 +139,21 @@ frappe.pages["point-of-sale"].on_page_load = function(wrapper) {
             "overrides/item_cart/item_cart.override.js",
             "overrides/controller/controller.methods.js",
             "overrides/controller/controller.override.js",
-            "core/boot.js"
-];
+            "core/wmn_page_boot.js"
+        ];
         manifest.reduce((p, name) => p.then(() => loadScript(base + name + "?v=" + encodeURIComponent(version))), Promise.resolve())
             .then(() => {
-                console.info("[WMN POS] asset version:", version);
-                return window.wmn_pos_boot(wrapper);
+                console.info("[WMN POS] owned page asset version:", version);
+                return window.wmn_pos_page_boot(wrapper);
             })
             .catch((error) => {
-                console.error("WMN POS architecture runtime failed", error);
-                frappe.msgprint({ title: "WMN POS Offline", indicator: "red", message: error.message || String(error) });
+                console.error("WMN POS owned page failed", error);
+                frappe.msgprint({ title: "WMN POS", indicator: "red", message: error.message || String(error) });
             });
     });
 };
 
-
-frappe.pages["point-of-sale"].refresh = function(wrapper) {
-    // Preserve ERPNext v16 POS page lifecycle while using the WMN controller.
+frappe.pages["wmn-pos"].refresh = function(wrapper) {
     if (document.scannerDetectionData && wrapper?.pos) {
         try { onScan.detachFrom(document); } catch (e) {}
         wrapper.pos.wrapper?.html?.("");

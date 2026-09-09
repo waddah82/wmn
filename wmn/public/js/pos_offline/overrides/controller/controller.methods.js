@@ -10,6 +10,12 @@
     const category_emoji = MamsekUI.category_emoji;
     const read_item_data = MamsekUI.read_item_data;
     const parse_quantity = MamsekUI.parse_quantity;
+    const createPOSComponent = (name, options) => {
+        if (typeof window.wmn_pos_create_component !== "function") {
+            throw new Error("WMN POS class registry is not available");
+        }
+        return window.wmn_pos_create_component(name, options);
+    };
 
     /*
      * WMN POS Controller for ERPNext v16.
@@ -273,7 +279,7 @@
         },
 
         init_item_details() {
-                    this.item_details = new erpnext.PointOfSale.ItemDetails({
+                    this.item_details = createPOSComponent("ItemDetails", {
                         wrapper: this.$components_wrapper,
                         settings: this.settings,
                         events: {
@@ -352,7 +358,7 @@
                 },
 
         init_item_cart() {
-                    this.cart = new erpnext.PointOfSale.ItemCart({
+                    this.cart = createPOSComponent("ItemCart", {
                         wrapper: this.$components_wrapper,
                         settings: this.settings,
                         events: {
@@ -2491,7 +2497,7 @@
                 },
 
         init_payments() {
-                        this.payment = new erpnext.PointOfSale.Payment({
+                        this.payment = createPOSComponent("Payment", {
                             wrapper: this.$components_wrapper,
                             settings: this.settings,
                             events: {
@@ -2677,7 +2683,7 @@
                             : wmn_pos_invoice_doctype(this);
                     };
 
-                    this.recent_order_list = new erpnext.PointOfSale.PastOrderList({
+                    this.recent_order_list = createPOSComponent("PastOrderList", {
                         wrapper: this.$components_wrapper,
                         events: {
                             open_invoice_data: (doctype, name) => {
@@ -2759,7 +2765,7 @@
                     };
 
                     this.settings = wmn_safe_settings(this.settings || {});
-                    this.order_summary = new erpnext.PointOfSale.PastOrderSummary({
+                    this.order_summary = createPOSComponent("PastOrderSummary", {
                         wrapper: this.$components_wrapper,
                         settings: wmn_safe_settings(this.settings || {}),
                         events: {
@@ -2909,7 +2915,7 @@
         			},
 
         init_item_selector() {
-        				this.item_selector = new erpnext.PointOfSale.ItemSelector({
+				this.item_selector = createPOSComponent("ItemSelector", {
         					wrapper: this.$components_wrapper,
         					pos_profile: this.pos_profile,
         					settings: this.settings,

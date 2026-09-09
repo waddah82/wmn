@@ -141,11 +141,17 @@ body.wmn-mamsek-pos-route header.navbar .standard-image {
 }
 
 body.wmn-mamsek-pos-route #page-point-of-sale,
+body.wmn-mamsek-pos-route #page-wmn-pos,
 body.wmn-mamsek-pos-route #page-point-of-sale .page-body,
+body.wmn-mamsek-pos-route #page-wmn-pos .page-body,
 body.wmn-mamsek-pos-route #page-point-of-sale .page-content,
+body.wmn-mamsek-pos-route #page-wmn-pos .page-content,
 body.wmn-mamsek-pos-route #page-point-of-sale .layout-main,
+body.wmn-mamsek-pos-route #page-wmn-pos .layout-main,
 body.wmn-mamsek-pos-route #page-point-of-sale .layout-main-section-wrapper,
+body.wmn-mamsek-pos-route #page-wmn-pos .layout-main-section-wrapper,
 body.wmn-mamsek-pos-route #page-point-of-sale .layout-main-section,
+body.wmn-mamsek-pos-route #page-wmn-pos .layout-main-section,
 body.wmn-mamsek-pos-route .page-container:has(.wmn-mamsek-shell),
 body.wmn-mamsek-pos-route .page-container:has(.wmn-mamsek-shell) .page-body,
 body.wmn-mamsek-pos-route .page-container:has(.wmn-mamsek-shell) .page-content,
@@ -161,6 +167,7 @@ body.wmn-mamsek-pos-route .page-container:has(.wmn-mamsek-shell) .layout-main-se
 }
 
 body.wmn-mamsek-pos-route #page-point-of-sale,
+body.wmn-mamsek-pos-route #page-wmn-pos,
 body.wmn-mamsek-pos-route .page-container:has(.wmn-mamsek-shell) {
 	height: 100% !important;
 }
