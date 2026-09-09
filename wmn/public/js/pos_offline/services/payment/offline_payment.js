@@ -194,6 +194,19 @@ function wmn_invoice_payment_total(doc) {
             );
             const payments = await wmn_ensure_offline_payment_rows(doc);
             const defaultPayment = payments.find(p => cint(p.default || 0) === 1) || payments[0];
+            const gatewayService = window.WMN_POS?.Services?.PaymentGateway?.Service || null;
+            const gatewayCommon = window.WMN_POS?.Features?.PaymentGateway?.Common || null;
+            const gatewayMappings = gatewayService
+                ? await gatewayService.loadConfig(doc.pos_profile, false).catch((error) => {
+                    console.warn("WMN offline payment gateway configuration unavailable", error);
+                    return [];
+                })
+                : [];
+            const gatewayMappingByMode = new Map(
+                (gatewayMappings || [])
+                    .filter((row) => row?.enabled && row?.mode_of_payment)
+                    .map((row) => [String(row.mode_of_payment), row])
+            );
             const handoff = window.WMN_POS?.Features?.InvoiceHandoff?.Common;
             const recentOrdersOrigin = ctrl?.__wmn_payment_origin === "recent_orders";
             const preservePaymentRows = handoff?.isAwaitingCashier?.(doc) === true || ctrl?.__wmn_cashier_resume === true;
@@ -227,14 +240,55 @@ function wmn_invoice_payment_total(doc) {
             wmn_recalc_offline_payment_doc(doc);
 
             const rowsHtml = payments.map((p, idx) => {
-                const mode = frappe.utils.escape_html(p.mode_of_payment || "");
+                const modeOfPayment = String(p.mode_of_payment || "");
+                const mode = frappe.utils.escape_html(modeOfPayment);
                 const amount = flt(p.amount || 0);
+                const mapping = !isReturn ? gatewayMappingByMode.get(modeOfPayment) : null;
+                const availability = mapping && gatewayService
+                    ? gatewayService.availabilityForMapping(mapping, "authorize")
+                    : null;
+                const approval = mapping && gatewayService
+                    ? gatewayService.getApproval(doc, modeOfPayment)
+                    : null;
+                const approvedForCurrentAmount = !!(
+                    approval &&
+                    String(approval.status || "") === String(gatewayCommon?.STATUS?.APPROVED || "Approved") &&
+                    Math.abs(flt(approval.amount || 0) - amount) <= epsilon
+                );
+                let gatewayHtml = "";
+                if (mapping) {
+                    if (availability?.available) {
+                        const gatewayLabel = approvedForCurrentAmount
+                            ? wmn_t("Approved", "تمت الموافقة")
+                            : wmn_t("Process Electronic Payment", "معالجة الدفع الإلكتروني");
+                        gatewayHtml = `
+                            <button type="button"
+                                    class="btn btn-default btn-xs wmn-offline-gateway-action"
+                                    data-payment-index="${idx}"
+                                    ${approvedForCurrentAmount ? "disabled" : ""}
+                                    style="margin-top:6px;width:100%;font-weight:700;">
+                                ${gatewayLabel}
+                            </button>
+                            <div class="wmn-offline-gateway-status" data-payment-index="${idx}"
+                                 style="margin-top:4px;font-size:12px;color:#6b7280;">
+                                ${approvedForCurrentAmount ? wmn_t("Payment approved", "تم اعتماد الدفع") : ""}
+                            </div>
+                        `;
+                    } else {
+                        gatewayHtml = `
+                            <div class="wmn-offline-gateway-note" style="margin-top:5px;font-size:12px;color:#b45309;">
+                                ${frappe.utils.escape_html(availability?.reason || wmn_t("Electronic payment is unavailable", "الدفع الإلكتروني غير متاح"))}
+                            </div>
+                        `;
+                    }
+                }
                 return `
                     <div class="wmn-offline-payment-row" data-payment-index="${idx}"
                          style="display:grid;grid-template-columns:1fr 160px;gap:10px;align-items:center;margin-bottom:10px;">
                         <div>
                             <div style="font-weight:600;">${mode}</div>
                             <div style="font-size:12px;color:#6b7280;">${frappe.utils.escape_html(p.account || "")}</div>
+                            ${gatewayHtml}
                         </div>
                         <input type="number" step="0.01" ${isReturn ? 'max="0"' : 'min="0"'}
                                class="form-control wmn-offline-payment-amount"
@@ -305,6 +359,20 @@ function wmn_invoice_payment_total(doc) {
                     primary_action: async () => {
                         try {
                             if (!capturePaymentInputs(true, true)) return;
+                            if (gatewayService?.validateBeforeSubmit) {
+                                try {
+                                    await gatewayService.validateBeforeSubmit(doc);
+                                } catch (error) {
+                                    frappe.msgprint({
+                                        title: wmn_t("Electronic Payment", "الدفع الإلكتروني"),
+                                        indicator: "red",
+                                        message: gatewayCommon?.errorMessage
+                                            ? gatewayCommon.errorMessage(error)
+                                            : (error?.message || String(error)),
+                                    });
+                                    return;
+                                }
+                            }
                             d.hide();
                             resolve(doc);
                         } catch (e) {
@@ -390,7 +458,80 @@ function wmn_invoice_payment_total(doc) {
                     d.$wrapper.find(".wmn-offline-paid-total").text(format_currency(paid, doc.currency || "YER"));
                 };
 
-                d.$wrapper.on("input", ".wmn-offline-payment-amount", updatePaidTotal);
+                d.$wrapper.on("input", ".wmn-offline-payment-amount", function () {
+                    updatePaidTotal();
+                    const $input = $(this);
+                    const idx = cint($input.attr("data-payment-index"));
+                    const row = payments[idx];
+                    if (!row || !gatewayMappingByMode.has(String(row.mode_of_payment || ""))) return;
+                    const $button = d.$wrapper.find(`.wmn-offline-gateway-action[data-payment-index="${idx}"]`);
+                    const $status = d.$wrapper.find(`.wmn-offline-gateway-status[data-payment-index="${idx}"]`);
+                    if (!$button.length || $button.attr("data-processing") === "1") return;
+                    const currentAmount = flt($input.val() || 0);
+                    const approval = gatewayService?.getApproval?.(doc, row.mode_of_payment);
+                    const approved = !!(
+                        approval &&
+                        String(approval.status || "") === String(gatewayCommon?.STATUS?.APPROVED || "Approved") &&
+                        Math.abs(flt(approval.amount || 0) - currentAmount) <= epsilon
+                    );
+                    $button.prop("disabled", approved);
+                    $button.text(approved
+                        ? wmn_t("Approved", "تمت الموافقة")
+                        : wmn_t("Process Electronic Payment", "معالجة الدفع الإلكتروني"));
+                    $status.text(approved ? wmn_t("Payment approved", "تم اعتماد الدفع") : "");
+                });
+
+                d.$wrapper.on("click", ".wmn-offline-gateway-action", async function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    const $button = $(this);
+                    const idx = cint($button.attr("data-payment-index"));
+                    const row = payments[idx];
+                    const mapping = row ? gatewayMappingByMode.get(String(row.mode_of_payment || "")) : null;
+                    const $status = d.$wrapper.find(`.wmn-offline-gateway-status[data-payment-index="${idx}"]`);
+                    if (!row || !mapping || !gatewayService || !gatewayCommon) return;
+                    if (!capturePaymentInputs(false, false)) return;
+                    if (Math.abs(flt(row.amount || 0)) <= epsilon) {
+                        frappe.msgprint({
+                            title: wmn_t("Electronic Payment", "الدفع الإلكتروني"),
+                            indicator: "orange",
+                            message: wmn_t("Enter the electronic payment amount first", "أدخل مبلغ الدفع الإلكتروني أولاً"),
+                        });
+                        return;
+                    }
+
+                    $button.attr("data-processing", "1");
+                    $button.prop("disabled", true);
+                    $button.text(wmn_t("Processing...", "جاري المعالجة..."));
+                    $status.text(wmn_t("Waiting for the payment device...", "بانتظار جهاز الدفع..."));
+                    try {
+                        const result = await gatewayCommon.authorizeWithLocalCredentialRetry(
+                            gatewayService, doc, row.mode_of_payment, mapping
+                        );
+                        $button.attr("data-processing", "0");
+                        $button.text(wmn_t("Approved", "تمت الموافقة"));
+                        $status.text(
+                            `${wmn_t("Payment approved", "تم اعتماد الدفع")}` +
+                            `${result?.reference_number || result?.rrn || result?.transaction_id ? `: ${result.reference_number || result.rrn || result.transaction_id}` : ""}`
+                        );
+                        frappe.show_alert({
+                            message: wmn_t("Electronic payment approved", "تم اعتماد الدفع الإلكتروني"),
+                            indicator: "green",
+                        });
+                    } catch (error) {
+                        console.error("WMN offline electronic payment failed", error);
+                        $button.attr("data-processing", "0");
+                        $button.prop("disabled", false);
+                        $button.text(wmn_t("Process Electronic Payment", "معالجة الدفع الإلكتروني"));
+                        $status.text("");
+                        frappe.msgprint({
+                            title: wmn_t("Electronic Payment", "الدفع الإلكتروني"),
+                            indicator: "red",
+                            message: gatewayCommon.errorMessage(error),
+                        });
+                    }
+                });
 
                 d.$wrapper.on("click", ".wmn-offline-send-to-cashier-btn", async function (e) {
                     e.preventDefault();

@@ -1185,6 +1185,7 @@ wmn_install_pos_pwa_app_css();
                     const itemBarcodes = (data.item_barcodes || data.barcodes || data.item_barcode_data || []).map(normalizeItemBarcode).filter(d => d.item_code && d.barcode);
                     const serials = (data.serials || data.serial_nos || data.serial_no_data || []).map(normalizeSerial).filter(d => d.item_code && d.serial_no);
                     const paymentMethods = (data.payment_methods || []).filter(d => d && d.mode_of_payment);
+                    const paymentGatewayMappings = (data.payment_gateway_mappings || []).filter(d => d && d.enabled && d.mode_of_payment);
                     const coupons = (data.pos_coupons || data.coupons || []).map(normalizeCoupon).filter(d => d.coupon_code);
                     const promotions = (data.pos_promotions || data.promotions || []).map(normalizePromotion).filter(d => d.promotion_code);
                     const pricingRules = (data.pricing_rules || []).filter(d => d && d.name);
@@ -1337,6 +1338,8 @@ wmn_install_pos_pwa_app_css();
                         { key: "cash_movement_context", value: cashMovementContext },
                         { key: "cash_movement_summary", value: clone(cashMovementContext.summary || {}) },
                         { key: "pricing_rule_context", value: pricingRuleContext },
+                        { key: "payment_gateway_mappings", value: paymentGatewayMappings },
+                        { key: "payment_gateway_mappings::" + (posProfile.pos_profile || posProfile.name || args.pos_profile || ""), value: paymentGatewayMappings },
                     ];
 
                     if (wmnPrintFormat && wmnPrintFormat.name) {

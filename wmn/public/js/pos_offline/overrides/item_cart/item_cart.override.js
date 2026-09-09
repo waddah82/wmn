@@ -139,6 +139,10 @@
             return methods.FinalMethods.update_customer_section.apply(this, args);
         }
 
+        get_item_from_frm(...args) {
+            return methods.FinalMethods.get_item_from_frm.apply(this, args);
+        }
+
         render_cart_item(...args) {
             return methods.FinalMethods.render_cart_item.apply(this, args);
         }

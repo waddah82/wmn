@@ -528,6 +528,16 @@
                     this.discount_field.set_value(discount);
                 },
 
+        get_item_from_frm(item) {
+                    if (!wmn_item_cart_is_offline()) {
+                        return super.get_item_from_frm(item);
+                    }
+
+                    const frm = this.events?.get_frm?.();
+                    const rows = frm?.doc && Array.isArray(frm.doc.items) ? frm.doc.items : [];
+                    return wmn_find_offline_cart_row(rows, item);
+                },
+
         load_invoice() {
                     if (!wmn_item_cart_is_offline()) {
                         return super.load_invoice();
@@ -1163,6 +1173,7 @@
     FinalMethods.disable_customer_selection = UIMethods.disable_customer_selection || CoreMethods.disable_customer_selection;
     FinalMethods.enable_customer_selection = UIMethods.enable_customer_selection || CoreMethods.enable_customer_selection;
     FinalMethods.update_customer_section = UIMethods.update_customer_section || CoreMethods.update_customer_section;
+    FinalMethods.get_item_from_frm = UIMethods.get_item_from_frm || CoreMethods.get_item_from_frm;
     FinalMethods.render_cart_item = UIMethods.render_cart_item || CoreMethods.render_cart_item;
     FinalMethods.handle_broken_image = UIMethods.handle_broken_image || CoreMethods.handle_broken_image;
     FinalMethods.toggle_numpad = UIMethods.toggle_numpad || CoreMethods.toggle_numpad;

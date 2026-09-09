@@ -92,7 +92,7 @@
             const controller = new AbortController();
             const timer = setTimeout(function () {
                 try { controller.abort(); } catch (e) {}
-            }, 2500);
+            }, 900);
 
             try {
                 const response = await fetch("/api/method/wmn.api.pos_health_check?ts=" + Date.now(), {
@@ -167,3 +167,26 @@
 
 
 
+
+/* Explicit ERPNext connectivity service. Payment-LAN availability is owned by Payment Gateway providers. */
+(function () {
+    "use strict";
+    const ns = window.WMN_POS;
+    if (!ns) return;
+    ns.Services = ns.Services || {};
+
+    function isERPNextOnline() {
+        if (window.__wmn_pos_effective_offline === true) return false;
+        if (window.__wmn_pos_server_online === false) return false;
+        try {
+            if (typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline()) return false;
+        } catch (e) {}
+        return window.__wmn_pos_server_online === true;
+    }
+
+    function isERPNextOffline() {
+        return !isERPNextOnline();
+    }
+
+    ns.Services.Connectivity = Object.freeze({ isERPNextOnline, isERPNextOffline });
+})();

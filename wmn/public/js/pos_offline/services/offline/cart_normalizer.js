@@ -49,6 +49,40 @@
             }) || null;
         }
 
+        // Resolve the canonical cart row after offline commercial engines have run.
+        // ERPNext ItemCart normally resolves only by child-row name. Offline pricing/
+        // promotion normalization may rebuild the document row collection while the
+        // business identity of the cart line remains unchanged.
+        function wmn_find_offline_cart_row(items, item) {
+            const rows = Array.isArray(items) ? items : [];
+            item = item || {};
+            if (!rows.length) return null;
+
+            if (item.name) {
+                const byName = rows.find(row => row && row.name == item.name);
+                if (byName) return byName;
+            }
+
+            const itemCode = wmn_clean_link_value(item.item_code || item.item_data?.item_code || item.item_data?.name || "");
+            if (!itemCode) return null;
+
+            const batchNo = wmn_clean_link_value(item.batch_no);
+            const serialNo = wmn_clean_link_value(item.serial_no);
+            const uom = wmn_clean_link_value(item.uom || item.stock_uom || "");
+            const warehouse = wmn_clean_link_value(item.warehouse || "");
+            const isFreeItem = cint(item.is_free_item || 0);
+
+            return rows.find(row => {
+                if (!row || wmn_clean_link_value(row.item_code) !== itemCode) return false;
+                if (cint(row.is_free_item || 0) !== isFreeItem) return false;
+                if (batchNo && wmn_clean_link_value(row.batch_no) !== batchNo) return false;
+                if (serialNo && wmn_clean_link_value(row.serial_no) !== serialNo) return false;
+                if (uom && wmn_clean_link_value(row.uom || row.stock_uom) !== uom) return false;
+                if (warehouse && wmn_clean_link_value(row.warehouse) !== warehouse) return false;
+                return true;
+            }) || null;
+        }
+
         function wmn_normalize_offline_cart_row(row, doc, idx, fallbackWarehouse) {
             if (!row) return row;
 

@@ -552,32 +552,7 @@
 
                         const doc = this.frm && this.frm.doc ? this.frm.doc : null;
                         const rows = doc && Array.isArray(doc.items) ? doc.items : [];
-                        if (!item || !rows.length) return null;
-
-                        if (item.name) {
-                            const byName = rows.find(row => row && row.name == item.name);
-                            if (byName) return byName;
-                        }
-
-                        if (item.item_code) {
-                            const itemCode = String(item.item_code || "");
-                            const batchNo = String(item.batch_no || "");
-                            const serialNo = String(item.serial_no || "");
-                            const uom = String(item.uom || item.stock_uom || "");
-                            const warehouse = String(item.warehouse || "");
-
-                            return rows.find(row => {
-                                if (!row || String(row.item_code || "") !== itemCode) return false;
-                                if (cint(row.is_free_item || 0) !== cint(item.is_free_item || 0)) return false;
-                                if (batchNo && String(row.batch_no || "") !== batchNo) return false;
-                                if (serialNo && String(row.serial_no || "") !== serialNo) return false;
-                                if (uom && String(row.uom || row.stock_uom || "") !== uom) return false;
-                                if (warehouse && String(row.warehouse || "") !== warehouse) return false;
-                                return true;
-                            }) || null;
-                        }
-
-                        return null;
+                        return wmn_find_offline_cart_row(rows, item);
                     },
 
         update_cart_html(item, remove_item) {

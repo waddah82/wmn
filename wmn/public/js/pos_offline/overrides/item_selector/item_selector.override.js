@@ -99,6 +99,18 @@
             return methods.FinalMethods.wmn_scan_barcode_structure_offline.apply(this, args);
         }
 
+        wmn_get_pos_profile_name(...args) {
+            return methods.FinalMethods.wmn_get_pos_profile_name.apply(this, args);
+        }
+
+        wmn_add_online_barcode_result(...args) {
+            return methods.FinalMethods.wmn_add_online_barcode_result.apply(this, args);
+        }
+
+        wmn_is_exact_barcode_result(...args) {
+            return methods.FinalMethods.wmn_is_exact_barcode_result.apply(this, args);
+        }
+
         filter_items(...args) {
             return methods.FinalMethods.filter_items.apply(this, args);
         }

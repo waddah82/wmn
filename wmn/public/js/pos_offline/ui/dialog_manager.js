@@ -53,6 +53,9 @@
             body.wmn-mamsek-pos-route .wmn-pos-app-dialog .control-label {
                 font-weight: 600;
             }
+            body.wmn-mamsek-pos-route.wmn-pos-dialog-open #wmn-native-sidebar-topnav-host {
+                display: none !important;
+            }
             body.wmn-mamsek-pos-route .wmn-pos-supervisor-dialog .modal-dialog {
                 max-width: 440px;
             }
@@ -120,8 +123,14 @@
         }
     }
 
+    function syncDialogOpenState() {
+        const hasVisibleDialog = $(".wmn-pos-app-dialog.show:visible, .wmn-pos-app-dialog.in:visible").length > 0;
+        document.body.classList.toggle("wmn-pos-dialog-open", hasVisibleDialog);
+    }
+
     function setupModalFocusLifecycle() {
         $(document).on("show.bs.modal.wmnPosDialogFocus", ".wmn-pos-app-dialog", function () {
+            document.body.classList.add("wmn-pos-dialog-open");
             const active = document.activeElement;
             if (active && active !== document.body && !this.contains(active)) {
                 this.__wmn_focus_return = active;
@@ -135,6 +144,7 @@
         });
 
         $(document).on("hidden.bs.modal.wmnPosDialogFocus", ".wmn-pos-app-dialog", function () {
+            window.setTimeout(syncDialogOpenState, 0);
             const target = this.__wmn_focus_return;
             this.__wmn_focus_return = null;
             if (!target || !document.contains(target) || typeof target.focus !== "function") return;

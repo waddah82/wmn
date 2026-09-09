@@ -21,13 +21,26 @@ frappe.pages["point-of-sale"].on_page_load = function(wrapper) {
 
     frappe.require("point-of-sale.bundle.js", function() {
         const base = "/assets/wmn/js/pos_offline/";
-        const version = "20260823_android_app_bridge_v12";
+        const version = "20260907_retail_tools_v20";
         window.__wmn_pos_asset_version = version;
         const manifest = [
             "core/namespace.js",
             "core/base_registry.js",
             "patches/patch_registry.js",
             "services/storage/offline_storage.js",
+            "services/retail/retail_context.js",
+            "features/price_checker/price_checker.online.js",
+            "features/price_checker/price_checker.offline.js",
+            "features/price_checker/price_checker.common.js",
+            "features/barcode_printing/barcode_printing.online.js",
+            "features/barcode_printing/barcode_printing.offline.js",
+            "features/barcode_printing/vendor/jsbarcode.wmn.js",
+            "features/barcode_printing/barcode_printing.range.js",
+            "features/barcode_printing/barcode_printing.import.js",
+            "features/barcode_printing/barcode_printing.print_layout.js",
+            "features/barcode_printing/barcode_printing.common.js",
+            "features/barcode_scan_quantity/barcode_scan_quantity.common.js",
+            "features/barcode_scan_quantity/barcode_scan_quantity.ui.js",
             "services/barcode/invoice_barcode.js",
             "services/connectivity/connectivity.js",
             "services/offline/mode_and_settings.js",

@@ -54,6 +54,13 @@
         });
     }
 
+    function canRunLocally(action, profile) {
+        const transport = String(profile?.transport || "");
+        if (transport === "SoftPOS SDK" || transport === "Android App Bridge") return Base.hasSdkAction(action);
+        if (transport === "ECR WebSocket Bridge" || transport === "ECR HTTP Bridge") return !!String(profile?.connector_url || "").trim();
+        return false;
+    }
+
     async function deviceAction(action, payload, profile) {
         const transport = String(profile?.transport || "");
         if (transport === "SoftPOS SDK" || transport === "Android App Bridge") return Base.invokeSdk(action, payload);
@@ -62,5 +69,5 @@
         throw new Error(`Geidea device transport ${transport || "(empty)"} requires server processing or vendor connector`);
     }
 
-    ns.Services.PaymentGateway.Providers["Geidea"] = Object.freeze({ deviceAction, completeCloudAction });
+    ns.Services.PaymentGateway.Providers["Geidea"] = Object.freeze({ canRunLocally, deviceAction, completeCloudAction });
 })();

@@ -439,6 +439,8 @@
                     : (window.innerWidth <= 860 || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || ""));
 
             if (isMobileOrApp) this.search_field?.$input?.trigger("blur");
+
+            window.WMN_POS?.Features?.BarcodeScanQuantityUI?.install?.(this);
         },
 
         async wmn_get_item_group_buttons_from_pos_profile() {
@@ -976,135 +978,230 @@
                         return null;
                     },
 
-        filter_items({ search_term = "" } = {}) {
-                        if (this.wmn_is_offline() && window.wmnPOSOffline) {
-                            return this.wmn_scan_barcode_structure_offline(search_term).then(async (structured_item) => {
-                                if (structured_item && structured_item.item_code && search_term && search_term.length >= 12) {
-                                    await this.wmn_update_existing_cart_item_or_add(
-                                        structured_item,
-                                        structured_item.qty || 1
-                                    );
+        wmn_get_pos_profile_name() {
+            const pos_ctrl = window.cur_pos;
+            if (pos_ctrl?.pos_profile && typeof pos_ctrl.pos_profile === "string") {
+                return pos_ctrl.pos_profile;
+            }
+            if (pos_ctrl?.settings?.name) return pos_ctrl.settings.name;
+            if (pos_ctrl?.frm?.doc?.pos_profile) return pos_ctrl.frm.doc.pos_profile;
+            return this.pos_profile || "";
+        },
 
+        async wmn_add_online_barcode_result(data, qty_value) {
+            const pos_ctrl = window.cur_pos;
+            qty_value = flt(qty_value || 1);
+
+            let existing_item = null;
+            if (pos_ctrl?.frm?.doc?.items) {
+                existing_item = pos_ctrl.frm.doc.items.find(i =>
+                    i.item_code === data.item_code &&
+                    (i.batch_no === data.batch_no || (!i.batch_no && !data.batch_no))
+                );
+            }
+
+            if (existing_item) {
+                frappe.dom.freeze();
+                try {
+                    const new_qty = flt(existing_item.qty) + qty_value;
+                    await wmn_pos_set_value(existing_item.doctype, existing_item.name, "qty", new_qty);
+                    if (data.batch_no && existing_item.batch_no !== data.batch_no) {
+                        await wmn_pos_set_value(existing_item.doctype, existing_item.name, "batch_no", data.batch_no);
+                    }
+                    if (data.serial_no) {
+                        const new_serial_no = existing_item.serial_no
+                            ? existing_item.serial_no + "\n" + data.serial_no
+                            : data.serial_no;
+                        await wmn_pos_set_value(existing_item.doctype, existing_item.name, "serial_no", new_serial_no);
+                    }
+                    if (pos_ctrl.update_cart_html) pos_ctrl.update_cart_html(existing_item);
+                } finally {
+                    frappe.dom.unfreeze();
+                }
+                return existing_item;
+            }
+
+            let final_rate = data.rate || data.price_list_rate || 0;
+            if (final_rate === 0 && pos_ctrl?.item_selector?.items) {
+                const ui_item = pos_ctrl.item_selector.items.find(i => i.item_code === data.item_code);
+                final_rate = ui_item ? (ui_item.price_list_rate || ui_item.rate) : 0;
+            }
+
+            if (pos_ctrl?.add_item) {
+                return await pos_ctrl.add_item({
+                    item_code: data.item_code,
+                    qty: qty_value,
+                    rate: final_rate,
+                    price_list_rate: final_rate,
+                    batch_no: data.batch_no,
+                    serial_no: data.serial_no,
+                    uom: data.uom,
+                });
+            }
+
+            return await Promise.resolve(this.events.item_selected({
+                field: "qty",
+                value: qty_value,
+                item: {
+                    item_code: data.item_code,
+                    batch_no: data.batch_no,
+                    serial_no: data.serial_no,
+                    uom: data.uom,
+                    rate: final_rate,
+                },
+            }));
+        },
+
+        wmn_is_exact_barcode_result(data, search_term) {
+            if (!data || !search_term) return false;
+            if (data.__wmn_from_barcode_structure) return true;
+
+            const expected = String(search_term || "").trim().toLowerCase();
+            const actual = String(data.barcode || "").trim().toLowerCase();
+            return Boolean(actual && actual === expected);
+        },
+
+        filter_items({ search_term = "" } = {}) {
+            const qtyFeature = window.WMN_POS?.Features?.BarcodeScanQuantity;
+            const qtyUI = window.WMN_POS?.Features?.BarcodeScanQuantityUI;
+            const fromScan = Boolean(this.barcode_scanned);
+            const fromTypedBarcode = Boolean(this.__wmn_typed_barcode_submit);
+            const fromBarcodeInput = Boolean(fromScan || fromTypedBarcode);
+            const armedBarcodeInput = Boolean(fromBarcodeInput && qtyFeature?.isArmed?.(this));
+            this.__wmn_typed_barcode_submit = false;
+
+            const syncScanState = () => {
+                this.barcode_scanned = false;
+                qtyUI?.sync?.(this);
+            };
+
+            if (this.wmn_is_offline() && window.wmnPOSOffline) {
+                return this.wmn_scan_barcode_structure_offline(search_term).then(async (structured_item) => {
+                    if (structured_item && structured_item.item_code && search_term && search_term.length >= 12) {
+                        await this.wmn_update_existing_cart_item_or_add(
+                            structured_item,
+                            structured_item.qty || 1
+                        );
+
+                        if (fromBarcodeInput) {
+                            qtyFeature?.finishScan?.(this, { success: true, structured: true, prompted: false });
+                            syncScanState();
+                        }
+                        this.set_search_value("");
+                        frappe.utils.play_sound("submit");
+                        return;
+                    }
+
+                    return this.get_items({ search_term }).then(async ({ message }) => {
+                        const items = (message && message.items) || [];
+
+                        const exactTypedBarcode = !fromTypedBarcode ||
+                            (items.length === 1 && this.wmn_is_exact_barcode_result(items[0], search_term));
+
+                        if (items.length === 1 && search_term && search_term.length >= 8 && exactTypedBarcode) {
+                            const item = items[0];
+                            let qtyValue = item.qty || 1;
+                            let prompted = false;
+
+                            if (qtyFeature?.shouldPrompt?.(this, item, { fromScan, fromTypedBarcode })) {
+                                const requestedQty = await qtyUI?.requestQuantity?.(this, item);
+                                if (requestedQty == null) {
+                                    syncScanState();
                                     this.set_search_value("");
-                                    frappe.utils.play_sound("submit");
                                     return;
                                 }
-
-                                return this.get_items({ search_term }).then(async ({ message }) => {
-                                    const items = (message && message.items) || [];
-
-                                    if (items.length === 1 && search_term && search_term.length >= 8) {
-                                        await this.wmn_update_existing_cart_item_or_add(
-                                            items[0],
-                                            items[0].qty || 1
-                                        );
-
-                                        this.set_search_value("");
-                                        frappe.utils.play_sound("submit");
-                                        return;
-                                    }
-
-                                    this.render_item_list(items);
-                                });
-                            });
-                        }
-
-                        if (search_term && search_term.length >= 12) {
-                            const pos_ctrl = window.cur_pos;
-
-                            let pos_profile_name = null;
-                            if (pos_ctrl.pos_profile && typeof pos_ctrl.pos_profile === 'string') {
-                                pos_profile_name = pos_ctrl.pos_profile;
-                            } else if (pos_ctrl.settings && pos_ctrl.settings.name) {
-                                pos_profile_name = pos_ctrl.settings.name;
-                            } else if (pos_ctrl.frm?.doc?.pos_profile) {
-                                pos_profile_name = pos_ctrl.frm.doc.pos_profile;
+                                qtyValue = requestedQty;
+                                prompted = true;
                             }
 
-                            return frappe.call({
-                                method: "wmn.barcode_handler.custom_scan_barcode_pos",
-                                args: {
-                                    search_value: search_term,
-                                    price_list: this.price_list || this.events.get_frm().doc.selling_price_list,
-                                    pos_profile: pos_profile_name,
-                                }
-                            }).then(async (r) => {
-                                if (r.message && r.message.item_code) {
-                                    const data = r.message;
-                                    const pos_ctrl = window.cur_pos;
-                                    let qty_value = data.qty || 1;
+                            await this.wmn_update_existing_cart_item_or_add(item, qtyValue);
+                            if (fromBarcodeInput) {
+                                qtyFeature?.finishScan?.(this, {
+                                    success: true,
+                                    structured: qtyFeature?.isStructured?.(item),
+                                    prompted,
+                                });
+                                syncScanState();
+                            }
 
-                                    let existing_item = null;
-                                    if (pos_ctrl.frm && pos_ctrl.frm.doc.items) {
-                                        existing_item = pos_ctrl.frm.doc.items.find(i =>
-                                            i.item_code === data.item_code &&
-                                            (i.batch_no === data.batch_no || (!i.batch_no && !data.batch_no))
-                                        );
-                                    }
-
-                                    if (existing_item) {
-                                        frappe.dom.freeze();
-                                        const new_qty = flt(existing_item.qty) + flt(qty_value);
-
-                                        await wmn_pos_set_value(existing_item.doctype, existing_item.name, "qty", new_qty);
-                                        if (data.batch_no && existing_item.batch_no !== data.batch_no) {
-                                            await wmn_pos_set_value(existing_item.doctype, existing_item.name, "batch_no", data.batch_no);
-                                        }
-                                        if (data.serial_no) {
-                                            let new_serial_no = existing_item.serial_no ? existing_item.serial_no + "\n" + data.serial_no : data.serial_no;
-                                            await wmn_pos_set_value(existing_item.doctype, existing_item.name, "serial_no", new_serial_no);
-                                        }
-
-                                        if (pos_ctrl.update_cart_html) {
-                                            pos_ctrl.update_cart_html(existing_item);
-                                        }
-                                        frappe.dom.unfreeze();
-                                    } else {
-                                        let final_rate = data.rate || data.price_list_rate || 0;
-
-                                        if (final_rate === 0 && pos_ctrl.item_selector && pos_ctrl.item_selector.items) {
-                                            let ui_item = pos_ctrl.item_selector.items.find(i => i.item_code === data.item_code);
-                                            final_rate = ui_item ? (ui_item.price_list_rate || ui_item.rate) : 0;
-                                        }
-
-                                        if (pos_ctrl.add_item) {
-                                            await pos_ctrl.add_item({
-                                                item_code: data.item_code,
-                                                qty: qty_value,
-                                                rate: final_rate,
-                                                price_list_rate: final_rate,
-                                                batch_no: data.batch_no,
-                                                serial_no: data.serial_no,
-                                                uom: data.uom
-                                            });
-                                        } else {
-                                            this.events.item_selected({
-                                                field: "qty",
-                                                value: qty_value,
-                                                item: {
-                                                    item_code: data.item_code,
-                                                    batch_no: data.batch_no,
-                                                    serial_no: data.serial_no,
-                                                    uom: data.uom,
-                                                    rate: final_rate
-                                                },
-                                            });
-                                        }
-                                    }
-
-                                    this.set_search_value("");
-                                    frappe.utils.play_sound("submit");
-                                    return;
-                                }
-                                return super.filter_items({ search_term });
-                            }).catch(err => {
-                                console.error(err);
-                                frappe.dom.unfreeze();
-                                return super.filter_items({ search_term });
-                            });
+                            this.set_search_value("");
+                            frappe.utils.play_sound("submit");
+                            return;
                         }
-                        return super.filter_items({ search_term });
+
+                        if (fromScan) syncScanState();
+                        qtyUI?.sync?.(this);
+                        this.render_item_list(items);
+                    });
+                });
+            }
+
+            const shouldResolveBarcode = Boolean(
+                search_term &&
+                ((armedBarcodeInput && fromBarcodeInput) || search_term.length >= 12)
+            );
+
+            if (shouldResolveBarcode) {
+                return frappe.call({
+                    method: "wmn.barcode_handler.custom_scan_barcode_pos",
+                    args: {
+                        search_value: search_term,
+                        price_list: this.price_list || this.events.get_frm().doc.selling_price_list,
+                        pos_profile: this.wmn_get_pos_profile_name(),
                     },
+                }).then(async (r) => {
+                    if (r.message && r.message.item_code) {
+                        const data = r.message;
+                        const structured = Boolean(qtyFeature?.isStructured?.(data));
+
+                        if (fromTypedBarcode && !this.wmn_is_exact_barcode_result(data, search_term)) {
+                            qtyUI?.sync?.(this);
+                            return super.filter_items({ search_term });
+                        }
+
+                        let qtyValue = data.qty || 1;
+                        let prompted = false;
+
+                        if (qtyFeature?.shouldPrompt?.(this, data, { fromScan, fromTypedBarcode })) {
+                            const requestedQty = await qtyUI?.requestQuantity?.(this, data);
+                            if (requestedQty == null) {
+                                syncScanState();
+                                this.set_search_value("");
+                                return;
+                            }
+                            qtyValue = requestedQty;
+                            prompted = true;
+                        }
+
+                        await this.wmn_add_online_barcode_result(data, qtyValue);
+
+                        if (fromBarcodeInput) {
+                            qtyFeature?.finishScan?.(this, { success: true, structured, prompted });
+                            syncScanState();
+                        }
+                        this.set_search_value("");
+                        frappe.utils.play_sound("submit");
+                        return;
+                    }
+
+                    if (fromScan && armedBarcodeInput) {
+                        syncScanState();
+                    } else {
+                        qtyUI?.sync?.(this);
+                    }
+                    return super.filter_items({ search_term });
+                }).catch((err) => {
+                    console.error(err);
+                    frappe.dom.unfreeze();
+                    if (fromScan && armedBarcodeInput) syncScanState();
+                    else qtyUI?.sync?.(this);
+                    return super.filter_items({ search_term });
+                });
+            }
+
+            return super.filter_items({ search_term });
+        },
+
 
         async wmn_get_variant_choices(templateItem) {
                         const context = await this.wmn_get_item_selection_context();
@@ -1848,6 +1945,28 @@
         bind_events() {
             super.bind_events();
 
+            const qtyFeature = window.WMN_POS?.Features?.BarcodeScanQuantity;
+            this.search_field?.$input
+                ?.off?.("keydown.wmnQtyTypedBarcode")
+                ?.on?.("keydown.wmnQtyTypedBarcode", (event) => {
+                    if (event.key !== "Enter") return;
+                    if (!qtyFeature?.isArmed?.(this)) return;
+
+                    const searchTerm = String(this.search_field?.get_value?.() || "").trim();
+                    if (!searchTerm) return;
+
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                    clearTimeout(this.last_search);
+                    this.__wmn_typed_barcode_submit = true;
+
+                    Promise.resolve(this.filter_items({ search_term: searchTerm })).catch((error) => {
+                        this.__wmn_typed_barcode_submit = false;
+                        console.error("WMN typed barcode submit failed", error);
+                        window.WMN_POS?.Features?.BarcodeScanQuantityUI?.sync?.(this);
+                    });
+                });
+
             this.$component.off("click", ".item-wrapper");
             this.$component.off(".wmnItemSelection .wmnMamsek");
             this.$component
@@ -2390,6 +2509,9 @@
     FinalMethods.wmn_is_direct_search_result = UIMethods.wmn_is_direct_search_result || CoreMethods.wmn_is_direct_search_result;
     FinalMethods.get_items = UIMethods.get_items || CoreMethods.get_items;
     FinalMethods.wmn_scan_barcode_structure_offline = UIMethods.wmn_scan_barcode_structure_offline || CoreMethods.wmn_scan_barcode_structure_offline;
+    FinalMethods.wmn_get_pos_profile_name = UIMethods.wmn_get_pos_profile_name || CoreMethods.wmn_get_pos_profile_name;
+    FinalMethods.wmn_add_online_barcode_result = UIMethods.wmn_add_online_barcode_result || CoreMethods.wmn_add_online_barcode_result;
+    FinalMethods.wmn_is_exact_barcode_result = UIMethods.wmn_is_exact_barcode_result || CoreMethods.wmn_is_exact_barcode_result;
     FinalMethods.filter_items = UIMethods.filter_items || CoreMethods.filter_items;
     FinalMethods.wmn_get_variant_choices = UIMethods.wmn_get_variant_choices || CoreMethods.wmn_get_variant_choices;
     FinalMethods.wmn_get_batch_choices = UIMethods.wmn_get_batch_choices || CoreMethods.wmn_get_batch_choices;

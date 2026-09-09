@@ -200,8 +200,19 @@
             return taxMap;
         }
 
+        function wmn_normalize_offline_tax_row_id(chargeType, rowId) {
+            const type = String(chargeType || "On Net Total").trim();
+            if (!["On Previous Row Amount", "On Previous Row Total"].includes(type)) {
+                return "";
+            }
+
+            const reference = String(rowId == null ? "" : rowId).trim();
+            return reference === "0" ? "" : reference;
+        }
+
         function wmn_make_offline_tax_row(row, idx, parentDoc) {
             row = row || {};
+            const chargeType = row.charge_type || "On Net Total";
             return {
                 doctype: row.doctype || "Sales Taxes and Charges",
                 name: row.name || row.row_id || ("OFFLINE-TAX-" + Date.now() + "-" + idx),
@@ -209,13 +220,13 @@
                 parenttype: (parentDoc && parentDoc.doctype) || row.parenttype || "Sales Invoice",
                 parentfield: "taxes",
                 idx: idx + 1,
-                charge_type: row.charge_type || "On Net Total",
+                charge_type: chargeType,
                 account_head: row.account_head || "",
                 description: row.description || row.account_head || "Tax",
                 rate: flt(row.rate || 0),
                 add_deduct_tax: row.add_deduct_tax || "Add",
                 category: row.category || "Total",
-                row_id: cint(row.row_id || 0),
+                row_id: wmn_normalize_offline_tax_row_id(chargeType, row.row_id),
                 tax_amount: 0,
                 base_tax_amount: 0,
                 tax_amount_after_discount_amount: 0,
@@ -290,7 +301,7 @@
                         rate: flt(t.rate || 0),
                         add_deduct_tax: t.add_deduct_tax || "Add",
                         category: t.category || "Total",
-                        row_id: cint(t.row_id || 0),
+                        row_id: wmn_normalize_offline_tax_row_id(t.charge_type, t.row_id),
                         included_in_print_rate: cint(t.included_in_print_rate || 0),
                         cost_center: t.cost_center || "",
                     }));
