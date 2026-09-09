@@ -5,10 +5,11 @@
     const Base = ns.Source.ItemDetails;
     const methods = ns.ClassMethods.ItemDetails;
 
-    class WMNItemDetailsClass extends Base {
+    class WMNItemDetailsClass {
         constructor(...args) {
-            super(...args);
-            methods.initialize(this, args);
+            return window.wmn_pos_construct_from_source(Base, WMNItemDetailsClass, args, (instance) => {
+                methods.initialize(instance, args);
+            });
         }
 
         wmn_focus_quantity_control(...args) {
@@ -56,5 +57,6 @@
         }
     }
 
+    window.wmn_pos_inherit_source_prototype(WMNItemDetailsClass, Base);
     ns.Classes.ItemDetails = WMNItemDetailsClass;
 })();

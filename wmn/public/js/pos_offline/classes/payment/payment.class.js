@@ -5,10 +5,11 @@
     const Base = ns.Source.Payment;
     const methods = ns.ClassMethods.Payment;
 
-    class WMNPaymentClass extends Base {
+    class WMNPaymentClass {
         constructor(...args) {
-            super(...args);
-            methods.initialize(this, args);
+            return window.wmn_pos_construct_from_source(Base, WMNPaymentClass, args, (instance) => {
+                methods.initialize(instance, args);
+            });
         }
 
         bind_events(...args) {
@@ -32,5 +33,6 @@
         }
     }
 
+    window.wmn_pos_inherit_source_prototype(WMNPaymentClass, Base);
     ns.Classes.Payment = WMNPaymentClass;
 })();

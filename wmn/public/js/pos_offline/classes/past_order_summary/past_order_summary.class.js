@@ -5,10 +5,11 @@
     const Base = ns.Source.PastOrderSummary;
     const methods = ns.ClassMethods.PastOrderSummary;
 
-    class WMNPastOrderSummaryClass extends Base {
+    class WMNPastOrderSummaryClass {
         constructor(...args) {
-            super(...args);
-            methods.initialize(this, args);
+            return window.wmn_pos_construct_from_source(Base, WMNPastOrderSummaryClass, args, (instance) => {
+                methods.initialize(instance, args);
+            });
         }
 
         toggle_summary_placeholder(...args) {
@@ -80,5 +81,6 @@
         }
     }
 
+    window.wmn_pos_inherit_source_prototype(WMNPastOrderSummaryClass, Base);
     ns.Classes.PastOrderSummary = WMNPastOrderSummaryClass;
 })();

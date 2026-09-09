@@ -11,6 +11,15 @@ const boot = fs.readFileSync(path.join(root, "public/js/pos_offline/core/wmn_pag
 const controller = fs.readFileSync(path.join(root, "public/js/pos_offline/overrides/controller/controller.methods.js"), "utf8");
 const cleanController = fs.readFileSync(path.join(root, "public/js/pos_offline/classes/controller/controller.methods.js"), "utf8");
 const cleanControllerClass = fs.readFileSync(path.join(root, "public/js/pos_offline/classes/controller/controller.class.js"), "utf8");
+const cleanClassFiles = [
+  "controller/controller.class.js",
+  "item_cart/item_cart.class.js",
+  "item_details/item_details.class.js",
+  "item_selector/item_selector.class.js",
+  "past_order_list/past_order_list.class.js",
+  "past_order_summary/past_order_summary.class.js",
+  "payment/payment.class.js",
+].map(file => fs.readFileSync(path.join(root, "public/js/pos_offline/classes", file), "utf8")).join("\n");
 const classRegistry = fs.readFileSync(path.join(root, "public/js/pos_offline/core/class_registry.js"), "utf8");
 const dataSource = fs.readFileSync(path.join(root, "public/js/pos_offline/services/data/pos_data_source.js"), "utf8");
 
@@ -44,7 +53,9 @@ assert.ok(dataSource.includes("registerBackend(BACKEND.LOCAL_DB"), "Local DB bac
 assert.ok(dataSource.includes("Offline POS data source has no local method"), "Offline calls must reject unmapped server methods");
 assert.ok(cleanController.includes("ns.ClassMethods.Controller"), "Clean Controller methods must use ClassMethods");
 assert.ok(cleanControllerClass.includes("ns.Classes.Controller = WMNControllerClass"), "Clean Controller class must register only as a WMN class");
-assert.ok(cleanControllerClass.includes("const Base = ns.Source.Controller"), "Clean Controller class must extend the copied ERPNext v16 source");
+assert.ok(cleanControllerClass.includes("const Base = ns.Source.Controller"), "Clean Controller class must use the copied ERPNext v16 source");
+assert.ok(!cleanClassFiles.includes("extends Base"), "Clean WMN classes must not use JavaScript extends");
+assert.ok(!cleanClassFiles.includes("super(...args)"), "Clean WMN classes must not call super constructors");
 assert.ok(!cleanControllerClass.includes("ns.Overrides"), "Clean Controller class must not register overrides");
 assert.ok(!cleanController.includes("OverrideMethods"), "Clean Controller methods must not use OverrideMethods");
 assert.ok(controller.includes("this.wmn_data_source = ns.Services?.Data?.createForController"), "Controller must own a POS data source");

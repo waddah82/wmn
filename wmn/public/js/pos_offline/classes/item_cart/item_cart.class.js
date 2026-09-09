@@ -5,10 +5,11 @@
     const Base = ns.Source.ItemCart;
     const methods = ns.ClassMethods.ItemCart;
 
-    class WMNItemCartClass extends Base {
+    class WMNItemCartClass {
         constructor(...args) {
-            super(...args);
-            methods.initialize(this, args);
+            return window.wmn_pos_construct_from_source(Base, WMNItemCartClass, args, (instance) => {
+                methods.initialize(instance, args);
+            });
         }
 
         wmn_get_numpad_supervisor_context(...args) {
@@ -164,5 +165,6 @@
         }
     }
 
+    window.wmn_pos_inherit_source_prototype(WMNItemCartClass, Base);
     ns.Classes.ItemCart = WMNItemCartClass;
 })();

@@ -5,10 +5,11 @@
     const Base = ns.Source.PastOrderList;
     const methods = ns.ClassMethods.PastOrderList;
 
-    class WMNPastOrderListClass extends Base {
+    class WMNPastOrderListClass {
         constructor(...args) {
-            super(...args);
-            methods.initialize(this, args);
+            return window.wmn_pos_construct_from_source(Base, WMNPastOrderListClass, args, (instance) => {
+                methods.initialize(instance, args);
+            });
         }
 
         make_filter_section(...args) {
@@ -28,5 +29,6 @@
         }
     }
 
+    window.wmn_pos_inherit_source_prototype(WMNPastOrderListClass, Base);
     ns.Classes.PastOrderList = WMNPastOrderListClass;
 })();

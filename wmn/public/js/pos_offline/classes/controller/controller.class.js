@@ -5,14 +5,15 @@
     const Base = ns.Source.Controller;
     const methods = ns.ClassMethods.Controller;
 
-    class WMNControllerClass extends Base {
+    class WMNControllerClass {
         wmn_prepare_pos_frm_doc(...args) {
             return methods.FinalMethods.wmn_prepare_pos_frm_doc.apply(this, args);
         }
 
         constructor(...args) {
-            super(...args);
-            methods.initialize(this, args);
+            return window.wmn_pos_construct_from_source(Base, WMNControllerClass, args, (instance) => {
+                methods.initialize(instance, args);
+            });
         }
 
         init_item_details(...args) {
@@ -444,5 +445,6 @@
         }
     }
 
+    window.wmn_pos_inherit_source_prototype(WMNControllerClass, Base);
     ns.Classes.Controller = WMNControllerClass;
 })();

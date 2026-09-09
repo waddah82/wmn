@@ -5,10 +5,11 @@
     const Base = ns.Source.ItemSelector;
     const methods = ns.ClassMethods.ItemSelector;
 
-    class WMNItemSelectorClass extends Base {
+    class WMNItemSelectorClass {
         constructor(...args) {
-            super(...args);
-            methods.initialize(this, args);
+            return window.wmn_pos_construct_from_source(Base, WMNItemSelectorClass, args, (instance) => {
+                methods.initialize(instance, args);
+            });
         }
 
         wmn_is_offline(...args) {
@@ -248,5 +249,6 @@
         }
     }
 
+    window.wmn_pos_inherit_source_prototype(WMNItemSelectorClass, Base);
     ns.Classes.ItemSelector = WMNItemSelectorClass;
 })();
