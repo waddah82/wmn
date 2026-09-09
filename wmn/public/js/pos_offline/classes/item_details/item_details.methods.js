@@ -2,7 +2,7 @@
 (function () {
     "use strict";
     const ns = window.WMN_POS;
-    const Base = ns.Base.ItemDetails;
+    const Base = ns.Source.ItemDetails;
 
     /*
      * WMN ItemDetails for ERPNext v16.

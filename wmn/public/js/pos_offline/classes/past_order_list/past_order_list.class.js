@@ -2,7 +2,7 @@
 (function () {
     "use strict";
     const ns = window.WMN_POS;
-    const Base = ns.Base.PastOrderList;
+    const Base = ns.Source.PastOrderList;
     const methods = ns.ClassMethods.PastOrderList;
 
     class WMNPastOrderListClass extends Base {

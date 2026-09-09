@@ -2,7 +2,7 @@
 (function () {
     "use strict";
     const ns = window.WMN_POS;
-    const Base = ns.Base.Payment;
+    const Base = ns.Source.Payment;
     const methods = ns.ClassMethods.Payment;
 
     class WMNPaymentClass extends Base {

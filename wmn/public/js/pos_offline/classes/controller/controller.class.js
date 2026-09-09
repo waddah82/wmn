@@ -2,7 +2,7 @@
 (function () {
     "use strict";
     const ns = window.WMN_POS;
-    const Base = ns.Base.Controller;
+    const Base = ns.Source.Controller;
     const methods = ns.ClassMethods.Controller;
 
     class WMNControllerClass extends Base {

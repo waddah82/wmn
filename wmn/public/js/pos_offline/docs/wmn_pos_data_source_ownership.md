@@ -1,9 +1,12 @@
 # WMN POS Data Source Ownership
 
-`/app/wmn-pos` owns the POS page boot and class creation. It does not replace
-ERPNext POS classes at runtime and it does not apply patch registries.
-It loads WMN-owned files from `classes/*`; `overrides/*` is not part of the
-owned WMN POS page.
+`/app/wmn-pos` owns the POS page boot and class creation. It does not load
+`point-of-sale.bundle.js`, replace ERPNext POS classes at runtime, or apply
+patch registries.
+
+The page starts from copied ERPNext `version-16` POS source files under
+`source_v16/*`, then loads WMN-owned files from `classes/*`. `overrides/*` is
+not part of the owned WMN POS page.
 
 ## Runtime boundary
 

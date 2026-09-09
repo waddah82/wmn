@@ -1,4 +1,4 @@
-frappe.provide("erpnext.PointOfSale");
+frappe.provide("wmn.PointOfSale");
 frappe.pages["wmn-pos"].on_page_load = function(wrapper) {
     frappe.ui.make_app_page({ parent: wrapper, title: __("WMN POS"), single_column: true, hide_sidebar: true });
 
@@ -19,14 +19,20 @@ frappe.pages["wmn-pos"].on_page_load = function(wrapper) {
         });
     }
 
-    frappe.require("point-of-sale.bundle.js", function() {
-        const base = "/assets/wmn/js/pos_offline/";
-        const version = "20260907_retail_tools_v20";
-        window.__wmn_pos_asset_version = version;
-        const manifest = [
+    const base = "/assets/wmn/js/pos_offline/";
+    const version = "20260907_retail_tools_v20";
+    window.__wmn_pos_asset_version = version;
+    const manifest = [
             "core/namespace.js",
-            "core/base_registry.js",
             "core/class_registry.js",
+            "source_v16/pos_number_pad.js",
+            "source_v16/pos_item_details.js",
+            "source_v16/pos_item_cart.js",
+            "source_v16/pos_item_selector.js",
+            "source_v16/pos_payment.js",
+            "source_v16/pos_past_order_list.js",
+            "source_v16/pos_past_order_summary.js",
+            "source_v16/pos_controller.js",
             "services/storage/offline_storage.js",
             "services/retail/retail_context.js",
             "features/price_checker/price_checker.online.js",
@@ -141,17 +147,16 @@ frappe.pages["wmn-pos"].on_page_load = function(wrapper) {
             "classes/controller/controller.methods.js",
             "classes/controller/controller.class.js",
             "core/wmn_page_boot.js"
-        ];
-        manifest.reduce((p, name) => p.then(() => loadScript(base + name + "?v=" + encodeURIComponent(version))), Promise.resolve())
-            .then(() => {
-                console.info("[WMN POS] owned page asset version:", version);
-                return window.wmn_pos_page_boot(wrapper);
-            })
-            .catch((error) => {
-                console.error("WMN POS owned page failed", error);
-                frappe.msgprint({ title: "WMN POS", indicator: "red", message: error.message || String(error) });
-            });
-    });
+    ];
+    manifest.reduce((p, name) => p.then(() => loadScript(base + name + "?v=" + encodeURIComponent(version))), Promise.resolve())
+        .then(() => {
+            console.info("[WMN POS] owned page asset version:", version);
+            return window.wmn_pos_page_boot(wrapper);
+        })
+        .catch((error) => {
+            console.error("WMN POS owned page failed", error);
+            frappe.msgprint({ title: "WMN POS", indicator: "red", message: error.message || String(error) });
+        });
 };
 
 frappe.pages["wmn-pos"].refresh = function(wrapper) {

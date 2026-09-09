@@ -2,7 +2,7 @@
 (function () {
     "use strict";
     const ns = window.WMN_POS;
-    const Base = ns.Base.PastOrderList;
+    const Base = ns.Source.PastOrderList;
 
     function wmn_past_order_is_offline() {
         try {

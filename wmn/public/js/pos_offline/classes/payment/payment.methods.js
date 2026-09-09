@@ -2,7 +2,7 @@
 (function () {
     "use strict";
     const ns = window.WMN_POS;
-    const Base = ns.Base.Payment;
+    const Base = ns.Source.Payment;
 
     /*
      * WMNPayment_v16.js

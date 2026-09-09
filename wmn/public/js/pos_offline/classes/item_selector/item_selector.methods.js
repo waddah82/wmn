@@ -2,7 +2,7 @@
 (function () {
     "use strict";
     const ns = window.WMN_POS;
-    const Base = ns.Base.ItemSelector;
+    const Base = ns.Source.ItemSelector;
     const MamsekUI = ns.UI.Mamsek;
     const Common = ns.Common;
     const ACTIVE_BODY_CLASS = MamsekUI.ACTIVE_BODY_CLASS;

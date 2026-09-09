@@ -3,6 +3,7 @@
     "use strict";
     window.WMN_POS = window.WMN_POS || {};
     const ns = window.WMN_POS;
+    ns.Source = ns.Source || {};
     ns.Base = ns.Base || {};
     ns.Classes = ns.Classes || {};
     ns.ClassMethods = ns.ClassMethods || {};

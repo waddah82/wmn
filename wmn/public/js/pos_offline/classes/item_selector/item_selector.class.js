@@ -2,7 +2,7 @@
 (function () {
     "use strict";
     const ns = window.WMN_POS;
-    const Base = ns.Base.ItemSelector;
+    const Base = ns.Source.ItemSelector;
     const methods = ns.ClassMethods.ItemSelector;
 
     class WMNItemSelectorClass extends Base {

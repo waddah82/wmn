@@ -17,6 +17,8 @@ const dataSource = fs.readFileSync(path.join(root, "public/js/pos_offline/servic
 assert.ok(fs.existsSync(pageJsonPath), "WMN POS Desk page must exist");
 assert.ok(hooks.includes('"wmn-pos": "public/js/pos_offline/wmn_pos_page_loader.js"'), "WMN POS page must load its owned page loader");
 assert.ok(loader.includes('frappe.pages["wmn-pos"].on_page_load'), "Owned page loader must bind /app/wmn-pos");
+assert.ok(!loader.includes('frappe.require("point-of-sale.bundle.js"'), "Owned page must not load ERPNext POS bundle");
+assert.ok(loader.includes('"source_v16/pos_controller.js"'), "Owned page must load the copied ERPNext v16 controller source");
 assert.ok(loader.includes('"core/class_registry.js"'), "Owned page loader must load the WMN class registry");
 assert.ok(loader.includes('"services/data/pos_data_source.js"'), "Owned page loader must load the POS data-source boundary");
 assert.ok(legacyLoader.includes('"services/data/pos_data_source.js"'), "Legacy page must share the same POS data-source boundary");
@@ -42,6 +44,7 @@ assert.ok(dataSource.includes("registerBackend(BACKEND.LOCAL_DB"), "Local DB bac
 assert.ok(dataSource.includes("Offline POS data source has no local method"), "Offline calls must reject unmapped server methods");
 assert.ok(cleanController.includes("ns.ClassMethods.Controller"), "Clean Controller methods must use ClassMethods");
 assert.ok(cleanControllerClass.includes("ns.Classes.Controller = WMNControllerClass"), "Clean Controller class must register only as a WMN class");
+assert.ok(cleanControllerClass.includes("const Base = ns.Source.Controller"), "Clean Controller class must extend the copied ERPNext v16 source");
 assert.ok(!cleanControllerClass.includes("ns.Overrides"), "Clean Controller class must not register overrides");
 assert.ok(!cleanController.includes("OverrideMethods"), "Clean Controller methods must not use OverrideMethods");
 assert.ok(controller.includes("this.wmn_data_source = ns.Services?.Data?.createForController"), "Controller must own a POS data source");

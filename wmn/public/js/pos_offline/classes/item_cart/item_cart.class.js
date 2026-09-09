@@ -2,7 +2,7 @@
 (function () {
     "use strict";
     const ns = window.WMN_POS;
-    const Base = ns.Base.ItemCart;
+    const Base = ns.Source.ItemCart;
     const methods = ns.ClassMethods.ItemCart;
 
     class WMNItemCartClass extends Base {

@@ -2,7 +2,7 @@
 (function () {
     "use strict";
     const ns = window.WMN_POS;
-    const Base = ns.Base.PastOrderSummary;
+    const Base = ns.Source.PastOrderSummary;
 
     /*
      * WMN PastOrderSummary for ERPNext v16.
