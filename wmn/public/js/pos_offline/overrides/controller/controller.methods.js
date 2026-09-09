@@ -397,6 +397,12 @@
                 },
 
         wmn_cache() {
+                        if (!this.wmn_data_source && ns.Services?.Data?.createForController) {
+                            this.wmn_data_source = ns.Services.Data.createForController(this);
+                        }
+                        const cacheFromDataSource = this.wmn_data_source?.controllerCache?.();
+                        if (cacheFromDataSource) return cacheFromDataSource;
+
                         if (!this.__wmn_controller_cache) {
                             this.__wmn_controller_cache = new window.WMNPOSControllerCache(this, this.__wmn_pos_version || "");
                         }
@@ -3337,6 +3343,9 @@
                 
                         this.__wmn_pos_version = "v16";
                         this.settings = wmn_safe_settings(this.settings || {});
+                        this.wmn_data_source = ns.Services?.Data?.createForController
+                            ? ns.Services.Data.createForController(this)
+                            : null;
                         this.wmn_start_offline_preload();
             
     };

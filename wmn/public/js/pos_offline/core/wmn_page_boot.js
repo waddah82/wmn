@@ -12,6 +12,8 @@ window.wmn_pos_page_boot = async function wmn_pos_page_boot(wrapper) {
     wrapper.pos = new ns.Classes.Controller(wrapper);
     wrapper.pos.__wmn_owned_page = true;
     wrapper.pos.__wmn_page_name = "wmn-pos";
+    wrapper.pos.wmn_data_source = wrapper.pos.wmn_data_source || ns.Services.Data?.createForController?.(wrapper.pos);
+    wrapper.pos.__wmn_data_source_capabilities = wrapper.pos.wmn_data_source?.backendCapabilities?.() || {};
     window.cur_pos = wrapper.pos;
     wmn_init_offline_invoice_manager_dialog(wrapper.pos);
     setTimeout(() => {

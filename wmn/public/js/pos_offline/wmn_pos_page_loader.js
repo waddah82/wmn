@@ -95,6 +95,7 @@ frappe.pages["wmn-pos"].on_page_load = function(wrapper) {
             "services/cache/controller_cache.js",
             "services/cache/pos_cache_registry.js",
             "services/cache/pos_cache_adapter.js",
+            "services/data/pos_data_source.js",
             "services/item/free_item_row.js",
             "features/pos_cache_manager/pos_cache_manager.common.js",
             "features/pos_cache_manager/pos_cache_manager.online.js",
