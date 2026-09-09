@@ -54,8 +54,8 @@ assert.ok(dataSource.includes("Offline POS data source has no local method"), "O
 assert.ok(cleanController.includes("ns.ClassMethods.Controller"), "Clean Controller methods must use ClassMethods");
 assert.ok(cleanControllerClass.includes("ns.Classes.Controller = WMNControllerClass"), "Clean Controller class must register only as a WMN class");
 assert.ok(cleanControllerClass.includes("const Base = ns.Source.Controller"), "Clean Controller class must use the copied ERPNext v16 source");
-assert.ok(!cleanClassFiles.includes("extends Base"), "Clean WMN classes must not use JavaScript extends");
-assert.ok(!cleanClassFiles.includes("super(...args)"), "Clean WMN classes must not call super constructors");
+assert.doesNotMatch(cleanClassFiles, /\bextends\s+Base/, "Clean WMN classes must not use JavaScript extends");
+assert.doesNotMatch(cleanClassFiles, /\bsuper\s*\(/, "Clean WMN classes must not call super constructors");
 assert.ok(!cleanControllerClass.includes("ns.Overrides"), "Clean Controller class must not register overrides");
 assert.ok(!cleanController.includes("OverrideMethods"), "Clean Controller methods must not use OverrideMethods");
 assert.ok(controller.includes("this.wmn_data_source = ns.Services?.Data?.createForController"), "Controller must own a POS data source");
