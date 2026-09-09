@@ -21,7 +21,7 @@ assert.ok(loader.includes('"core/class_registry.js"'), "Owned page loader must l
 assert.ok(loader.includes('"services/data/pos_data_source.js"'), "Owned page loader must load the POS data-source boundary");
 assert.ok(legacyLoader.includes('"services/data/pos_data_source.js"'), "Legacy page must share the same POS data-source boundary");
 assert.ok(
-  loader.indexOf("services/data/pos_data_source.js") < loader.indexOf("overrides/controller/controller.methods.js"),
+  loader.indexOf("services/data/pos_data_source.js") < loader.indexOf("classes/controller/controller.methods.js"),
   "Data-source boundary must load before Controller methods"
 );
 assert.ok(!loader.includes('"patches/patch_registry.js"'), "Owned page loader must not load patch registry");
