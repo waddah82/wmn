@@ -14,7 +14,6 @@ app_license = "mit"
 # app_include_js = "/assets/wmn/js/ui_setting.js"
 app_include_js = [
     #"/assets/wmn/js/ui_setting.js",
-    #"/assets/wmn/js/pos_barcode_override.js",
     "/assets/wmn/js/features/mobile_barcode_scanner/mobile_barcode_scanner.common.js",
     "/assets/wmn/js/overrides/barcode_scanner/barcode_scanner.methods.js",
     "/assets/wmn/js/overrides/barcode_scanner/barcode_scanner.override.js",
