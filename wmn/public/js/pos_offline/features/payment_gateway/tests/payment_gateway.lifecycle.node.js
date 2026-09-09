@@ -78,6 +78,11 @@ const Service = window.WMN_POS.Services.PaymentGateway.Service;
   assert.equal(full.payments[0].amount, 90);
   await Service.validateBeforeSubmit(full);
 
+  // Re-clicking an already approved unchanged amount must not authorize again.
+  const approved90Again = await Service.authorize(full, 'Electronic Payment Test');
+  assert.equal(approved90Again.amount, 90);
+  assert.equal(authorizeCalls.length, 2);
+
   // Partial payment: gateway receives only its own row amount.
   const partial = {
     name: 'ACC-SINV-TEST-2', pos_profile: 'POS-TEST', currency: 'SAR',

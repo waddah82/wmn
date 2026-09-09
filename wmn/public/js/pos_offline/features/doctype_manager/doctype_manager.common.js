@@ -45,6 +45,7 @@
             sync: '<path d="M20 7h-5V2"/><path d="M4 17h5v5"/><path d="M6 8a7 7 0 0 1 12-2l2 1M4 17l2 1a7 7 0 0 0 12-2"/>',
             cash: '<path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/>',
             printer: '<path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6z"/>',
+            barcode: '<path d="M4 5v14M7 5v14M10 5v14M14 5v14M17 5v14M20 5v14"/>',
             offer: '<path d="M4 4h16v16H4z"/><path d="m8 16 8-8M8.5 8.5h.01M15.5 15.5h.01"/>',
         };
         return `<svg class="wmn-pos-manager-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.form}</svg>`;
@@ -237,6 +238,8 @@
             { action: "pos-cache-manager", label: __("POS Cache Manager"), icon: "form" },
             { action: "cash-movement", label: __("Cash Movement"), icon: "cash" },
             { action: "printer", label: __("Printer"), icon: "printer" },
+            { action: "price-checker", label: __("Price Checker"), icon: "barcode" },
+            { action: "barcode-printer", label: __("Barcode Printer"), icon: "printer" },
             { action: "commercial-catalog", label: __("Active Promotions & Coupons"), icon: "offer" },
         ];
     }
@@ -274,6 +277,18 @@
             if (typeof window.wmn_show_printer_settings_dialog === "function") {
                 window.wmn_show_printer_settings_dialog();
             }
+            return;
+        }
+        if (action === "price-checker") {
+            const feature = window.WMN_RETAIL_TOOLS?.PriceChecker?.Common;
+            if (!feature?.openDialog) throw new Error(__("Price Checker is not loaded."));
+            await feature.openDialog();
+            return;
+        }
+        if (action === "barcode-printer") {
+            const feature = window.WMN_RETAIL_TOOLS?.BarcodePrinting?.Common;
+            if (!feature?.openDialog) throw new Error(__("Barcode Printer is not loaded."));
+            await feature.openDialog();
             return;
         }
         if (action === "commercial-catalog") {
@@ -529,6 +544,7 @@
             getDoctypeCacheState(config.doctype),
         ]);
         renderDoctypeCacheSummary(dialog, cacheState);
+        dialog.__wmnRowsByName = new Map((rows || []).filter((row) => row?.name).map((row) => [String(row.name), row]));
 
         if (!rows.length) {
             $list.html(`<div class="wmn-pos-doctype-empty">${escapeHtml(__("No documents found."))}</div>`);
@@ -634,9 +650,19 @@
             });
         });
         const openRow = ($row) => {
+            const name = String($row.attr("data-name") || "");
+            if (config.doctype === "Report") {
+                const report = dialog.__wmnRowsByName?.get(name) || { name };
+                showReportView(dialog, config, report).catch((error) => {
+                    console.error("WMN POS Report view failed", error);
+                    frappe.show_alert({ message: error?.message || __("Unable to open the report."), indicator: "red" }, 5);
+                });
+                return;
+            }
+
             showForm(dialog, config, {
                 isNew: false,
-                name: String($row.attr("data-name") || ""),
+                name,
                 syncStatus: String($row.attr("data-sync-status") || "clean"),
                 localRecord: String($row.attr("data-local-record") || "0") === "1",
             }).catch((error) => {
@@ -1632,6 +1658,178 @@
             console.warn("WMN POS offline DocType configuration cache failed", error);
             return false;
         }
+    }
+
+    function buildReportViewUrl(report) {
+        const prefix = routePrefix();
+        const name = String(report?.name || "").trim();
+        const reportType = String(report?.report_type || "").trim();
+        const refDoctype = String(report?.ref_doctype || "").trim();
+
+        if (!name) throw new Error(__("Report name is missing."));
+
+        if (reportType === "Report Builder") {
+            if (!refDoctype) throw new Error(__("Report Builder report is missing its reference DocType."));
+            return `${prefix}/${doctypeSlug(refDoctype)}/view/report/${encodeURIComponent(name)}`;
+        }
+
+        return `${prefix}/query-report/${encodeURIComponent(name)}`;
+    }
+
+    function injectReportFrameStyles(frameDocument) {
+        if (!frameDocument?.head) return;
+
+        let style = frameDocument.getElementById("wmn-pos-report-frame-style");
+        if (!style) {
+            style = frameDocument.createElement("style");
+            style.id = "wmn-pos-report-frame-style";
+            frameDocument.head.appendChild(style);
+        }
+
+        style.textContent = `
+            html, body {
+                width: 100% !important;
+                min-width: 0 !important;
+                min-height: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow-x: hidden !important;
+                background: var(--bg-color, #f4f6f8) !important;
+            }
+            body > header,
+            body > nav,
+            header.navbar,
+            nav.navbar,
+            .navbar,
+            [role="navigation"],
+            .layout-side-section,
+            .desk-sidebar,
+            .desk-sidebar-container,
+            .standard-sidebar,
+            .sidebar-section,
+            .sidebar-toggle-btn,
+            .app-sidebar,
+            .app-switcher,
+            .app-switcher-menu,
+            .workspace-sidebar,
+            .wmn-global-workspace-header,
+            #wmn-native-sidebar-topnav-host {
+                display: none !important;
+            }
+            .main-section,
+            .page-container,
+            .page-body,
+            .layout-main,
+            .layout-main-section-wrapper,
+            .layout-main-section {
+                box-sizing: border-box !important;
+                width: 100% !important;
+                max-width: none !important;
+                min-width: 0 !important;
+                margin: 0 !important;
+            }
+            .layout-main-section-wrapper,
+            .layout-main-section {
+                flex: 1 1 100% !important;
+            }
+            .container,
+            .container-fluid {
+                width: 100% !important;
+                max-width: none !important;
+                margin: 0 !important;
+            }
+        `;
+    }
+
+    function hideReportFrameChrome(frameDocument) {
+        if (!frameDocument?.body) return;
+        const selectors = [
+            "body > header",
+            "body > nav",
+            "header.navbar",
+            "nav.navbar",
+            ".navbar",
+            "[role='navigation']",
+            ".layout-side-section",
+            ".desk-sidebar",
+            ".desk-sidebar-container",
+            ".standard-sidebar",
+            ".sidebar-section",
+            ".sidebar-toggle-btn",
+            ".app-sidebar",
+            ".app-switcher",
+            ".app-switcher-menu",
+            ".workspace-sidebar",
+            ".wmn-global-workspace-header",
+            "#wmn-native-sidebar-topnav-host",
+        ];
+        for (const selector of selectors) {
+            frameDocument.querySelectorAll(selector).forEach((element) => {
+                element.style.setProperty("display", "none", "important");
+            });
+        }
+    }
+
+    function reportToolbarHtml(report) {
+        return `
+            <div class="wmn-pos-doctype-toolbar">
+                <button type="button" class="btn btn-default wmn-pos-doctype-back">${icon("back")}<span>${escapeHtml(__("Back to reports"))}</span></button>
+                <div style="flex:1 1 auto;min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(__(report?.name || "Report"))}</div>
+            </div>`;
+    }
+
+    async function showReportView(dialog, config, report) {
+        if (isOffline()) {
+            throw new Error(__("Reports are available only while Online."));
+        }
+
+        for (const fn of dialog.__wmnCleanup.splice(0)) {
+            try { fn(); } catch (error) {}
+        }
+        dialog.$wrapper.off(".wmnPosDoctypeView");
+        configureDoctypeDialogLayout(dialog);
+
+        const url = buildReportViewUrl(report);
+        dialog.fields_dict.doctype_html.$wrapper.html(`
+            <div class="wmn-pos-doctype-shell">
+                ${reportToolbarHtml(report)}
+                <div class="wmn-pos-doctype-frame-wrap">
+                    <div class="wmn-pos-doctype-loading">${escapeHtml(__("Loading report..."))}</div>
+                    <iframe class="wmn-pos-doctype-frame" src="${escapeHtml(url)}" title="${escapeHtml(report?.name || __("Report"))}"></iframe>
+                </div>
+            </div>`);
+        fitDoctypeFrame(dialog);
+        window.requestAnimationFrame(() => fitDoctypeFrame(dialog));
+
+        const iframe = dialog.$wrapper.find(".wmn-pos-doctype-frame").get(0);
+        const loading = dialog.$wrapper.find(".wmn-pos-doctype-loading");
+
+        iframe.addEventListener("load", () => {
+            try {
+                const frameDocument = iframe.contentDocument || iframe.contentWindow?.document;
+                injectReportFrameStyles(frameDocument);
+                hideReportFrameChrome(frameDocument);
+
+                const chromeObserver = new MutationObserver(() => {
+                    hideReportFrameChrome(frameDocument);
+                });
+                chromeObserver.observe(frameDocument.body, { childList: true, subtree: true });
+                dialog.__wmnCleanup.push(() => chromeObserver.disconnect());
+                loading.hide();
+            } catch (error) {
+                console.error("WMN POS report iframe access failed", error);
+                loading.text(__("Unable to load the report inside the dialog."));
+            }
+        });
+
+        dialog.__wmnCleanup.push(() => {
+            try {
+                iframe.src = "about:blank";
+                iframe.remove();
+            } catch (error) {}
+        });
+
+        dialog.$wrapper.on("click.wmnPosDoctypeView", ".wmn-pos-doctype-back", () => showList(dialog, config));
     }
 
     function formToolbarHtml(config, canSave) {

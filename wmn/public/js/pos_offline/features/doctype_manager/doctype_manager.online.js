@@ -74,6 +74,11 @@
         const limitPageLength = cint(config?.limit_page_length || 50);
 
         if (titleField && !fields.includes(titleField)) fields.push(titleField);
+        if (doctype === "Report") {
+            for (const fieldname of ["report_type", "ref_doctype", "is_standard", "disabled"]) {
+                if (!fields.includes(fieldname)) fields.push(fieldname);
+            }
+        }
 
         const options = {
             fields,
