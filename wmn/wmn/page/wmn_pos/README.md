@@ -4,7 +4,7 @@ This page is a WMN-owned copy of the ERPNext v16 POS page. It is not installed
 by overriding `point-of-sale`, extending ERPNext browser classes, or replacing
 ERPNext runtime globals.
 
-Frappe loads `wmn_pos.js` for the `/app/wmn-pos` page. That file is the runtime
+Frappe loads `wmn_pos.js` for the `/desk/wmn-pos` page. That file is the runtime
 bundle. Do not edit it directly for feature work; edit the organized source
 files and rebuild the bundle.
 
@@ -23,7 +23,7 @@ files and rebuild the bundle.
 - `wmn/support/`
   - WMN offline/cache/printing/payment/retail helpers that used to be loaded
     from the old public POS offline asset tree. They are copied here so
-    `/app/wmn-pos` is page-owned.
+    `/desk/wmn-pos` is page-owned.
 - `wmn/vendor/`
   - Page-owned third-party browser libraries needed by the WMN POS page.
 

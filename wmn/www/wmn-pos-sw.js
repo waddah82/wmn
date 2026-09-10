@@ -12,7 +12,7 @@ const WMN_POS_CACHE = "wmn-pos-page-runtime-20260910-v1";
 const WMN_POS_API_CACHE = "wmn-pos-page-api-20260910-v1";
 
 const SHELL_URLS = [
-  "/app/wmn-pos",
+  "/desk/wmn-pos",
   "/wmn-pos-manifest.json",
   "/wmn-pos-manifest.webmanifest"
 ];
@@ -53,8 +53,8 @@ function isAsset(url) {
 
 function isAppNavigation(url, request) {
   return request.mode === "navigate" && (
-    url.pathname === "/app/wmn-pos" ||
-    url.pathname === "/app/wmn-pos/"
+    url.pathname === "/desk/wmn-pos" ||
+    url.pathname === "/desk/wmn-pos/"
   );
 }
 
@@ -383,7 +383,7 @@ self.addEventListener("fetch", (event) => {
         const cache = await caches.open(WMN_POS_CACHE);
         const cached =
           await cache.match(request) ||
-          await cache.match("/app/wmn-pos");
+          await cache.match("/desk/wmn-pos");
 
         if (cached) {
           event.waitUntil(
@@ -401,7 +401,7 @@ self.addEventListener("fetch", (event) => {
           if (response && response.ok) await cache.put(request, response.clone());
           return response;
         } catch (e) {
-          return new Response("<!doctype html><html><body><h3>WMN POS offline shell is not cached yet. Open /app/wmn-pos online once first.</h3></body></html>", {
+          return new Response("<!doctype html><html><body><h3>WMN POS offline shell is not cached yet. Open /desk/wmn-pos online once first.</h3></body></html>", {
             status: 200,
             headers: { "Content-Type": "text/html; charset=utf-8", "X-WMN-POS-SW": WMN_POS_SW_VERSION }
           });

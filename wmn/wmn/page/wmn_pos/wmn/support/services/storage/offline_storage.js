@@ -1,6 +1,6 @@
         /**
          * WMN POS PWA Bridge
-         * Registers the page-owned manifest and Service Worker for /app/wmn-pos.
+         * Registers the page-owned manifest and Service Worker for /desk/wmn-pos.
          * Notes:
          * - The service worker file must be served from root: /wmn-pos-sw.js
          * - The manifest file should be served from root: /wmn-pos-manifest.json
@@ -77,7 +77,7 @@
 
                 const doRegister = function () {
                     navigator.serviceWorker.register("/wmn-pos-sw.js", {
-                        scope: "/app/wmn-pos",
+                        scope: "/desk/wmn-pos",
                         updateViaCache: "none"
                     })
                         .then(function (reg) {

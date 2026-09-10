@@ -1,10 +1,10 @@
 {
   "name": "WMN POS",
   "short_name": "WMN POS",
-  "id": "/app/wmn-pos",
+  "id": "/desk/wmn-pos",
   "description": "WMN-owned POS page with offline cache and local invoice queue",
-  "start_url": "/app/wmn-pos",
-  "scope": "/app/wmn-pos",
+  "start_url": "/desk/wmn-pos",
+  "scope": "/desk/wmn-pos",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#4F46E5",

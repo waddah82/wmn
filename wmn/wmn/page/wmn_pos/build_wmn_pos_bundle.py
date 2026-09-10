@@ -67,7 +67,7 @@ def main() -> None:
         append_section(item)
 
     output.append("/* BEGIN embedded WMN POS support scripts. */")
-    output.append("/* These files are copied into the page so /app/wmn-pos does not load public POS assets at runtime. */")
+    output.append("/* These files are copied into the page so /desk/wmn-pos does not load public POS assets at runtime. */")
     for item in manifest["support"]:
         append_section(item)
     output.append("/* END embedded WMN POS support scripts. */")
