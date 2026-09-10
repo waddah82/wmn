@@ -46,7 +46,7 @@ Run from the app repository root:
 
 ```bash
 python3 wmn/wmn/page/wmn_pos/build_wmn_pos_bundle.py
-node --input-type=module --check < wmn/wmn/page/wmn_pos/wmn_pos.js
+node --check wmn/wmn/page/wmn_pos/wmn_pos.js
 ```
 
 ## Updating from ERPNext v16

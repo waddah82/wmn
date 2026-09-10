@@ -2,6 +2,10 @@
   "generated_file": "wmn_pos.js",
   "vendor": [
     {
+      "marker": "embedded vendor:onscan.js",
+      "path": "wmn/vendor/onscan.js"
+    },
+    {
       "marker": "embedded vendor:qz-tray.js",
       "path": "wmn/vendor/qz-tray.js"
     }

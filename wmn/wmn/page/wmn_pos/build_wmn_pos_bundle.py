@@ -14,21 +14,32 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 MANIFEST = ROOT / "bundle_manifest.json"
+INLINED_IMPORTS = {
+    'import onScan from "onscan.js";',
+    "import onScan from 'onscan.js';",
+}
 
 
 def read_text(relative_path: str) -> str:
     return (ROOT / relative_path).read_text().rstrip()
 
 
-def split_imports(body: str) -> tuple[list[str], str]:
-    imports = []
+def strip_inlined_imports(relative_path: str, body: str) -> str:
+    unsupported_imports = []
     lines = []
     for line in body.splitlines():
-        if line.strip().startswith("import "):
-            imports.append(line)
+        stripped = line.strip()
+        if stripped.startswith("import "):
+            if stripped not in INLINED_IMPORTS:
+                unsupported_imports.append(stripped)
             continue
         lines.append(line)
-    return imports, "\n".join(lines).rstrip()
+    if unsupported_imports:
+        raise ValueError(
+            f"{relative_path} contains unsupported module imports for Frappe page eval: "
+            + ", ".join(unsupported_imports)
+        )
+    return "\n".join(lines).rstrip()
 
 
 def section(marker: str, body: str) -> str:
@@ -37,10 +48,8 @@ def section(marker: str, body: str) -> str:
 
 def main() -> None:
     manifest = json.loads(MANIFEST.read_text())
-    module_imports = []
     output = []
     output.append("/* WMN POS page source. Copied from ERPNext v16 and modified directly for WMN. */")
-    output.append("__WMN_POS_MODULE_IMPORTS__")
     output.append('frappe.provide("wmn.PointOfSale");')
     output.append("window.WMN_POS = window.WMN_POS || {};")
     output.append(
@@ -57,10 +66,7 @@ def main() -> None:
     output.append("")
 
     def append_section(item: dict) -> None:
-        imports, body = split_imports(read_text(item["path"]))
-        for import_line in imports:
-            if import_line not in module_imports:
-                module_imports.append(import_line)
+        body = strip_inlined_imports(item["path"], read_text(item["path"]))
         output.append(section(item["marker"], body))
 
     for item in manifest["vendor"]:
@@ -84,11 +90,7 @@ def main() -> None:
     output.append(read_text(manifest["entry"]))
     output.append("")
 
-    rendered = "\n".join(output).replace(
-        "__WMN_POS_MODULE_IMPORTS__",
-        "\n".join(module_imports).rstrip(),
-    )
-    (ROOT / manifest["generated_file"]).write_text(rendered)
+    (ROOT / manifest["generated_file"]).write_text("\n".join(output))
 
 
 if __name__ == "__main__":
