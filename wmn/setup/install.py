@@ -4,7 +4,6 @@ from wmn.setup.offline_sync import ensure_offline_sync_fields
 from wmn.setup.offline_payment import ensure_offline_payment_fields
 from wmn.setup.cashier_completion import ensure_cashier_completion_fields
 from wmn.setup.pos_profile_settings import migrate_legacy_pos_profile_settings, validate_settings_schema
-from wmn.setup.workspace import ensure_wmn_workspace
 
 
 def after_install():
@@ -15,4 +14,3 @@ def after_install():
     ensure_cashier_completion_fields()
     validate_settings_schema()
     migrate_legacy_pos_profile_settings()
-    ensure_wmn_workspace()
