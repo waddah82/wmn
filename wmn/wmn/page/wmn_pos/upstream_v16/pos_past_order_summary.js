@@ -126,14 +126,21 @@ window.WMN_POS.Source.PastOrderSummary = class {
         }
 
         async function get_returned_qty() {
+            const args = {
+                doctype: doc.doctype,
+                invoice: doc.name,
+                customer: doc.customer,
+                item_row_name: item_data.name,
+            };
             const r = await frappe.call({
                 method: "erpnext.controllers.sales_and_purchase_return.get_invoice_item_returned_qty",
-                args: {
-                    doctype: doc.doctype,
-                    invoice: doc.name,
-                    customer: doc.customer,
-                    item_row_name: item_data.name,
-                },
+                args,
+            }).catch((error) => {
+                console.warn("WMN POS v15 compatibility: using WMN returned quantity endpoint", error);
+                return frappe.call({
+                    method: "wmn.wmn.page.wmn_pos.wmn_pos.get_invoice_item_returned_qty",
+                    args,
+                });
             });
 
             if (!r.message.qty) {
@@ -479,12 +486,19 @@ window.WMN_POS.Source.PastOrderSummary = class {
     }
 
     async is_invoice_returnable(doctype, invoice) {
+        const args = {
+            doctype: doctype,
+            invoice: invoice,
+        };
         const r = await frappe.call({
             method: "erpnext.controllers.sales_and_purchase_return.is_invoice_returnable",
-            args: {
-                doctype: doctype,
-                invoice: invoice,
-            },
+            args,
+        }).catch((error) => {
+            console.warn("WMN POS v15 compatibility: using WMN invoice returnable endpoint", error);
+            return frappe.call({
+                method: "wmn.wmn.page.wmn_pos.wmn_pos.is_invoice_returnable",
+                args,
+            });
         });
         return r.message;
     }

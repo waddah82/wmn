@@ -4707,6 +4707,73 @@ def get_customer_recent_transactions(customer=None):
     return rows[:20]
 
 
+def _get_returned_qty_for_invoice_item(doctype, invoice, customer, item_row_name):
+    try:
+        from erpnext.controllers.sales_and_purchase_return import get_returned_qty_map_for_row
+
+        result = get_returned_qty_map_for_row(invoice, customer, item_row_name, doctype) or {}
+        if hasattr(result, "get"):
+            return flt(result.get("qty") or 0)
+        return flt(getattr(result, "qty", 0) or 0)
+    except Exception:
+        return 0
+
+
+@frappe.whitelist()
+def get_invoice_item_returned_qty(doctype=None, invoice=None, customer=None, item_row_name=None):
+    """v15-compatible wrapper for ERPNext v16 returned-quantity POS API."""
+    doctype = str(doctype or "").strip()
+    invoice = str(invoice or "").strip()
+    customer = str(customer or "").strip()
+    item_row_name = str(item_row_name or "").strip()
+
+    if doctype not in ("POS Invoice", "Sales Invoice") or not invoice or not item_row_name:
+        return {"qty": 0}
+
+    source = frappe.get_doc(doctype, invoice)
+    source.check_permission("read")
+    if cint(source.get("is_return") or 0) or cint(source.get("docstatus") or 0) == 0:
+        return {"qty": 0}
+
+    customer = customer or source.get("customer")
+    return {
+        "qty": _get_returned_qty_for_invoice_item(doctype, invoice, customer, item_row_name)
+    }
+
+
+@frappe.whitelist()
+def is_invoice_returnable(doctype=None, invoice=None):
+    """v15-compatible wrapper for ERPNext v16 POS returnability check."""
+    doctype = str(doctype or "").strip()
+    invoice = str(invoice or "").strip()
+
+    if doctype not in ("POS Invoice", "Sales Invoice") or not invoice:
+        return False
+
+    source = frappe.get_doc(doctype, invoice)
+    source.check_permission("read")
+    if cint(source.get("is_return") or 0) or cint(source.get("docstatus") or 0) == 0:
+        return False
+
+    child_doctype = f"{doctype} Item"
+    item_rows = frappe.db.get_all(child_doctype, {"parent": invoice}, ["name", "qty"])
+    if not item_rows:
+        return False
+
+    fully_returned = 0
+    for row in item_rows:
+        returned_qty = _get_returned_qty_for_invoice_item(
+            doctype,
+            invoice,
+            source.get("customer"),
+            row.name,
+        )
+        if abs(flt(returned_qty) - abs(flt(row.qty))) <= 0.000001:
+            fully_returned += 1
+
+    return len(item_rows) != fully_returned
+
+
 
 
 @frappe.whitelist(allow_guest=True)

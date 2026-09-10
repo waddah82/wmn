@@ -115,6 +115,22 @@ def get_customer_recent_transactions(customer=None):
 
 
 @frappe.whitelist()
+def get_invoice_item_returned_qty(doctype=None, invoice=None, customer=None, item_row_name=None):
+    return _wmn_api(
+        "get_invoice_item_returned_qty",
+        doctype=doctype,
+        invoice=invoice,
+        customer=customer,
+        item_row_name=item_row_name,
+    )
+
+
+@frappe.whitelist()
+def is_invoice_returnable(doctype=None, invoice=None):
+    return _wmn_api("is_invoice_returnable", doctype=doctype, invoice=invoice)
+
+
+@frappe.whitelist()
 def get_sales_invoice_payment_context(invoice_name=None):
     return _wmn_api("get_sales_invoice_payment_context", invoice_name=invoice_name)
 
