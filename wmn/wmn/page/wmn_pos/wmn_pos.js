@@ -11,7 +11,6 @@ Object.assign(window.WMN_POS, {
     UI: window.WMN_POS.UI || {},
 });
 
-
 /* BEGIN embedded vendor:qz-tray.js */
 'use strict';
 
@@ -2991,10 +2990,7 @@ var qz = (function() {
 
 /* BEGIN embedded WMN POS support scripts. */
 /* These files are copied into the page so /app/wmn-pos does not load public POS assets at runtime. */
-
 /* BEGIN support:services/storage/offline_storage.js */
-
-
         /**
          * WMN POS PWA Bridge
          * Registers the page-owned manifest and Service Worker for /app/wmn-pos.
@@ -5945,12 +5941,9 @@ wmn_install_pos_pwa_app_css();
         })();
 
         window.wmnPOSOffline = WMN_POS_OFFLINE;
-
 /* END support:services/storage/offline_storage.js */
 
-
 /* BEGIN support:services/retail/retail_context.js */
-
 /* Shared runtime context for WMN retail tools. No business calculations live here. */
 (function () {
     "use strict";
@@ -5995,12 +5988,9 @@ wmn_install_pos_pwa_app_css();
 
     ns.Context = { isOffline, offlineStorage, getOfflinePOSContext };
 })();
-
 /* END support:services/retail/retail_context.js */
 
-
 /* BEGIN support:features/price_checker/price_checker.online.js */
-
 /* WMN Price Checker online adapter. ERPNext/WMN Online remains the behavioral reference. */
 (function () {
     "use strict";
@@ -6026,12 +6016,9 @@ wmn_install_pos_pwa_app_css();
         },
     };
 })();
-
 /* END support:features/price_checker/price_checker.online.js */
 
-
 /* BEGIN support:features/price_checker/price_checker.offline.js */
-
 /* WMN Price Checker offline adapter. Reads the existing WMN POS local database only. */
 (function () {
     "use strict";
@@ -6094,12 +6081,9 @@ wmn_install_pos_pwa_app_css();
         },
     };
 })();
-
 /* END support:features/price_checker/price_checker.offline.js */
 
-
 /* BEGIN support:features/price_checker/price_checker.common.js */
-
 /* WMN Price Checker UI. Business data comes from Online/Offline adapters. */
 (function () {
     "use strict";
@@ -6276,12 +6260,9 @@ wmn_install_pos_pwa_app_css();
 
     ns.PriceChecker.Common = { mount, openDialog, isOffline: ns.Context.isOffline };
 })();
-
 /* END support:features/price_checker/price_checker.common.js */
 
-
 /* BEGIN support:features/barcode_printing/barcode_printing.online.js */
-
 /* WMN Barcode Printer online adapter. Uses the WMN Online item API. */
 (function () {
     "use strict";
@@ -6315,12 +6296,9 @@ wmn_install_pos_pwa_app_css();
         },
     };
 })();
-
 /* END support:features/barcode_printing/barcode_printing.online.js */
 
-
 /* BEGIN support:features/barcode_printing/barcode_printing.offline.js */
-
 /* WMN Barcode Printer offline adapter. Reads indexed WMN POS local data only. */
 (function () {
     "use strict";
@@ -6376,12 +6354,9 @@ wmn_install_pos_pwa_app_css();
         },
     };
 })();
-
 /* END support:features/barcode_printing/barcode_printing.offline.js */
 
-
 /* BEGIN support:features/barcode_printing/vendor/jsbarcode.wmn.js */
-
 /*
  * WMN Barcode Printer local renderer.
  * JsBarcode-compatible browser API for the barcode formats exposed by WMN.
@@ -6625,12 +6600,9 @@ wmn_install_pos_pwa_app_css();
     JsBarcode.__wmn_local_renderer = true;
     global.JsBarcode = JsBarcode;
 })(window);
-
 /* END support:features/barcode_printing/vendor/jsbarcode.wmn.js */
 
-
 /* BEGIN support:features/barcode_printing/barcode_printing.range.js */
-
 /* WMN Barcode Printer numeric range owner. */
 (function (root, factory) {
     "use strict";
@@ -6695,12 +6667,9 @@ wmn_install_pos_pwa_app_css();
 
     return { LIMITS, limitForMode, validateCount, expandRange };
 });
-
 /* END support:features/barcode_printing/barcode_printing.range.js */
 
-
 /* BEGIN support:features/barcode_printing/barcode_printing.import.js */
-
 /* WMN Barcode Printer pasted-list owner. */
 (function (root, factory) {
     "use strict";
@@ -6756,12 +6725,9 @@ wmn_install_pos_pwa_app_css();
 
     return { parseBarcodeText, validateImportCount };
 });
-
 /* END support:features/barcode_printing/barcode_printing.import.js */
 
-
 /* BEGIN support:features/barcode_printing/barcode_printing.print_layout.js */
-
 /* WMN Barcode Printer print-layout owner. */
 (function (root, factory) {
     "use strict";
@@ -6844,12 +6810,9 @@ wmn_install_pos_pwa_app_css();
 
     return { PAGE_SIZES, pageDimensions, calculateLayout, paginate };
 });
-
 /* END support:features/barcode_printing/barcode_printing.print_layout.js */
 
-
 /* BEGIN support:features/barcode_printing/barcode_printing.common.js */
-
 /* WMN Barcode Printer. Item data is adapter-owned; label rendering is owned by this feature. */
 (function () {
     "use strict";
@@ -7573,12 +7536,9 @@ wmn_install_pos_pwa_app_css();
 
     ns.BarcodePrinting.Common = { mount, openDialog };
 })();
-
 /* END support:features/barcode_printing/barcode_printing.common.js */
 
-
 /* BEGIN support:features/barcode_scan_quantity/barcode_scan_quantity.common.js */
-
 /* WMN POS one-shot quantity prompt state for the next ordinary barcode scan. */
 (function () {
     "use strict";
@@ -7652,12 +7612,9 @@ wmn_install_pos_pwa_app_css();
 
     window.WMN_POS.Features.BarcodeScanQuantity = api;
 })();
-
 /* END support:features/barcode_scan_quantity/barcode_scan_quantity.common.js */
 
-
 /* BEGIN support:features/barcode_scan_quantity/barcode_scan_quantity.ui.js */
-
 /* UI owner for Qty Next Scan and mobile camera scan inside WMN POS ItemSelector. */
 (function () {
     "use strict";
@@ -7819,12 +7776,9 @@ wmn_install_pos_pwa_app_css();
         requestQuantity,
     };
 })();
-
 /* END support:features/barcode_scan_quantity/barcode_scan_quantity.ui.js */
 
-
 /* BEGIN support:services/barcode/invoice_barcode.js */
-
 /* Invoice barcode identity, receipt-based lookup key, and Code 128 rendering helpers. */
 (function () {
     "use strict";
@@ -8193,12 +8147,9 @@ wmn_install_pos_pwa_app_css();
         isPrintEnabled,
     };
 })();
-
 /* END support:services/barcode/invoice_barcode.js */
 
-
 /* BEGIN support:services/connectivity/connectivity.js */
-
 /* POS connectivity and effective online/offline state. */
 
 
@@ -8391,12 +8342,9 @@ wmn_install_pos_pwa_app_css();
 
     ns.Services.Connectivity = Object.freeze({ isERPNextOnline, isERPNextOffline });
 })();
-
 /* END support:services/connectivity/connectivity.js */
 
-
 /* BEGIN support:services/offline/mode_and_settings.js */
-
 /* POS mode/settings shared by explicit online/offline adapters. */
         async function wmn_get_offline_settings() {
             const saved = window.wmnPOSOffline && window.wmnPOSOffline.getSetting
@@ -8471,12 +8419,9 @@ wmn_install_pos_pwa_app_css();
         function wmn_is_pos_offline() {
             return window.wmn_is_pos_offline();
         }
-
 /* END support:services/offline/mode_and_settings.js */
 
-
 /* BEGIN support:core/common.js */
-
 /* Shared WMN POS helpers only. No feature or class-specific business logic belongs here. */
 function wmn_user_lang() {
             return String(
@@ -8731,12 +8676,9 @@ function wmn_is_mobile_pos_device() {
         };
     };
 })();
-
 /* END support:core/common.js */
 
-
 /* BEGIN support:services/settings/device_preferences.js */
-
 /* Persistent device-local WMN POS preferences with localStorage + IndexedDB backup. */
 (function () {
     "use strict";
@@ -8949,12 +8891,9 @@ function wmn_is_mobile_pos_device() {
         isInitialized() { return initialized; },
     };
 })();
-
 /* END support:services/settings/device_preferences.js */
 
-
 /* BEGIN support:services/settings/pos_profile_settings.js */
-
 /* POS Profile-scoped WMN settings with server defaults and browser-local overrides. */
 (function () {
     "use strict";
@@ -9324,12 +9263,9 @@ function wmn_is_mobile_pos_device() {
         isLocalPricingRuleEngineIgnored,
     };
 })();
-
 /* END support:services/settings/pos_profile_settings.js */
 
-
 /* BEGIN support:ui/dialog_manager.js */
-
 /* Shared WMN POS dialog styling and keyboard shortcuts. */
 (function () {
     "use strict";
@@ -9542,12 +9478,9 @@ function wmn_is_mobile_pos_device() {
 
     ns.UI.Dialogs = { setup, decorate, closeTopDialog };
 })();
-
 /* END support:ui/dialog_manager.js */
 
-
 /* BEGIN support:services/offline/document_adapter.js */
-
 /* Offline customer/price/document/form adapters and local calculations. */
         async function wmn_find_customer_offline(name) {
             if (!name || !window.wmnPOSOffline) return null;
@@ -10820,12 +10753,9 @@ async function wmn_v9_direct_add_or_update(ctrl, args) {
                 recalculateOfflineDoc(doc);
             }
         }
-
 /* END support:services/offline/document_adapter.js */
 
-
 /* BEGIN support:services/payment/offline_payment.js */
-
 /* Offline payment and partial/credit payment logic. */
 function wmn_invoice_payment_total(doc) {
             doc = doc || {};
@@ -11559,12 +11489,9 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
         dialog.show();
     });
 }
-
 /* END support:services/payment/offline_payment.js */
 
-
 /* BEGIN support:features/payment_gateway/payment_gateway.common.js */
-
 /* WMN Payment Gateway shared contracts and UI integration. */
 (function () {
     "use strict";
@@ -11829,12 +11756,9 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
         attachPaymentControls,
     });
 })();
-
 /* END support:features/payment_gateway/payment_gateway.common.js */
 
-
 /* BEGIN support:services/payment_gateway/model_registry.js */
-
 /* Payment device model-family registry. Business logic must not depend on hardware model names. */
 (function () {
     "use strict";
@@ -11867,12 +11791,9 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
 
     ns.Services.PaymentGateway.ModelRegistry = Object.freeze({ MODELS, resolve });
 })();
-
 /* END support:services/payment_gateway/model_registry.js */
 
-
 /* BEGIN support:services/payment_gateway/providers/provider_base.js */
-
 /* Transport adapters for payment devices. */
 (function () {
     "use strict";
@@ -12072,12 +11993,9 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
         localBridgeTokenKey,
     });
 })();
-
 /* END support:services/payment_gateway/providers/provider_base.js */
 
-
 /* BEGIN support:services/payment_gateway/providers/geidea.js */
-
 /* Geidea payment adapter. HPP owns card entry; WMN only handles session/result state. */
 (function () {
     "use strict";
@@ -12151,12 +12069,9 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
 
     ns.Services.PaymentGateway.Providers["Geidea"] = Object.freeze({ canRunLocally, deviceAction, completeCloudAction });
 })();
-
 /* END support:services/payment_gateway/providers/geidea.js */
 
-
 /* BEGIN support:services/payment_gateway/providers/stc_softpos.js */
-
 /* STC SoftPOS payment adapter. Model-specific SDK/protocol details stay behind transport contracts. */
 (function () {
     "use strict";
@@ -12182,12 +12097,9 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
 
     ns.Services.PaymentGateway.Providers["STC SoftPOS"] = Object.freeze({ canRunLocally, deviceAction });
 })();
-
 /* END support:services/payment_gateway/providers/stc_softpos.js */
 
-
 /* BEGIN support:services/payment_gateway/providers/generic.js */
-
 /* Generic payment adapter. Payment-device transports are executed directly by the POS client. */
 (function () {
     "use strict";
@@ -12217,12 +12129,9 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
 
     ns.Services.PaymentGateway.Providers.Generic = Object.freeze({ canRunLocally, deviceAction });
 })();
-
 /* END support:services/payment_gateway/providers/generic.js */
 
-
 /* BEGIN support:services/payment_gateway/payment_gateway_service.js */
-
 /* Payment Gateway orchestration service. ERPNext connectivity and local payment connectivity are independent. */
 (function () {
     "use strict";
@@ -12549,12 +12458,9 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
         getApproval,
     });
 })();
-
 /* END support:services/payment_gateway/payment_gateway_service.js */
 
-
 /* BEGIN support:features/payment_gateway/payment_gateway.online.js */
-
 /* Online payment gateway UI adapter. Shared controls decide gateway transport availability. */
 (function () {
     "use strict";
@@ -12565,12 +12471,9 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
         },
     });
 })();
-
 /* END support:features/payment_gateway/payment_gateway.online.js */
 
-
 /* BEGIN support:features/payment_gateway/payment_gateway.offline.js */
-
 /* ERPNext-offline payment gateway UI adapter. Local LAN/SDK transports remain available. */
 (function () {
     "use strict";
@@ -12581,12 +12484,9 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
         },
     });
 })();
-
 /* END support:features/payment_gateway/payment_gateway.offline.js */
 
-
 /* BEGIN support:services/stock/offline_stock.js */
-
 /* Offline stock movement accounting. */
         function wmn_offline_stock_movement_key(item_code, warehouse) {
             return String(item_code || "") + "::" + String(warehouse || "");
@@ -12726,12 +12626,9 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
 
             return !!(stockRows.length || batchRows.length || itemRows.length);
         }
-
 /* END support:services/stock/offline_stock.js */
 
-
 /* BEGIN support:services/offline/invoice_manager.js */
-
 /* Offline invoice queue manager UI and sync commands. */
         async function wmn_restore_offline_available_qty_for_doc(doc) {
             return await wmn_apply_offline_available_qty_delta({}, doc || {});
@@ -13252,12 +13149,9 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
 
             window.wmnPOSOffline.__wmn_invoice_manager_dialog_v5 = true;
 }
-
 /* END support:services/offline/invoice_manager.js */
 
-
 /* BEGIN support:services/printing/raw_renderer.js */
-
 /* Offline/raw receipt rendering helpers. */
         function wmn_wrap_offline_receipt_html(html, doc) {
             return `
@@ -13661,12 +13555,9 @@ function wmn_render_raw_print_temp(template, doc) {
                 return line !== null && line !== undefined;
             }).join("\n");
         }
-
 /* END support:services/printing/raw_renderer.js */
 
-
 /* BEGIN support:services/printing/template_loader.js */
-
 /* Print-format/template loading and raw/HTML rendering. */
         function wmn_pick_first_setting(source, names) {
             source = source || {};
@@ -14084,12 +13975,9 @@ function wmn_render_raw_print_temp(template, doc) {
             output = output.replace(/\{%-?[\s\S]*?-?%\}/g, "");
             return output.trim();
         }
-
 /* END support:services/printing/template_loader.js */
 
-
 /* BEGIN support:services/printing/pdf_renderer.js */
-
 /* PDF/PNG rendering and printer transport. */
         function wmn_mm_to_pt(mm) {
             return flt(mm || 0) * 72 / 25.4;
@@ -15092,12 +14980,9 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             const pngBase64 = await wmn_print_format_html_to_png_base64(renderedHtml, cfg.printFormat);
             return await wmn_send_png_to_printer(pngBase64, printType);
         }
-
 /* END support:services/printing/pdf_renderer.js */
 
-
 /* BEGIN support:services/printing/escpos.js */
-
 /* Shared ESC/POS byte helpers for direct thermal printer adapters. */
 (function () {
     "use strict";
@@ -15186,12 +15071,9 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         clampInt,
     };
 })();
-
 /* END support:services/printing/escpos.js */
 
-
 /* BEGIN support:services/printing/legacy_bridge_adapter.js */
-
 /* Adapter for the existing WMN WebSocket/Windows printing bridge. */
 (function () {
     "use strict";
@@ -15236,12 +15118,9 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         },
     };
 })();
-
 /* END support:services/printing/legacy_bridge_adapter.js */
 
-
 /* BEGIN support:services/printing/browser_print_adapter.js */
-
 /* Browser print adapter. Uses the browser/OS print dialog and requires no local bridge. */
 (function () {
     "use strict";
@@ -15327,12 +15206,9 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         sendHtml(html) { return printHtml(html); },
     };
 })();
-
 /* END support:services/printing/browser_print_adapter.js */
 
-
 /* BEGIN support:services/printing/webusb_escpos_adapter.js */
-
 /* Direct WebUSB ESC/POS adapter. No server or desktop bridge is used. */
 (function () {
     "use strict";
@@ -15455,12 +15331,9 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         sendRaw,
     };
 })();
-
 /* END support:services/printing/webusb_escpos_adapter.js */
 
-
 /* BEGIN support:services/printing/webserial_escpos_adapter.js */
-
 /* Direct Web Serial ESC/POS adapter. No server or desktop bridge is used. */
 (function () {
     "use strict";
@@ -15549,12 +15422,9 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         sendRaw,
     };
 })();
-
 /* END support:services/printing/webserial_escpos_adapter.js */
 
-
 /* BEGIN support:services/printing/qz_print_adapter.js */
-
 /* QZ Tray adapter. Supports optional Managed Bundle and the existing connector flow. */
 (function () {
     "use strict";
@@ -15736,12 +15606,9 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         sendPdf,
     };
 })();
-
 /* END support:services/printing/qz_print_adapter.js */
 
-
 /* BEGIN support:services/printing/print_service.js */
-
 /* Printing transport service. Rendering remains separate from printer/device transport. */
 (function () {
     "use strict";
@@ -16194,12 +16061,9 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         sendHtml(html, context) { return dispatch("html", html, context); },
     };
 })();
-
 /* END support:services/printing/print_service.js */
 
-
 /* BEGIN support:services/receipt/receipt_counter.js */
-
 /* POS shift receipt-number allocation and synchronization. */
         function wmn_get_current_pos_opening_name(doc) {
             doc = doc || {};
@@ -16379,12 +16243,9 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 return 0;
             }
         }
-
 /* END support:services/receipt/receipt_counter.js */
 
-
 /* BEGIN support:services/printing/auto_print.js */
-
 /* Automatic and offline receipt printing orchestration. */
         async function wmn_auto_silent_print_enabled() {
             const repo = window.WMN_POS?.Services?.Settings?.POSProfileSettings;
@@ -16938,12 +16799,9 @@ function wmn_render_offline_print_template(template, doc) {
 
         window.wmn_print_offline_receipt = wmn_print_offline_receipt;
         window.wmn_print_offline_receipt_with_pos_profile_template = wmn_print_offline_receipt_with_pos_profile_template;
-
 /* END support:services/printing/auto_print.js */
 
-
 /* BEGIN support:features/printing/printing.common.js */
-
 /* Printing common facade. Rendering engines remain under services/printing. */
 (function () {
     "use strict";
@@ -16964,52 +16822,34 @@ function wmn_render_offline_print_template(template, doc) {
         },
     };
 })();
-
 /* END support:features/printing/printing.common.js */
 
-
 /* BEGIN support:features/printing/printing.online.js */
-
 /* Printing online adapter. */
 (function(){"use strict";const ns=window.WMN_POS;ns.Features.Printing=ns.Features.Printing||{};ns.Features.Printing.Online={print(doc){return typeof wmn_try_silent_print_online_doc==="function"?wmn_try_silent_print_online_doc(doc):null;}};})();
-
 /* END support:features/printing/printing.online.js */
 
-
 /* BEGIN support:features/printing/printing.offline.js */
-
 /* Printing offline adapter. */
 (function(){"use strict";const ns=window.WMN_POS;ns.Features.Printing=ns.Features.Printing||{};ns.Features.Printing.Offline={print(doc){return typeof wmn_print_offline_receipt==="function"?wmn_print_offline_receipt(doc):null;}};})();
-
 /* END support:features/printing/printing.offline.js */
 
-
 /* BEGIN support:features/receipt/receipt.common.js */
-
 /* Receipt numbering common facade. */
 (function(){"use strict";const ns=window.WMN_POS;ns.Features.Receipt=ns.Features.Receipt||{};ns.Features.Receipt.Common={syncOnLoad(){return wmn_sync_receipt_counter_on_page_load();}};})();
-
 /* END support:features/receipt/receipt.common.js */
 
-
 /* BEGIN support:features/receipt/receipt.online.js */
-
 /* Receipt numbering online adapter. */
 (function(){"use strict";const ns=window.WMN_POS;ns.Features.Receipt=ns.Features.Receipt||{};ns.Features.Receipt.Online={assign(doc){return wmn_assign_receipt_number(doc);}};})();
-
 /* END support:features/receipt/receipt.online.js */
 
-
 /* BEGIN support:features/receipt/receipt.offline.js */
-
 /* Receipt numbering offline adapter. */
 (function(){"use strict";const ns=window.WMN_POS;ns.Features.Receipt=ns.Features.Receipt||{};ns.Features.Receipt.Offline={assign(doc){return wmn_assign_receipt_number(doc);}};})();
-
 /* END support:features/receipt/receipt.offline.js */
 
-
 /* BEGIN support:features/invoice_barcode/invoice_barcode.common.js */
-
 /* Invoice barcode feature facade. */
 (function () {
     "use strict";
@@ -17097,12 +16937,9 @@ function wmn_render_offline_print_template(template, doc) {
         handleScan,
     };
 })();
-
 /* END support:features/invoice_barcode/invoice_barcode.common.js */
 
-
 /* BEGIN support:features/invoice_barcode/invoice_barcode.online.js */
-
 /* Online invoice barcode lookup uses receipt-opening identity, with legacy UID compatibility. */
 (function () {
     "use strict";
@@ -17142,12 +16979,9 @@ function wmn_render_offline_print_template(template, doc) {
         },
     };
 })();
-
 /* END support:features/invoice_barcode/invoice_barcode.online.js */
 
-
 /* BEGIN support:features/invoice_barcode/invoice_barcode.offline.js */
-
 /* Offline invoice barcode lookup reads only the local invoice queue. */
 (function () {
     "use strict";
@@ -17205,12 +17039,9 @@ function wmn_render_offline_print_template(template, doc) {
         },
     };
 })();
-
 /* END support:features/invoice_barcode/invoice_barcode.offline.js */
 
-
 /* BEGIN support:features/invoice_handoff/invoice_handoff.common.js */
-
 /* Cashier handoff lifecycle for draft POS invoices. */
 (function () {
     "use strict";
@@ -17408,12 +17239,9 @@ function wmn_render_offline_print_template(template, doc) {
         sendToCashier,
     };
 })();
-
 /* END support:features/invoice_handoff/invoice_handoff.common.js */
 
-
 /* BEGIN support:features/invoice_handoff/invoice_handoff.online.js */
-
 /* Online adapter for cashier handoff draft persistence. */
 (function () {
     "use strict";
@@ -17440,12 +17268,9 @@ function wmn_render_offline_print_template(template, doc) {
         },
     };
 })();
-
 /* END support:features/invoice_handoff/invoice_handoff.online.js */
 
-
 /* BEGIN support:features/invoice_handoff/invoice_handoff.offline.js */
-
 /* Offline adapter for cashier handoff draft persistence. */
 (function () {
     "use strict";
@@ -17476,12 +17301,9 @@ function wmn_render_offline_print_template(template, doc) {
         },
     };
 })();
-
 /* END support:features/invoice_handoff/invoice_handoff.offline.js */
 
-
 /* BEGIN support:features/return/return.common.js */
-
 /* Shared return ownership for WMN POS. No storage or server calls live here. */
 (function () {
     "use strict";
@@ -17635,12 +17457,9 @@ function wmn_render_offline_print_template(template, doc) {
         financialSnapshot,
     };
 })();
-
 /* END support:features/return/return.common.js */
 
-
 /* BEGIN support:features/return/return.offline.js */
-
 /* Offline return state derived only from the local invoice queue. */
 (function () {
     "use strict";
@@ -17978,12 +17797,9 @@ function wmn_render_offline_print_template(template, doc) {
         applyExactFinancialSnapshotIfEligible,
     };
 })();
-
 /* END support:features/return/return.offline.js */
 
-
 /* BEGIN support:features/cashier_completion/cashier_completion.common.js */
-
 /* Cashier completion metadata shared by Online and Offline finalization. */
 (function () {
     "use strict";
@@ -18004,36 +17820,24 @@ function wmn_render_offline_print_template(template, doc) {
         markCompletedByCashier,
     };
 })();
-
 /* END support:features/cashier_completion/cashier_completion.common.js */
 
-
 /* BEGIN support:features/sync/sync.common.js */
-
 /* Queue synchronization common facade. */
 (function(){"use strict";const ns=window.WMN_POS;ns.Features.Sync=ns.Features.Sync||{};ns.Features.Sync.Common={notify(){return typeof wmn_notify_offline_queue_changed==="function"?wmn_notify_offline_queue_changed():null;}};})();
-
 /* END support:features/sync/sync.common.js */
 
-
 /* BEGIN support:features/sync/sync.online.js */
-
 /* Queue synchronization online adapter. */
 (function(){"use strict";const ns=window.WMN_POS;ns.Features.Sync=ns.Features.Sync||{};ns.Features.Sync.Online={invoices(){return window.wmnPOSOffline?.syncInvoices?.();},cashMovements(){return window.wmnPOSOffline?.syncCashMovements?.();}};})();
-
 /* END support:features/sync/sync.online.js */
 
-
 /* BEGIN support:features/sync/sync.offline.js */
-
 /* Queue synchronization offline adapter. */
 (function(){"use strict";const ns=window.WMN_POS;ns.Features.Sync=ns.Features.Sync||{};ns.Features.Sync.Offline={saveInvoice(doc,ctrl){return window.wmnPOSOffline?.saveInvoice?.(doc,ctrl);},saveCashMovement(doc){return window.wmnPOSOffline?.saveCashMovement?.(doc);}};})();
-
 /* END support:features/sync/sync.offline.js */
 
-
 /* BEGIN support:services/offline/cart_normalizer.js */
-
 /* Offline cart normalization and save preparation. */
         function wmn_clean_link_value(value) {
             if (value === null || value === undefined) return "";
@@ -18342,12 +18146,9 @@ function wmn_render_offline_print_template(template, doc) {
 
             window.__wmn_offline_print_delegation_clean = true;
         }
-
 /* END support:services/offline/cart_normalizer.js */
 
-
 /* BEGIN support:services/cache/controller_cache.js */
-
 /*
  * WMNPOSControllerCache.js
  * Single POS data access layer for IndexedDB/cache while offline.
@@ -18819,12 +18620,9 @@ function wmn_render_offline_print_template(template, doc) {
 
     window.WMNPOSControllerCache = WMNPOSControllerCache;
 })();
-
 /* END support:services/cache/controller_cache.js */
 
-
 /* BEGIN support:services/cache/pos_cache_registry.js */
-
 /* WMN POS local cache registry. Defines cache ownership and record identity only. */
 (function () {
     "use strict";
@@ -19221,12 +19019,9 @@ function wmn_render_offline_print_template(template, doc) {
 
     ns.Services.Cache.PosCacheRegistry = Registry;
 })();
-
 /* END support:services/cache/pos_cache_registry.js */
 
-
 /* BEGIN support:services/cache/pos_cache_adapter.js */
-
 /* WMN POS local cache adapter. Manages local cache records only; no server synchronization. */
 (function () {
     "use strict";
@@ -19482,12 +19277,9 @@ function wmn_render_offline_print_template(template, doc) {
         isOfflineRuntime: offlineRuntime,
     };
 })();
-
 /* END support:services/cache/pos_cache_adapter.js */
 
-
 /* BEGIN support:services/item/free_item_row.js */
-
 /* Shared technical service for controlled free-item row hydration. */
 (function () {
     "use strict";
@@ -19637,12 +19429,9 @@ function wmn_render_offline_print_template(template, doc) {
         hydrateOnline,
     };
 })();
-
 /* END support:services/item/free_item_row.js */
 
-
 /* BEGIN support:features/pos_cache_manager/pos_cache_manager.common.js */
-
 /* WMN POS cache manager UI. Edits the local POS cache only; it never synchronizes to the server. */
 (function () {
     "use strict";
@@ -19933,12 +19722,9 @@ function wmn_render_offline_print_template(template, doc) {
     ns.Features.PosCacheManager.Common.open = open;
     ns.Features.PosCacheManager.Common.openSource = openSource;
 })();
-
 /* END support:features/pos_cache_manager/pos_cache_manager.common.js */
 
-
 /* BEGIN support:features/pos_cache_manager/pos_cache_manager.online.js */
-
 /* WMN POS cache manager online adapter. It intentionally edits local cache only. */
 (function () {
     "use strict";
@@ -19950,12 +19736,9 @@ function wmn_render_offline_print_template(template, doc) {
         },
     };
 })();
-
 /* END support:features/pos_cache_manager/pos_cache_manager.online.js */
 
-
 /* BEGIN support:features/pos_cache_manager/pos_cache_manager.offline.js */
-
 /* WMN POS cache manager offline adapter. It edits the same local cache and performs no sync. */
 (function () {
     "use strict";
@@ -19967,12 +19750,9 @@ function wmn_render_offline_print_template(template, doc) {
         },
     };
 })();
-
 /* END support:features/pos_cache_manager/pos_cache_manager.offline.js */
 
-
 /* BEGIN support:features/pricing_rule/pricing_rule.common.js */
-
 /* ERPNext v16.6.1 Pricing Rule compatibility engine for WMN POS. */
 (function () {
     "use strict";
@@ -21108,12 +20888,9 @@ function wmn_render_offline_print_template(template, doc) {
         withPendingCumulative,
     };
 })();
-
 /* END support:features/pricing_rule/pricing_rule.common.js */
 
-
 /* BEGIN support:features/pricing_rule/pricing_rule.controller.common.js */
-
 /* WMN Controller integration for local execution of original ERPNext Pricing Rules. */
 (function () {
     "use strict";
@@ -21561,12 +21338,9 @@ function wmn_render_offline_print_template(template, doc) {
             .catch((error) => console.warn("WMN Pricing Rule engine toggle refresh failed", error));
     });
 })();
-
 /* END support:features/pricing_rule/pricing_rule.controller.common.js */
 
-
 /* BEGIN support:features/discount/discount.common.js */
-
 /* WMN POS invoice discount composition shared by Online and Offline. */
 (function () {
     "use strict";
@@ -21901,12 +21675,9 @@ function wmn_render_offline_print_template(template, doc) {
         },
     };
 })();
-
 /* END support:features/discount/discount.common.js */
 
-
 /* BEGIN support:features/ui_preferences/ui_preferences.common.js */
-
 /* WMN POS UI preferences resolved from POS Profile defaults plus browser-local overrides. */
 (function () {
     "use strict";
@@ -21976,12 +21747,9 @@ function wmn_render_offline_print_template(template, doc) {
         writeServer,
     };
 })();
-
 /* END support:features/ui_preferences/ui_preferences.common.js */
 
-
 /* BEGIN support:features/coupon/coupon.common.js */
-
 (function () {
     "use strict";
 
@@ -22186,12 +21954,9 @@ function wmn_render_offline_print_template(template, doc) {
         describe,
     };
 })();
-
 /* END support:features/coupon/coupon.common.js */
 
-
 /* BEGIN support:features/coupon/coupon.controller.common.js */
-
 /* Coupon controller integration shared by Online and Offline. */
 (function () {
     "use strict";
@@ -22424,12 +22189,9 @@ function wmn_render_offline_print_template(template, doc) {
         },
     };
 })();
-
 /* END support:features/coupon/coupon.controller.common.js */
 
-
 /* BEGIN support:features/coupon/coupon.online.js */
-
 /* Coupon Online adapter. */
 (function () {
     "use strict";
@@ -22460,12 +22222,9 @@ function wmn_render_offline_print_template(template, doc) {
         },
     };
 })();
-
 /* END support:features/coupon/coupon.online.js */
 
-
 /* BEGIN support:features/coupon/coupon.offline.js */
-
 /* Coupon Offline controller integration methods. */
 (function () {
     "use strict";
@@ -22494,12 +22253,9 @@ function wmn_render_offline_print_template(template, doc) {
                     }
     };
 })();
-
 /* END support:features/coupon/coupon.offline.js */
 
-
 /* BEGIN support:features/promotion/promotion.common.js */
-
 (function () {
     "use strict";
 
@@ -22963,12 +22719,9 @@ function wmn_render_offline_print_template(template, doc) {
         evaluate,
     };
 })();
-
 /* END support:features/promotion/promotion.common.js */
 
-
 /* BEGIN support:features/promotion/promotion.controller.common.js */
-
 /* Promotion Common controller integration methods. */
 (function () {
     "use strict";
@@ -23455,12 +23208,9 @@ function wmn_render_offline_print_template(template, doc) {
                     }
     };
 })();
-
 /* END support:features/promotion/promotion.controller.common.js */
 
-
 /* BEGIN support:features/promotion/promotion.online.js */
-
 /* Promotion Online controller integration methods. */
 (function () {
     "use strict";
@@ -23584,12 +23334,9 @@ function wmn_render_offline_print_template(template, doc) {
         },
     };
 })();
-
 /* END support:features/promotion/promotion.online.js */
 
-
 /* BEGIN support:features/promotion/promotion.offline.js */
-
 /* Promotion Offline controller integration methods. */
 (function () {
     "use strict";
@@ -23612,12 +23359,9 @@ function wmn_render_offline_print_template(template, doc) {
                     }
     };
 })();
-
 /* END support:features/promotion/promotion.offline.js */
 
-
 /* BEGIN support:features/commercial_catalog/commercial_catalog.common.js */
-
 /* WMN POS cashier-facing active promotions and coupons catalog. */
 (function () {
     "use strict";
@@ -23823,12 +23567,9 @@ function wmn_render_offline_print_template(template, doc) {
         },
     };
 })();
-
 /* END support:features/commercial_catalog/commercial_catalog.common.js */
 
-
 /* BEGIN support:features/commercial_catalog/commercial_catalog.online.js */
-
 /* WMN POS cashier commercial catalog Online adapter. */
 (function () {
     "use strict";
@@ -23849,12 +23590,9 @@ function wmn_render_offline_print_template(template, doc) {
         return [];
     };
 })();
-
 /* END support:features/commercial_catalog/commercial_catalog.online.js */
 
-
 /* BEGIN support:features/commercial_catalog/commercial_catalog.offline.js */
-
 /* WMN POS cashier commercial catalog Offline adapter. */
 (function () {
     "use strict";
@@ -23873,12 +23611,9 @@ function wmn_render_offline_print_template(template, doc) {
         return await window.wmnPOSOffline.getCoupons();
     };
 })();
-
 /* END support:features/commercial_catalog/commercial_catalog.offline.js */
 
-
 /* BEGIN support:features/supervisor/supervisor.common.js */
-
 /*
  * WMNPOSSupervisor.js
  * Central supervisor authorization gateway for ERPNext POS.
@@ -24640,12 +24375,9 @@ function wmn_render_offline_print_template(template, doc) {
         clearGrant,
     };
 })();
-
 /* END support:features/supervisor/supervisor.common.js */
 
-
 /* BEGIN support:features/supervisor/supervisor.online.js */
-
 /* Supervisor online adapter. All future server-specific supervisor changes belong here. */
 (function(){
     "use strict";
@@ -24655,12 +24387,9 @@ function wmn_render_offline_print_template(template, doc) {
         service(){ return window.WMNPOSSupervisor; }
     };
 })();
-
 /* END support:features/supervisor/supervisor.online.js */
 
-
 /* BEGIN support:features/supervisor/supervisor.offline.js */
-
 /* Supervisor offline adapter. All future cache/PIN-specific supervisor changes belong here. */
 (function(){
     "use strict";
@@ -24670,12 +24399,9 @@ function wmn_render_offline_print_template(template, doc) {
         service(){ return window.WMNPOSSupervisor; }
     };
 })();
-
 /* END support:features/supervisor/supervisor.offline.js */
 
-
 /* BEGIN support:features/supervisor/supervisor.controller.common.js */
-
 /* Supervisor Common controller integration methods. */
 (function () {
     "use strict";
@@ -24696,12 +24422,9 @@ function wmn_render_offline_print_template(template, doc) {
                     }
     };
 })();
-
 /* END support:features/supervisor/supervisor.controller.common.js */
 
-
 /* BEGIN support:features/cash_movement/cash_movement.common.js */
-
 /*
  * WMNPOSCashMovement.js
  * POS shift cash movement UI. Online and offline use the same payload and
@@ -25086,36 +24809,27 @@ function wmn_render_offline_print_template(template, doc) {
         postMovement,
     };
 })();
-
 /* END support:features/cash_movement/cash_movement.common.js */
 
-
 /* BEGIN support:features/cash_movement/cash_movement.online.js */
-
 /* Cash Movement online gateway. Server posting changes belong here. */
 (function(){
     "use strict";
     const ns=window.WMN_POS; ns.Features.CashMovement=ns.Features.CashMovement||{};
     ns.Features.CashMovement.OnlineAdapter={ service(){ return window.WMNPOSCashMovement; } };
 })();
-
 /* END support:features/cash_movement/cash_movement.online.js */
 
-
 /* BEGIN support:features/cash_movement/cash_movement.offline.js */
-
 /* Cash Movement offline gateway. Queue/cache changes belong here. */
 (function(){
     "use strict";
     const ns=window.WMN_POS; ns.Features.CashMovement=ns.Features.CashMovement||{};
     ns.Features.CashMovement.OfflineAdapter={ service(){ return window.WMNPOSCashMovement; } };
 })();
-
 /* END support:features/cash_movement/cash_movement.offline.js */
 
-
 /* BEGIN support:features/doctype_manager/doctype_manager.common.js */
-
 /* WMN POS management menu and generic DocType dialog workflow. */
 (function () {
     "use strict";
@@ -27165,12 +26879,9 @@ function wmn_render_offline_print_template(template, doc) {
     };
     window.WMNPOSDoctypeManager = ns.Features.DoctypeManager.Common;
 })();
-
 /* END support:features/doctype_manager/doctype_manager.common.js */
 
-
 /* BEGIN support:features/doctype_manager/doctype_manager.online.js */
-
 /* Online adapter for WMN POS DocType management. */
 (function () {
     "use strict";
@@ -27370,12 +27081,9 @@ function wmn_render_offline_print_template(template, doc) {
         MODEL_CACHE_KEY,
     };
 })();
-
 /* END support:features/doctype_manager/doctype_manager.online.js */
 
-
 /* BEGIN support:features/doctype_manager/doctype_manager.offline.js */
-
 /* Offline adapter for lightweight WMN POS DocType management. */
 (function () {
     "use strict";
@@ -27508,12 +27216,9 @@ function wmn_render_offline_print_template(template, doc) {
         MODEL_CACHE_KEY,
     };
 })();
-
 /* END support:features/doctype_manager/doctype_manager.offline.js */
 
-
 /* BEGIN support:ui/mamsek_ui.js */
-
 /* Mamsek POS UI helpers only. No ERPNext class is overridden in this file. */
 frappe.provide("wmn.MamsekPOS");
 (function(){
@@ -27965,11 +27670,9 @@ frappe.provide("wmn.MamsekPOS");
         }
     };
 })();
-
 /* END support:ui/mamsek_ui.js */
 
 /* END embedded WMN POS support scripts. */
-
 
 window.wmn_pos_install_owned_source = function wmn_pos_install_owned_source() {
     if (window.__wmn_pos_owned_source_installed) return;
@@ -28033,9 +27736,7 @@ window.wmn_pos_install_owned_source = function wmn_pos_install_owned_source() {
     window.wmn_pos_inherit_source_prototype = inheritSourcePrototype;
     window.wmn_pos_construct_from_source = constructFromSource;
 })();
-
 /* END class_registry.js */
-
 
 /* BEGIN pos_number_pad.js */
 /* Copied from ERPNext version-16 point_of_sale source; WMN-owned namespace. */
@@ -28098,9 +27799,7 @@ window.WMN_POS.Source.NumberPad = class {
         });
     }
 };
-
 /* END pos_number_pad.js */
-
 
 /* BEGIN pos_item_details.js */
 /* Copied from ERPNext version-16 point_of_sale source; WMN-owned namespace. */
@@ -28584,9 +28283,7 @@ window.WMN_POS.Source.ItemDetails = class {
         show ? this.$component.css("display", "flex") : this.$component.css("display", "none");
     }
 };
-
 /* END pos_item_details.js */
-
 
 /* BEGIN pos_item_cart.js */
 /* Copied from ERPNext version-16 point_of_sale source; WMN-owned namespace. */
@@ -29719,9 +29416,7 @@ window.WMN_POS.Source.ItemCart = class {
         show ? this.$component.css("display", "flex") : this.$component.css("display", "none");
     }
 };
-
 /* END pos_item_cart.js */
-
 
 /* BEGIN pos_item_selector.js */
 /* Copied from ERPNext version-16 point_of_sale source; WMN-owned namespace. */
@@ -30219,9 +29914,7 @@ window.WMN_POS.Source.ItemSelector = class {
         this.$component.css("display", show ? "flex" : "none");
     }
 };
-
 /* END pos_item_selector.js */
-
 
 /* BEGIN pos_payment.js */
 /* Copied from ERPNext version-16 point_of_sale source; WMN-owned namespace. */
@@ -30962,9 +30655,7 @@ window.WMN_POS.Source.Payment = class {
         return true;
     }
 };
-
 /* END pos_payment.js */
-
 
 /* BEGIN pos_past_order_list.js */
 /* Copied from ERPNext version-16 point_of_sale source; WMN-owned namespace. */
@@ -31102,9 +30793,7 @@ window.WMN_POS.Source.PastOrderList = class {
             : this.$component.css("display", "none");
     }
 };
-
 /* END pos_past_order_list.js */
-
 
 /* BEGIN pos_past_order_summary.js */
 /* Copied from ERPNext version-16 point_of_sale source; WMN-owned namespace. */
@@ -31598,9 +31287,7 @@ window.WMN_POS.Source.PastOrderSummary = class {
         return r.message;
     }
 };
-
 /* END pos_past_order_summary.js */
-
 
 /* BEGIN pos_controller.js */
 /* Copied from ERPNext version-16 point_of_sale source; WMN-owned namespace. */
@@ -32514,9 +32201,7 @@ window.WMN_POS.Source.Controller = class {
         }
     }
 };
-
 /* END pos_controller.js */
-
 
 /* BEGIN pos_data_source.js */
 /* WMN POS data-source boundary: Online uses ERPNext, Offline uses local backends only. */
@@ -33064,9 +32749,7 @@ window.WMN_POS.Source.Controller = class {
         getCurrent: () => window.__wmn_pos_data_source || null,
     });
 })();
-
 /* END pos_data_source.js */
-
 
 /* BEGIN wmn_payment_methods.js */
 /* Payment class methods. One ERPNext class -> one methods file. */
@@ -33331,9 +33014,7 @@ window.WMN_POS.Source.Controller = class {
 
     ns.ClassMethods.Payment = { CoreMethods, UIMethods, FinalMethods, initialize };
 })();
-
 /* END wmn_payment_methods.js */
-
 
 /* BEGIN wmn_payment_class.js */
 /* Single production WMN POS Payment class. */
@@ -33374,9 +33055,7 @@ window.WMN_POS.Source.Controller = class {
     window.wmn_pos_inherit_source_prototype(WMNPaymentClass, Base);
     ns.Classes.Payment = WMNPaymentClass;
 })();
-
 /* END wmn_payment_class.js */
-
 
 /* BEGIN wmn_item_details_methods.js */
 /* ItemDetails class methods. One ERPNext class -> one methods file. */
@@ -33881,9 +33560,7 @@ window.WMN_POS.Source.Controller = class {
 
     ns.ClassMethods.ItemDetails = { CoreMethods, UIMethods, FinalMethods, initialize };
 })();
-
 /* END wmn_item_details_methods.js */
-
 
 /* BEGIN wmn_item_details_class.js */
 /* Single production WMN POS ItemDetails class. */
@@ -33948,9 +33625,7 @@ window.WMN_POS.Source.Controller = class {
     window.wmn_pos_inherit_source_prototype(WMNItemDetailsClass, Base);
     ns.Classes.ItemDetails = WMNItemDetailsClass;
 })();
-
 /* END wmn_item_details_class.js */
-
 
 /* BEGIN wmn_past_order_list_methods.js */
 /* PastOrderList class methods. One ERPNext class -> one methods file. */
@@ -34165,9 +33840,7 @@ window.WMN_POS.Source.Controller = class {
 
     ns.ClassMethods.PastOrderList = { CoreMethods, UIMethods, FinalMethods, initialize };
 })();
-
 /* END wmn_past_order_list_methods.js */
-
 
 /* BEGIN wmn_past_order_list_class.js */
 /* Single production WMN POS PastOrderList class. */
@@ -34204,9 +33877,7 @@ window.WMN_POS.Source.Controller = class {
     window.wmn_pos_inherit_source_prototype(WMNPastOrderListClass, Base);
     ns.Classes.PastOrderList = WMNPastOrderListClass;
 })();
-
 /* END wmn_past_order_list_class.js */
-
 
 /* BEGIN wmn_past_order_summary_methods.js */
 /* PastOrderSummary class methods. One ERPNext class -> one methods file. */
@@ -34709,9 +34380,7 @@ window.WMN_POS.Source.Controller = class {
 
     ns.ClassMethods.PastOrderSummary = { CoreMethods, UIMethods, FinalMethods, initialize };
 })();
-
 /* END wmn_past_order_summary_methods.js */
-
 
 /* BEGIN wmn_past_order_summary_class.js */
 /* Single production WMN POS PastOrderSummary class. */
@@ -34800,9 +34469,7 @@ window.WMN_POS.Source.Controller = class {
     window.wmn_pos_inherit_source_prototype(WMNPastOrderSummaryClass, Base);
     ns.Classes.PastOrderSummary = WMNPastOrderSummaryClass;
 })();
-
 /* END wmn_past_order_summary_class.js */
-
 
 /* BEGIN wmn_item_selector_methods.js */
 /* ItemSelector class methods. One ERPNext class -> one methods file. */
@@ -37452,9 +37119,7 @@ window.WMN_POS.Source.Controller = class {
 
     ns.ClassMethods.ItemSelector = { CoreMethods, UIMethods, FinalMethods, initialize };
 })();
-
 /* END wmn_item_selector_methods.js */
-
 
 /* BEGIN wmn_item_selector_class.js */
 /* Single production WMN POS ItemSelector class. */
@@ -37711,9 +37376,7 @@ window.WMN_POS.Source.Controller = class {
     window.wmn_pos_inherit_source_prototype(WMNItemSelectorClass, Base);
     ns.Classes.ItemSelector = WMNItemSelectorClass;
 })();
-
 /* END wmn_item_selector_class.js */
-
 
 /* BEGIN wmn_item_cart_methods.js */
 /* ItemCart class methods. One ERPNext class -> one methods file. */
@@ -38920,9 +38583,7 @@ window.WMN_POS.Source.Controller = class {
 
     ns.ClassMethods.ItemCart = { CoreMethods, UIMethods, FinalMethods, initialize };
 })();
-
 /* END wmn_item_cart_methods.js */
-
 
 /* BEGIN wmn_item_cart_class.js */
 /* Single production WMN POS ItemCart class. */
@@ -39095,9 +38756,7 @@ window.WMN_POS.Source.Controller = class {
     window.wmn_pos_inherit_source_prototype(WMNItemCartClass, Base);
     ns.Classes.ItemCart = WMNItemCartClass;
 })();
-
 /* END wmn_item_cart_class.js */
-
 
 /* BEGIN wmn_controller_methods.js */
 /* Controller class methods. One ERPNext class -> one methods file. */
@@ -42460,9 +42119,7 @@ window.WMN_POS.Source.Controller = class {
 
     ns.ClassMethods.Controller = { CoreMethods, UIMethods, FinalMethods, initialize };
 })();
-
 /* END wmn_controller_methods.js */
-
 
 /* BEGIN wmn_controller_class.js */
 /* Single production WMN POS Controller class. */
@@ -42915,9 +42572,7 @@ window.WMN_POS.Source.Controller = class {
     window.wmn_pos_inherit_source_prototype(WMNControllerClass, Base);
     ns.Classes.Controller = WMNControllerClass;
 })();
-
 /* END wmn_controller_class.js */
-
 
 /* BEGIN wmn_page_boot.js */
 /* Clean WMN POS page boot. Instantiates WMN classes without ERPNext runtime replacement. */
@@ -42946,7 +42601,6 @@ window.wmn_pos_page_boot = async function wmn_pos_page_boot(wrapper) {
     }, 3000);
     return wrapper.pos;
 };
-
 /* END wmn_page_boot.js */
 
 };
