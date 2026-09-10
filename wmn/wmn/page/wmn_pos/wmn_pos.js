@@ -11,6 +11,2984 @@ Object.assign(window.WMN_POS, {
     UI: window.WMN_POS.UI || {},
 });
 
+
+/* BEGIN embedded vendor:qz-tray.js */
+'use strict';
+
+/**
+ * @version 2.2.6
+ * @overview QZ Tray Connector
+ * @license LGPL-2.1-only
+ * <p/>
+ * Connects a web client to the QZ Tray software.
+ * Enables printing and device communication from javascript.
+ */
+var qz = (function() {
+
+///// POLYFILLS /////
+
+    if (!Array.isArray) {
+        Array.isArray = function(arg) {
+            return Object.prototype.toString.call(arg) === '[object Array]';
+        };
+    }
+
+    if (!Number.isInteger) {
+        Number.isInteger = function(value) {
+            return typeof value === 'number' && isFinite(value) && Math.floor(value) === value;
+        };
+    }
+
+    if (!Array.from) {
+        Array.from = function(object) {
+            return [].slice.call(object);
+        };
+    }
+
+    if (!String.prototype.padStart) {
+        String.prototype.padStart = function padStart(targetLength, padString) {
+            targetLength = targetLength >> 0; // truncate if number or convert non-number to 0
+            padString = String(typeof padString !== 'undefined' ? padString : ' ');
+
+            if (this.length >= targetLength) {
+                return String(this);
+            }
+
+            var gapSize = targetLength - this.length;
+            var padding = "";
+            while (padding.length < gapSize) {
+                padding += padString;
+            }
+
+            return padding.slice(0, gapSize) + String(this);
+        };
+    }
+
+///// PRIVATE METHODS /////
+
+    var _qz = {
+        TITLE: "QZ Tray",
+        VERSION: "2.2.6",                              //must match @version above
+        DEBUG: false,
+
+        log: {
+            /** Debugging messages */
+            trace: function() { if (_qz.DEBUG) { console.log.apply(console, arguments); } },
+            /** General messages */
+            info: function() { console.info.apply(console, arguments); },
+            /** General warnings */
+            warn: function() { console.warn.apply(console, arguments); },
+            /** Debugging errors */
+            allay: function() { if (_qz.DEBUG) { console.warn.apply(console, arguments); } },
+            /** General errors */
+            error: function() { console.error.apply(console, arguments); }
+        },
+
+
+        //stream types
+        streams: {
+            serial: 'SERIAL', usb: 'USB', hid: 'HID', printer: 'PRINTER', file: 'FILE', socket: 'SOCKET'
+        },
+
+
+        websocket: {
+            /** The actual websocket object managing the connection. */
+            connection: null,
+            /** Track if a connection attempt is being cancelled. */
+            shutdown: false,
+
+            /** Default parameters used on new connections. Override values using options parameter on {@link qz.websocket.connect}. */
+            connectConfig: {
+                host: ["localhost", "localhost.qz.io"], //hosts QZ Tray can be running on
+                hostIndex: 0,                           //internal var - index on host array
+                usingSecure: true,                      //boolean use of secure protocol
+                usingSurf: true,                        //append suffix to non-qualified hostnames
+                surfDomain: "qz.surf",                  //surf suffix to append
+                protocol: {
+                    secure: "wss://",                   //secure websocket
+                    insecure: "ws://"                   //insecure websocket
+                },
+                port: {
+                    secure: [8181, 8282, 8383, 8484],   //list of secure ports QZ Tray could be listening on
+                    insecure: [8182, 8283, 8384, 8485], //list of insecure ports QZ Tray could be listening on
+                    portIndex: 0                        //internal var - index on active port array
+                },
+                keepAlive: 60,                          //time between pings to keep connection alive, in seconds
+                retries: 0,                             //number of times to reconnect before failing
+                delay: 0                                //seconds before firing a connection
+            },
+
+            setup: {
+                /** Loop through possible ports to open connection, sets web socket calls that will settle the promise. */
+                findConnection: function(config, resolve, reject) {
+                    if (_qz.websocket.shutdown) {
+                        reject(new Error("Connection attempt cancelled by user"));
+                        return;
+                    }
+
+                    //force flag if missing ports
+                    if (!config.port.secure.length) {
+                        if (!config.port.insecure.length) {
+                            reject(new Error("No ports have been specified to connect over"));
+                            return;
+                        } else if (config.usingSecure) {
+                            _qz.log.error("No secure ports specified - forcing insecure connection");
+                            config.usingSecure = false;
+                        }
+                    } else if (!config.port.insecure.length && !config.usingSecure) {
+                        _qz.log.trace("No insecure ports specified - forcing secure connection");
+                        config.usingSecure = true;
+                    }
+
+                    var deeper = function() {
+                        if (_qz.websocket.shutdown) {
+                            //connection attempt was cancelled, bail out
+                            reject(new Error("Connection attempt cancelled by user"));
+                            return;
+                        }
+
+                        config.port.portIndex++;
+
+                        if ((config.usingSecure && config.port.portIndex >= config.port.secure.length)
+                            || (!config.usingSecure && config.port.portIndex >= config.port.insecure.length)) {
+                            if (config.hostIndex >= config.host.length - 1) {
+                                //give up, all hope is lost
+                                reject(new Error("Unable to establish connection with " + _qz.TITLE));
+                                return;
+                            } else {
+                                config.hostIndex++;
+                                config.port.portIndex = 0;
+                            }
+                        }
+
+                        // recursive call until connection established or all ports are exhausted
+                        _qz.websocket.setup.findConnection(config, resolve, reject);
+                    };
+
+                    var address;
+                    if (config.usingSecure) {
+                        address = config.protocol.secure + config.host[config.hostIndex] + ":" + config.port.secure[config.port.portIndex];
+                    } else {
+                        address = config.protocol.insecure + config.host[config.hostIndex] + ":" + config.port.insecure[config.port.portIndex];
+                    }
+
+                    try {
+                        _qz.log.trace("Attempting connection", address);
+                        _qz.websocket.connection = new _qz.tools.ws(address);
+                    }
+                    catch(err) {
+                        _qz.log.error(err);
+                        deeper();
+                        return;
+                    }
+
+                    if (_qz.websocket.connection != null) {
+                        _qz.websocket.connection.established = false;
+
+                        //called on successful connection to qz, begins setup of websocket calls and resolves connect promise after certificate is sent
+                        _qz.websocket.connection.onopen = function(evt) {
+                            if (!_qz.websocket.connection.established) {
+                                _qz.log.trace(evt);
+                                _qz.log.info("Established connection with " + _qz.TITLE + " on " + address);
+
+                                _qz.websocket.setup.openConnection({ resolve: resolve, reject: reject });
+
+                                if (config.keepAlive > 0) {
+                                    var interval = setInterval(function() {
+                                        if (!_qz.tools.isActive() || _qz.websocket.connection.interval !== interval) {
+                                            clearInterval(interval);
+                                            return;
+                                        }
+
+                                        _qz.websocket.connection.send("ping");
+                                    }, config.keepAlive * 1000);
+
+                                    _qz.websocket.connection.interval = interval;
+                                }
+                            }
+                        };
+
+                        //called during websocket close during setup
+                        _qz.websocket.connection.onclose = function() {
+                            // Safari compatibility fix to raise error event
+                            if (_qz.websocket.connection && typeof navigator !== 'undefined' && navigator.userAgent.indexOf('Safari') != -1 && navigator.userAgent.indexOf('Chrome') == -1) {
+                                _qz.websocket.connection.onerror();
+                            }
+                        };
+
+                        //called for errors during setup (such as invalid ports), reject connect promise only if all ports have been tried
+                        _qz.websocket.connection.onerror = function(evt) {
+                            _qz.log.trace(evt);
+
+                            _qz.websocket.connection = null;
+
+                            deeper();
+                        };
+                    } else {
+                        reject(new Error("Unable to create a websocket connection"));
+                    }
+                },
+
+                /** Finish setting calls on successful connection, sets web socket calls that won't settle the promise. */
+                openConnection: function(openPromise) {
+                    _qz.websocket.connection.established = true;
+
+                    //called when an open connection is closed
+                    _qz.websocket.connection.onclose = function(evt) {
+                        _qz.log.trace(evt);
+
+                        _qz.websocket.connection = null;
+                        _qz.websocket.callClose(evt);
+                        _qz.log.info("Closed connection with " + _qz.TITLE);
+
+                        for(var uid in _qz.websocket.pendingCalls) {
+                            if (_qz.websocket.pendingCalls.hasOwnProperty(uid)) {
+                                _qz.websocket.pendingCalls[uid].reject(new Error("Connection closed before response received"));
+                            }
+                        }
+
+                        //if this is set, then an explicit close call was made
+                        if (this.promise != undefined) {
+                            this.promise.resolve();
+                        }
+                    };
+
+                    //called for any errors with an open connection
+                    _qz.websocket.connection.onerror = function(evt) {
+                        _qz.websocket.callError(evt);
+                    };
+
+                    //send JSON objects to qz
+                    _qz.websocket.connection.sendData = function(obj) {
+                        _qz.log.trace("Preparing object for websocket", obj);
+
+                        if (obj.timestamp == undefined) {
+                            obj.timestamp = Date.now();
+                            if (typeof obj.timestamp !== 'number') {
+                                obj.timestamp = new Date().getTime();
+                            }
+                        }
+                        if (obj.promise != undefined) {
+                            obj.uid = _qz.websocket.setup.newUID();
+                            _qz.websocket.pendingCalls[obj.uid] = obj.promise;
+                        }
+
+                        // track requesting monitor
+                        obj.position = {
+                            x: typeof screen !== 'undefined' ? ((screen.availWidth || screen.width) / 2) + (screen.left || screen.availLeft || 0) : 0,
+                            y: typeof screen !== 'undefined' ? ((screen.availHeight || screen.height) / 2) + (screen.top || screen.availTop || 0) : 0
+                        };
+
+                        try {
+                            if (obj.call != undefined && obj.signature == undefined && _qz.security.needsSigned(obj.call)) {
+                                var signObj = {
+                                    call: obj.call,
+                                    params: obj.params,
+                                    timestamp: obj.timestamp
+                                };
+
+                                //make a hashing promise if not already one
+                                var hashing = _qz.tools.hash(_qz.tools.stringify(signObj));
+                                if (!hashing.then) {
+                                    hashing = _qz.tools.promise(function(resolve) {
+                                        resolve(hashing);
+                                    });
+                                }
+
+                                hashing.then(function(hashed) {
+                                    return _qz.security.callSign(hashed);
+                                }).then(function(signature) {
+                                    _qz.log.trace("Signature for call", signature);
+                                    obj.signature = signature || "";
+                                    obj.signAlgorithm = _qz.security.signAlgorithm;
+
+                                    _qz.signContent = undefined;
+                                    _qz.websocket.connection.send(_qz.tools.stringify(obj));
+                                }).catch(function(err) {
+                                    _qz.log.error("Signing failed", err);
+
+                                    if (obj.promise != undefined) {
+                                        obj.promise.reject(new Error("Failed to sign request"));
+                                        delete _qz.websocket.pendingCalls[obj.uid];
+                                    }
+                                });
+                            } else {
+                                _qz.log.trace("Signature for call", obj.signature);
+
+                                //called for pre-signed content and (unsigned) setup calls
+                                _qz.websocket.connection.send(_qz.tools.stringify(obj));
+                            }
+                        }
+                        catch(err) {
+                            _qz.log.error(err);
+
+                            if (obj.promise != undefined) {
+                                obj.promise.reject(err);
+                                delete _qz.websocket.pendingCalls[obj.uid];
+                            }
+                        }
+                    };
+
+                    //receive message from qz
+                    _qz.websocket.connection.onmessage = function(evt) {
+                        var returned = JSON.parse(evt.data);
+
+                        if (returned.uid == null) {
+                            if (returned.type == null) {
+                                //incorrect response format, likely connected to incompatible qz version
+                                _qz.websocket.connection.close(4003, "Connected to incompatible " + _qz.TITLE + " version");
+
+                            } else {
+                                //streams (callbacks only, no promises)
+                                switch(returned.type) {
+                                    case _qz.streams.serial:
+                                        if (!returned.event) {
+                                            returned.event = JSON.stringify({ portName: returned.key, output: returned.data });
+                                        }
+
+                                        _qz.serial.callSerial(JSON.parse(returned.event));
+                                        break;
+                                    case _qz.streams.socket:
+                                        _qz.socket.callSocket(JSON.parse(returned.event));
+                                        break;
+                                    case _qz.streams.usb:
+                                        if (!returned.event) {
+                                            returned.event = JSON.stringify({ vendorId: returned.key[0], productId: returned.key[1], output: returned.data });
+                                        }
+
+                                        _qz.usb.callUsb(JSON.parse(returned.event));
+                                        break;
+                                    case _qz.streams.hid:
+                                        _qz.hid.callHid(JSON.parse(returned.event));
+                                        break;
+                                    case _qz.streams.printer:
+                                        _qz.printers.callPrinter(JSON.parse(returned.event));
+                                        break;
+                                    case _qz.streams.file:
+                                        _qz.file.callFile(JSON.parse(returned.event));
+                                        break;
+                                    default:
+                                        _qz.log.allay("Cannot determine stream type for callback", returned);
+                                        break;
+                                }
+                            }
+
+                            return;
+                        }
+
+                        _qz.log.trace("Received response from websocket", returned);
+
+                        var promise = _qz.websocket.pendingCalls[returned.uid];
+                        if (promise == undefined) {
+                            _qz.log.allay('No promise found for returned response');
+                        } else {
+                            if (returned.error != undefined) {
+                                promise.reject(new Error(returned.error));
+                            } else {
+                                promise.resolve(returned.result);
+                            }
+                        }
+
+                        delete _qz.websocket.pendingCalls[returned.uid];
+                    };
+
+
+                    //send up the certificate before making any calls
+                    //also gives the user a chance to deny the connection
+                    function sendCert(cert) {
+                        if (cert === undefined) { cert = null; }
+
+                        //websocket setup, query what version is connected
+                        qz.api.getVersion().then(function(version) {
+                            _qz.websocket.connection.version = version;
+                            _qz.websocket.connection.semver = version.toLowerCase().replace(/-rc\./g, "-rc").split(/[\\+\\.-]/g);
+                            for(var i = 0; i < _qz.websocket.connection.semver.length; i++) {
+                                try {
+                                    if (i == 3 && _qz.websocket.connection.semver[i].toLowerCase().indexOf("rc") == 0) {
+                                        // Handle "rc1" pre-release by negating build info
+                                        _qz.websocket.connection.semver[i] = -(_qz.websocket.connection.semver[i].replace(/\D/g, ""));
+                                        continue;
+                                    }
+                                    _qz.websocket.connection.semver[i] = parseInt(_qz.websocket.connection.semver[i]);
+                                }
+                                catch(ignore) {}
+
+                                if (_qz.websocket.connection.semver.length < 4) {
+                                    _qz.websocket.connection.semver[3] = 0;
+                                }
+                            }
+
+                            //algorithm can be declared before a connection, check for incompatibilities now that we have one
+                            _qz.compatible.algorithm(true);
+                        }).then(function() {
+                            _qz.websocket.connection.sendData({ certificate: cert, promise: openPromise });
+                        });
+                    }
+
+                    _qz.security.callCert().then(sendCert).catch(function(error) {
+                        _qz.log.warn("Failed to get certificate:", error);
+
+                        if (_qz.security.rejectOnCertFailure) {
+                            openPromise.reject(error);
+                        } else {
+                            sendCert(null);
+                        }
+                    });
+                },
+
+                /** Generate unique ID used to map a response to a call. */
+                newUID: function() {
+                    var len = 6;
+                    return (new Array(len + 1).join("0") + (Math.random() * Math.pow(36, len) << 0).toString(36)).slice(-len)
+                }
+            },
+
+            dataPromise: function(callName, params, signature, signingTimestamp) {
+                return _qz.tools.promise(function(resolve, reject) {
+                    var msg = {
+                        call: callName,
+                        promise: { resolve: resolve, reject: reject },
+                        params: params,
+                        signature: signature,
+                        timestamp: signingTimestamp
+                    };
+
+                    _qz.websocket.connection.sendData(msg);
+                });
+            },
+
+            /** Library of promises awaiting a response, uid -> promise */
+            pendingCalls: {},
+
+            /** List of functions to call on error from the websocket. */
+            errorCallbacks: [],
+            /** Calls all functions registered to listen for errors. */
+            callError: function(evt) {
+                if (Array.isArray(_qz.websocket.errorCallbacks)) {
+                    for(var i = 0; i < _qz.websocket.errorCallbacks.length; i++) {
+                        _qz.websocket.errorCallbacks[i](evt);
+                    }
+                } else {
+                    _qz.websocket.errorCallbacks(evt);
+                }
+            },
+
+            /** List of function to call on closing from the websocket. */
+            closedCallbacks: [],
+            /** Calls all functions registered to listen for closing. */
+            callClose: function(evt) {
+                if (Array.isArray(_qz.websocket.closedCallbacks)) {
+                    for(var i = 0; i < _qz.websocket.closedCallbacks.length; i++) {
+                        _qz.websocket.closedCallbacks[i](evt);
+                    }
+                } else {
+                    _qz.websocket.closedCallbacks(evt);
+                }
+            }
+        },
+
+
+        printing: {
+            /** Default options used for new printer configs. Can be overridden using {@link qz.configs.setDefaults}. */
+            defaultConfig: {
+                //value purposes are explained in the qz.configs.setDefaults docs
+
+                bounds: null,
+                colorType: 'color',
+                copies: 1,
+                density: 0,
+                duplex: false,
+                fallbackDensity: null,
+                interpolation: 'bicubic',
+                jobName: null,
+                legacy: false,
+                margins: 0,
+                orientation: null,
+                paperThickness: null,
+                printerTray: null,
+                rasterize: false,
+                rotation: 0,
+                scaleContent: true,
+                size: null,
+                units: 'in',
+
+                forceRaw: false,
+                encoding: null,
+                spool: null
+            }
+        },
+
+
+        serial: {
+            /** List of functions called when receiving data from serial connection. */
+            serialCallbacks: [],
+            /** Calls all functions registered to listen for serial events. */
+            callSerial: function(streamEvent) {
+                if (Array.isArray(_qz.serial.serialCallbacks)) {
+                    for(var i = 0; i < _qz.serial.serialCallbacks.length; i++) {
+                        _qz.serial.serialCallbacks[i](streamEvent);
+                    }
+                } else {
+                    _qz.serial.serialCallbacks(streamEvent);
+                }
+            }
+        },
+
+
+        socket: {
+            /** List of functions called when receiving data from network socket connection. */
+            socketCallbacks: [],
+            /** Calls all functions registered to listen for network socket events. */
+            callSocket: function(socketEvent) {
+                if (Array.isArray(_qz.socket.socketCallbacks)) {
+                    for(var i = 0; i < _qz.socket.socketCallbacks.length; i++) {
+                        _qz.socket.socketCallbacks[i](socketEvent);
+                    }
+                } else {
+                    _qz.socket.socketCallbacks(socketEvent);
+                }
+            }
+        },
+
+
+        usb: {
+            /** List of functions called when receiving data from usb connection. */
+            usbCallbacks: [],
+            /** Calls all functions registered to listen for usb events. */
+            callUsb: function(streamEvent) {
+                if (Array.isArray(_qz.usb.usbCallbacks)) {
+                    for(var i = 0; i < _qz.usb.usbCallbacks.length; i++) {
+                        _qz.usb.usbCallbacks[i](streamEvent);
+                    }
+                } else {
+                    _qz.usb.usbCallbacks(streamEvent);
+                }
+            }
+        },
+
+
+        hid: {
+            /** List of functions called when receiving data from hid connection. */
+            hidCallbacks: [],
+            /** Calls all functions registered to listen for hid events. */
+            callHid: function(streamEvent) {
+                if (Array.isArray(_qz.hid.hidCallbacks)) {
+                    for(var i = 0; i < _qz.hid.hidCallbacks.length; i++) {
+                        _qz.hid.hidCallbacks[i](streamEvent);
+                    }
+                } else {
+                    _qz.hid.hidCallbacks(streamEvent);
+                }
+            }
+        },
+
+
+        printers: {
+            /** List of functions called when receiving data from printer connection. */
+            printerCallbacks: [],
+            /** Calls all functions registered to listen for printer events. */
+            callPrinter: function(streamEvent) {
+                if (Array.isArray(_qz.printers.printerCallbacks)) {
+                    for(var i = 0; i < _qz.printers.printerCallbacks.length; i++) {
+                        _qz.printers.printerCallbacks[i](streamEvent);
+                    }
+                } else {
+                    _qz.printers.printerCallbacks(streamEvent);
+                }
+            }
+        },
+
+
+        file: {
+            /** List of functions called when receiving info regarding file changes. */
+            fileCallbacks: [],
+            /** Calls all functions registered to listen for file events. */
+            callFile: function(streamEvent) {
+                if (Array.isArray(_qz.file.fileCallbacks)) {
+                    for(var i = 0; i < _qz.file.fileCallbacks.length; i++) {
+                        _qz.file.fileCallbacks[i](streamEvent);
+                    }
+                } else {
+                    _qz.file.fileCallbacks(streamEvent);
+                }
+            }
+        },
+
+
+        security: {
+            /** Function used to resolve promise when acquiring site's public certificate. */
+            certHandler: function(resolve, reject) { reject(); },
+            /** Called to create new promise (using {@link _qz.security.certHandler}) for certificate retrieval. */
+            callCert: function() {
+                if (typeof _qz.security.certHandler.then === 'function') {
+                    //already a promise
+                    return _qz.security.certHandler;
+                } else if (_qz.security.certHandler.constructor.name === "AsyncFunction") {
+                    //already callable as a promise
+                    return _qz.security.certHandler();
+                } else {
+                    //turn into a promise
+                    return _qz.tools.promise(_qz.security.certHandler);
+                }
+            },
+
+            /** Function used to create promise resolver when requiring signed calls. */
+            signatureFactory: function() { return function(resolve) { resolve(); } },
+            /** Called to create new promise (using {@link _qz.security.signatureFactory}) for signed calls. */
+            callSign: function(toSign) {
+                if (_qz.security.signatureFactory.constructor.name === "AsyncFunction") {
+                    //use directly
+                    return _qz.security.signatureFactory(toSign);
+                } else {
+                    //use in a promise
+                    return _qz.tools.promise(_qz.security.signatureFactory(toSign));
+                }
+            },
+
+            /** Signing algorithm used on signatures */
+            signAlgorithm: "SHA1",
+
+            rejectOnCertFailure: false,
+
+            needsSigned: function(callName) {
+                const undialoged = [
+                    "printers.getStatus",
+                    "printers.stopListening",
+                    "usb.isClaimed",
+                    "usb.closeStream",
+                    "usb.releaseDevice",
+                    "hid.stopListening",
+                    "hid.isClaimed",
+                    "hid.closeStream",
+                    "hid.releaseDevice",
+                    "file.stopListening",
+                    "getVersion"
+                ];
+
+                return callName != null && undialoged.indexOf(callName) === -1;
+            }
+        },
+
+
+        tools: {
+            /** Create a new promise */
+            promise: function(resolver) {
+                //prefer global object for historical purposes
+                if (typeof RSVP !== 'undefined') {
+                    return new RSVP.Promise(resolver);
+                } else if (typeof Promise !== 'undefined') {
+                    return new Promise(resolver);
+                } else {
+                    _qz.log.error("Promise/A+ support is required.  See qz.api.setPromiseType(...)");
+                }
+            },
+
+            /** Stub for rejecting with an Error from withing a Promise */
+            reject: function(error) {
+                return _qz.tools.promise(function(resolve, reject) {
+                    reject(error);
+                });
+            },
+
+            stringify: function(object) {
+                //old versions of prototype affect stringify
+                var pjson = Array.prototype.toJSON;
+                delete Array.prototype.toJSON;
+
+                function skipKeys(key, value) {
+                    if (key === "promise") {
+                        return undefined;
+                    }
+
+                    return value;
+                }
+
+                var result = JSON.stringify(object, skipKeys);
+
+                if (pjson) {
+                    Array.prototype.toJSON = pjson;
+                }
+
+                return result;
+            },
+
+            hash: function(data) {
+                //prefer global object for historical purposes
+                if (typeof Sha256 !== 'undefined') {
+                    return Sha256.hash(data);
+                } else {
+                    return _qz.SHA.hash(data);
+                }
+            },
+
+            ws: typeof WebSocket !== 'undefined' ? WebSocket : null,
+
+            /**
+             * Normalize a host string by appending a "surf"" tld if necessary.
+             * Ignored if "usingSurf" is set to false
+             */
+            appendSurf: function(host) {
+                return _qz.tools.isQualified(host) ? host : host + "." + _qz.websocket.connectConfig.surfDomain;
+            },
+
+            /**
+             * Returns if the provided hostname is fully-qualified either as a domain
+             * name or as an ip address. Used to determine whether to append a "surf" suffix
+             * (e.g. ".qz.surf") at the end.
+             */
+            isQualified: function(host) {
+                return (host.toLowerCase() === 'localhost') // essentially qualified
+                    || host.indexOf('.') !== -1 // ipv4
+                    || host.indexOf(':') !== -1; // ipv6
+            },
+
+            absolute: function(loc) {
+                if (typeof window !== 'undefined' && typeof document.createElement === 'function') {
+                    var a = document.createElement("a");
+                    a.href = loc;
+                    return a.href;
+                } else if (typeof exports === 'object') {
+                    //node.js
+                    require('path').resolve(loc);
+                }
+                return loc;
+            },
+
+            relative: function(data) {
+                for(var i = 0; i < data.length; i++) {
+                    if (data[i].constructor === Object) {
+                        var absolute = false;
+
+                        if (data[i].data && data[i].data.search && data[i].data.search(/data:image\/\w+;base64,/) === 0) {
+                            //upgrade from old base64 behavior
+                            data[i].flavor = "base64";
+                            data[i].data = data[i].data.replace(/^data:image\/\w+;base64,/, "");
+                        } else if (data[i].flavor) {
+                            //if flavor is known, we can directly check for absolute flavor types
+                            if (["FILE", "XML"].indexOf(data[i].flavor.toUpperCase()) > -1) {
+                                absolute = true;
+                            }
+                        } else if (data[i].format && ["HTML", "IMAGE", "PDF", "FILE", "XML"].indexOf(data[i].format.toUpperCase()) > -1) {
+                            //if flavor is not known, all valid pixel formats default to file flavor
+                            //previous v2.0 data also used format as what is now flavor, so we check for those values here too
+                            absolute = true;
+                        } else if (data[i].type && ((["PIXEL", "IMAGE", "PDF"].indexOf(data[i].type.toUpperCase()) > -1 && !data[i].format)
+                            || (["HTML", "PDF"].indexOf(data[i].type.toUpperCase()) > -1 && (!data[i].format || data[i].format.toUpperCase() === "FILE")))) {
+                            //if all we know is pixel type, then it is image's file flavor
+                            //previous v2.0 data also used type as what is now format, so we check for those value here too
+                            absolute = true;
+                        }
+
+                        if (absolute) {
+                            //change relative links to absolute
+                            data[i].data = _qz.tools.absolute(data[i].data);
+                        }
+                        if (data[i].options && typeof data[i].options.overlay === 'string') {
+                            data[i].options.overlay = _qz.tools.absolute(data[i].options.overlay);
+                        }
+                    }
+                }
+            },
+
+            /** Performs deep copy to target from remaining params */
+            extend: function(target) {
+                //special case when reassigning properties as objects in a deep copy
+                if (typeof target !== 'object') {
+                    target = {};
+                }
+
+                for(var i = 1; i < arguments.length; i++) {
+                    var source = arguments[i];
+                    if (!source) { continue; }
+
+                    for(var key in source) {
+                        if (source.hasOwnProperty(key)) {
+                            if (target === source[key]) { continue; }
+
+                            if (source[key] && source[key].constructor && source[key].constructor === Object) {
+                                var clone;
+                                if (Array.isArray(source[key])) {
+                                    clone = target[key] || [];
+                                } else {
+                                    clone = target[key] || {};
+                                }
+
+                                target[key] = _qz.tools.extend(clone, source[key]);
+                            } else if (source[key] !== undefined) {
+                                target[key] = source[key];
+                            }
+                        }
+                    }
+                }
+
+                return target;
+            },
+
+            versionCompare: function(major, minor, patch, build) {
+                if (_qz.tools.assertActive()) {
+                    var semver = _qz.websocket.connection.semver;
+                    if(Array.isArray(semver)) {
+                        if (major != undefined && semver.length > 0 && semver[0] != major) {
+                            return semver[0] - major;
+                        }
+                        if (minor != undefined && semver.length > 1 && semver[1] != minor) {
+                            return semver[1] - minor;
+                        }
+                        if (patch != undefined && semver.length > 2 && semver[2] != patch) {
+                            return semver[2] - patch;
+                        }
+                        if (build != undefined && semver.length > 3 && semver[3] != build) {
+                            return Number.isInteger(semver[3]) && Number.isInteger(build) ? semver[3] - build : semver[3].toString().localeCompare(build.toString());
+                        }
+                    }
+                    return 0;
+                }
+            },
+
+            isVersion: function(major, minor, patch, build) {
+                return _qz.tools.versionCompare(major, minor, patch, build) == 0;
+            },
+
+            isActive: function() {
+                return !_qz.websocket.shutdown && _qz.websocket.connection != null
+                    && (_qz.websocket.connection.readyState === _qz.tools.ws.OPEN
+                        || _qz.websocket.connection.readyState === _qz.tools.ws.CONNECTING);
+            },
+
+            assertActive: function() {
+                if (_qz.tools.isActive()) {
+                    return true;
+                }
+                // Promise won't reject on throw; yet better than 'undefined'
+                throw new Error("A connection to " + _qz.TITLE + " has not been established yet");
+            },
+
+            uint8ArrayToHex: function(uint8) {
+                return Array.from(uint8)
+                    .map(function(i) { return i.toString(16).padStart(2, '0'); })
+                    .join('');
+            },
+
+            uint8ArrayToBase64: function(uint8) {
+                /**
+                 * Adapted from Egor Nepomnyaschih's code under MIT Licence (C) 2020
+                 * see https://gist.github.com/enepomnyaschih/72c423f727d395eeaa09697058238727
+                 */
+                var map = [
+                    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U",
+                    "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p",
+                    "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "+", "/"
+                ];
+
+                var result = '', i, l = uint8.length;
+                for (i = 2; i < l; i += 3) {
+                    result += map[uint8[i - 2] >> 2];
+                    result += map[((uint8[i - 2] & 0x03) << 4) | (uint8[i - 1] >> 4)];
+                    result += map[((uint8[i - 1] & 0x0F) << 2) | (uint8[i] >> 6)];
+                    result += map[uint8[i] & 0x3F];
+                }
+                if (i === l + 1) { // 1 octet yet to write
+                    result += map[uint8[i - 2] >> 2];
+                    result += map[(uint8[i - 2] & 0x03) << 4];
+                    result += "==";
+                }
+                if (i === l) { // 2 octets yet to write
+                    result += map[uint8[i - 2] >> 2];
+                    result += map[((uint8[i - 2] & 0x03) << 4) | (uint8[i - 1] >> 4)];
+                    result += map[(uint8[i - 1] & 0x0F) << 2];
+                    result += "=";
+                }
+                return result;
+            },
+        },
+
+        compatible: {
+            /** Converts message format to a previous version's */
+            data: function(printData) {
+                // special handling for Uint8Array
+                for(var i = 0; i < printData.length; i++) {
+                    if (printData[i].constructor === Object && printData[i].data instanceof Uint8Array) {
+                        if (printData[i].flavor) {
+                            var flavor = printData[i].flavor.toString().toUpperCase();
+                            switch(flavor) {
+                                case 'BASE64':
+                                    printData[i].data = _qz.tools.uint8ArrayToBase64(printData[i].data);
+                                    break;
+                                case 'HEX':
+                                    printData[i].data = _qz.tools.uint8ArrayToHex(printData[i].data);
+                                    break;
+                                default:
+                                    throw new Error("Uint8Array conversion to '" + flavor + "' is not supported.");
+                            }
+                        }
+                    }
+                }
+
+                if(_qz.tools.versionCompare(2, 2, 4) < 0) {
+                    for(var i = 0; i < printData.length; i++) {
+                        if (printData[i].constructor === Object) {
+                            // dotDensity: "double-legacy|single-legacy" since 2.2.4.  Fallback to "double|single"
+                            if (printData[i].options && typeof printData[i].options.dotDensity === 'string') {
+                                printData[i].options.dotDensity = printData[i].options.dotDensity.toLowerCase().replace("-legacy", "");
+                            }
+                        }
+                    }
+                }
+
+                if (_qz.tools.isVersion(2, 0)) {
+                    /*
+                    2.0.x conversion
+                    -----
+                    type=pixel -> use format as 2.0 type (unless 'command' format, which forces 2.0 'raw' type)
+                    type=raw -> 2.0 type has to be 'raw'
+                                if format is 'image' -> force 2.0 'image' format, ignore everything else (unsupported in 2.0)
+
+                     flavor translates straight to 2.0 format (unless forced to 'raw'/'image')
+                     */
+                    _qz.log.trace("Converting print data to v2.0 for " + _qz.websocket.connection.version);
+                    for(var i = 0; i < printData.length; i++) {
+                        if (printData[i].constructor === Object) {
+                            if (printData[i].type && printData[i].type.toUpperCase() === "RAW" && printData[i].format && printData[i].format.toUpperCase() === "IMAGE") {
+                                if (printData[i].flavor && printData[i].flavor.toUpperCase() === "BASE64") {
+                                    //special case for raw base64 images
+                                    printData[i].data = "data:image/compat;base64," + printData[i].data;
+                                }
+                                printData[i].flavor = "IMAGE"; //forces 'image' format when shifting for conversion
+                            }
+                            if ((printData[i].type && printData[i].type.toUpperCase() === "RAW") || (printData[i].format && printData[i].format.toUpperCase() === "COMMAND")) {
+                                printData[i].format = "RAW"; //forces 'raw' type when shifting for conversion
+                            }
+
+                            printData[i].type = printData[i].format;
+                            printData[i].format = printData[i].flavor;
+                            delete printData[i].flavor;
+                        }
+                    }
+                }
+            },
+
+            /* Converts config defaults to match previous version */
+            config: function(config, dirty) {
+                if (_qz.tools.isVersion(2, 0)) {
+                    if (!dirty.rasterize) {
+                        config.rasterize = true;
+                    }
+                }
+                if(_qz.tools.versionCompare(2, 2) < 0) {
+                    if(config.forceRaw !== 'undefined') {
+                        config.altPrinting = config.forceRaw;
+                        delete config.forceRaw;
+                    }
+                }
+                if(_qz.tools.versionCompare(2, 1, 2, 11) < 0) {
+                    if(config.spool) {
+                        if(config.spool.size) {
+                            config.perSpool = config.spool.size;
+                            delete config.spool.size;
+                        }
+                        if(config.spool.end) {
+                            config.endOfDoc = config.spool.end;
+                            delete config.spool.end;
+                        }
+                        delete config.spool;
+                    }
+                }
+                return config;
+            },
+
+            /** Compat wrapper with previous version **/
+            networking: function(hostname, port, signature, signingTimestamp, mappingCallback) {
+                // Use 2.0
+                if (_qz.tools.isVersion(2, 0)) {
+                    return _qz.tools.promise(function(resolve, reject) {
+                        _qz.websocket.dataPromise('websocket.getNetworkInfo', {
+                            hostname: hostname,
+                            port: port
+                        }, signature, signingTimestamp).then(function(data) {
+                            if (typeof mappingCallback !== 'undefined') {
+                                resolve(mappingCallback(data));
+                            } else {
+                                resolve(data);
+                            }
+                        }, reject);
+                    });
+                }
+                // Wrap 2.1
+                return _qz.tools.promise(function(resolve, reject) {
+                    _qz.websocket.dataPromise('networking.device', {
+                        hostname: hostname,
+                        port: port
+                    }, signature, signingTimestamp).then(function(data) {
+                        resolve({ ipAddress: data.ip, macAddress: data.mac });
+                    }, reject);
+                });
+            },
+
+            /** Check if QZ version supports chosen algorithm */
+            algorithm: function(quiet) {
+                //if not connected yet we will assume compatibility exists for the time being
+                //check semver to guard race condition for pending connections
+                if (_qz.tools.isActive() && _qz.websocket.connection.semver) {
+                    if (_qz.tools.isVersion(2, 0)) {
+                        if (!quiet) {
+                            _qz.log.warn("Connected to an older version of " + _qz.TITLE + ", alternate signature algorithms are not supported");
+                        }
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+        },
+
+        /**
+         * Adapted from Chris Veness's code under MIT Licence (C) 2002
+         * see http://www.movable-type.co.uk/scripts/sha256.html
+         */
+        SHA: {
+            //@formatter:off - keep this block compact
+            hash: function(msg) {
+                // add trailing '1' bit (+ 0's padding) to string [§5.1.1]
+                msg = _qz.SHA._utf8Encode(msg) + String.fromCharCode(0x80);
+
+                // constants [§4.2.2]
+                var K = [
+                    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+                    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+                    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+                    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+                    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+                    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+                    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+                    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+                ];
+                // initial hash value [§5.3.1]
+                var H = [ 0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19 ];
+
+                // convert string msg into 512-bit/16-integer blocks arrays of ints [§5.2.1]
+                var l = msg.length / 4 + 2; // length (in 32-bit integers) of msg + ‘1’ + appended length
+                var N = Math.ceil(l / 16);  // number of 16-integer-blocks required to hold 'l' ints
+                var M = new Array(N);
+
+                for(var i = 0; i < N; i++) {
+                    M[i] = new Array(16);
+                    for(var j = 0; j < 16; j++) {  // encode 4 chars per integer, big-endian encoding
+                        M[i][j] = (msg.charCodeAt(i * 64 + j * 4) << 24) | (msg.charCodeAt(i * 64 + j * 4 + 1) << 16) |
+                            (msg.charCodeAt(i * 64 + j * 4 + 2) << 8) | (msg.charCodeAt(i * 64 + j * 4 + 3));
+                    } // note running off the end of msg is ok 'cos bitwise ops on NaN return 0
+                }
+                // add length (in bits) into final pair of 32-bit integers (big-endian) [§5.1.1]
+                // note: most significant word would be (len-1)*8 >>> 32, but since JS converts
+                // bitwise-op args to 32 bits, we need to simulate this by arithmetic operators
+                M[N-1][14] = ((msg.length - 1) * 8) / Math.pow(2, 32);
+                M[N-1][14] = Math.floor(M[N-1][14]);
+                M[N-1][15] = ((msg.length - 1) * 8) & 0xffffffff;
+
+                // HASH COMPUTATION [§6.1.2]
+                var W = new Array(64); var a, b, c, d, e, f, g, h;
+                for(var i = 0; i < N; i++) {
+                    // 1 - prepare message schedule 'W'
+                    for(var t = 0; t < 16; t++) { W[t] = M[i][t]; }
+                    for(var t = 16; t < 64; t++) { W[t] = (_qz.SHA._dev1(W[t-2]) + W[t-7] + _qz.SHA._dev0(W[t-15]) + W[t-16]) & 0xffffffff; }
+                    // 2 - initialise working variables a, b, c, d, e, f, g, h with previous hash value
+                    a = H[0]; b = H[1]; c = H[2]; d = H[3]; e = H[4]; f = H[5]; g = H[6]; h = H[7];
+                    // 3 - main loop (note 'addition modulo 2^32')
+                    for(var t = 0; t < 64; t++) {
+                        var T1 = h + _qz.SHA._sig1(e) + _qz.SHA._ch(e, f, g) + K[t] + W[t];
+                        var T2 = _qz.SHA._sig0(a) + _qz.SHA._maj(a, b, c);
+                        h = g; g = f; f = e; e = (d + T1) & 0xffffffff;
+                        d = c; c = b; b = a; a = (T1 + T2) & 0xffffffff;
+                    }
+                    // 4 - compute the new intermediate hash value (note 'addition modulo 2^32')
+                    H[0] = (H[0]+a) & 0xffffffff; H[1] = (H[1]+b) & 0xffffffff; H[2] = (H[2]+c) & 0xffffffff; H[3] = (H[3]+d) & 0xffffffff;
+                    H[4] = (H[4]+e) & 0xffffffff; H[5] = (H[5]+f) & 0xffffffff; H[6] = (H[6]+g) & 0xffffffff; H[7] = (H[7]+h) & 0xffffffff;
+                }
+
+                return _qz.SHA._hexStr(H[0]) + _qz.SHA._hexStr(H[1]) + _qz.SHA._hexStr(H[2]) + _qz.SHA._hexStr(H[3]) +
+                    _qz.SHA._hexStr(H[4]) + _qz.SHA._hexStr(H[5]) + _qz.SHA._hexStr(H[6]) + _qz.SHA._hexStr(H[7]);
+            },
+
+            // Rotates right (circular right shift) value x by n positions
+            _rotr: function(n, x) { return (x >>> n) | (x << (32 - n)); },
+            // logical functions
+            _sig0: function(x) { return _qz.SHA._rotr(2, x) ^ _qz.SHA._rotr(13, x) ^ _qz.SHA._rotr(22, x); },
+            _sig1: function(x) { return _qz.SHA._rotr(6, x) ^ _qz.SHA._rotr(11, x) ^ _qz.SHA._rotr(25, x); },
+            _dev0: function(x) { return _qz.SHA._rotr(7, x) ^ _qz.SHA._rotr(18, x) ^ (x >>> 3); },
+            _dev1: function(x) { return _qz.SHA._rotr(17, x) ^ _qz.SHA._rotr(19, x) ^ (x >>> 10); },
+            _ch: function(x, y, z) { return (x & y) ^ (~x & z); },
+            _maj: function(x, y, z) { return (x & y) ^ (x & z) ^ (y & z); },
+            // note can't use toString(16) as it is implementation-dependant, and in IE returns signed numbers when used on full words
+            _hexStr: function(n) { var s = "", v; for(var i = 7; i >= 0; i--) { v = (n >>> (i * 4)) & 0xf; s += v.toString(16); } return s; },
+            // implementation of deprecated unescape() based on https://cwestblog.com/2011/05/23/escape-unescape-deprecated/ (and comments)
+            _unescape: function(str) {
+                return str.replace(/%(u[\da-f]{4}|[\da-f]{2})/gi, function(seq) {
+                    if (seq.length - 1) {
+                        return String.fromCharCode(parseInt(seq.substring(seq.length - 3 ? 2 : 1), 16))
+                    } else {
+                        var code = seq.charCodeAt(0);
+                        return code < 256 ? "%" + (0 + code.toString(16)).slice(-2).toUpperCase() : "%u" + ("000" + code.toString(16)).slice(-4).toUpperCase()
+                    }
+                });
+            },
+            _utf8Encode: function(str) {
+                return _qz.SHA._unescape(encodeURIComponent(str));
+            }
+            //@formatter:on
+        },
+    };
+
+
+///// CONFIG CLASS ////
+
+    /** Object to handle configured printer options. */
+    function Config(printer, opts) {
+
+        this.config = _qz.tools.extend({}, _qz.printing.defaultConfig); //create a copy of the default options
+        this._dirtyOpts = {}; //track which config options have changed from the defaults
+
+        /**
+         * Set the printer assigned to this config.
+         * @param {string|Object} newPrinter Name of printer. Use object type to specify printing to file or host.
+         *  @param {string} [newPrinter.name] Name of printer to send printing.
+         *  @param {string} [newPrinter.file] DEPRECATED: Name of file to send printing.
+         *  @param {string} [newPrinter.host] IP address or host name to send printing.
+         *  @param {string} [newPrinter.port] Port used by &lt;printer.host>.
+         */
+        this.setPrinter = function(newPrinter) {
+            if (typeof newPrinter === 'string') {
+                newPrinter = { name: newPrinter };
+            }
+            this.printer = newPrinter;
+        };
+
+        /**
+         *  @returns {Object} The printer currently assigned to this config.
+         */
+        this.getPrinter = function() {
+            return this.printer;
+        };
+
+        /**
+         * Alter any of the printer options currently applied to this config.
+         * @param newOpts {Object} The options to change. See <code>qz.configs.setDefaults</code> docs for available values.
+         *
+         * @see qz.configs.setDefaults
+         */
+        this.reconfigure = function(newOpts) {
+            for(var key in newOpts) {
+                if (newOpts[key] !== undefined) {
+                    this._dirtyOpts[key] = true;
+                }
+            }
+
+            _qz.tools.extend(this.config, newOpts);
+        };
+
+        /**
+         * @returns {Object} The currently applied options on this config.
+         */
+        this.getOptions = function() {
+            return _qz.compatible.config(this.config, this._dirtyOpts);
+        };
+
+        // init calls for new config object
+        this.setPrinter(printer);
+        this.reconfigure(opts);
+    }
+
+    /**
+     * Shortcut method for calling <code>qz.print</code> with a particular config.
+     * @param {Array<Object|string>} data Array of data being sent to the printer. See <code>qz.print</code> docs for available values.
+     * @param {boolean} [signature] Pre-signed signature of JSON string containing <code>call</code>, <code>params</code>, and <code>timestamp</code>.
+     * @param {number} [signingTimestamp] Required with <code>signature</code>. Timestamp used with pre-signed content.
+     *
+     * @example
+     * qz.print(myConfig, ...); // OR
+     * myConfig.print(...);
+     *
+     * @see qz.print
+     */
+    Config.prototype.print = function(data, signature, signingTimestamp) {
+        qz.print(this, data, signature, signingTimestamp);
+    };
+
+
+///// PUBLIC METHODS /////
+
+    /** @namespace qz */
+    var qz = {
+
+        /**
+         * Calls related specifically to the web socket connection.
+         * @namespace qz.websocket
+         */
+        websocket: {
+            /**
+             * Check connection status. Active connection is necessary for other calls to run.
+             *
+             * @returns {boolean} If there is an active connection with QZ Tray.
+             *
+             * @see connect
+             *
+             * @memberof  qz.websocket
+             */
+            isActive: function() {
+                return _qz.tools.isActive();
+            },
+
+            /**
+             * Call to setup connection with QZ Tray on user's system.
+             *
+             * @param {Object} [options] Configuration options for the web socket connection.
+             *  @param {string|Array<string>} [options.host=['localhost', 'localhost.qz.io']] Host running the QZ Tray software.
+             *  @param {Object} [options.port] Config options for ports to cycle.
+             *   @param {Array<number>} [options.port.secure=[8181, 8282, 8383, 8484]] Array of secure (WSS) ports to try
+             *   @param {Array<number>} [options.port.insecure=[8182, 8283, 8384, 8485]] Array of insecure (WS) ports to try
+             *  @param {boolean} [options.usingSecure=true] If the web socket should try to use secure ports for connecting.
+             *  @param {number} [options.keepAlive=60] Seconds between keep-alive pings to keep connection open. Set to 0 to disable.
+             *  @param {number} [options.retries=0] Number of times to reconnect before failing.
+             *  @param {number} [options.delay=0] Seconds before firing a connection.  Ignored if <code>options.retries</code> is 0.
+             *
+             * @returns {Promise<null|Error>}
+             *
+             * @memberof qz.websocket
+             */
+            connect: function(options) {
+                return _qz.tools.promise(function(resolve, reject) {
+                    if (_qz.websocket.connection) {
+                        const state = _qz.websocket.connection.readyState;
+
+                        if (state === _qz.tools.ws.OPEN) {
+                            reject(new Error("An open connection with " + _qz.TITLE + " already exists"));
+                            return;
+                        } else if (state === _qz.tools.ws.CONNECTING) {
+                            reject(new Error("The current connection attempt has not returned yet"));
+                            return;
+                        } else if (state === _qz.tools.ws.CLOSING) {
+                            reject(new Error("Waiting for previous disconnect request to complete"));
+                            return;
+                        }
+                    }
+
+                    if (!_qz.tools.ws) {
+                        reject(new Error("WebSocket not supported by this browser"));
+                        return;
+                    } else if (!_qz.tools.ws.CLOSED || _qz.tools.ws.CLOSED == 2) {
+                        reject(new Error("Unsupported WebSocket version detected: HyBi-00/Hixie-76"));
+                        return;
+                    }
+
+                    //ensure some form of options exists for value checks
+                    if (options == undefined) { options = {}; }
+
+                    //disable secure ports if page is not secure
+                    if (typeof location === 'undefined' || location.protocol !== 'https:') {
+                        //respect forcing secure ports if it is defined, otherwise disable
+                        if (typeof options.usingSecure === 'undefined') {
+                            _qz.log.trace("Disabling secure ports due to insecure page");
+                            options.usingSecure = false;
+                        }
+                    }
+
+                    //ensure any hosts are passed to internals as an array
+                    if (typeof options.host !== 'undefined' && !Array.isArray(options.host)) {
+                        options.host = [options.host];
+                        //append "surf" domain if enabled
+                        if(_qz.websocket.connectConfig.usingSurf) {
+                            for(var i = 0; i < options.host.length; i++) {
+                                options.host[i] = _qz.tools.appendSurf(options.host[i]);
+                            }
+                        }
+                    }
+
+                    _qz.websocket.shutdown = false; //reset state for new connection attempt
+                    var attempt = function(count) {
+                        var tried = false;
+                        var nextAttempt = function() {
+                            if (!tried) {
+                                tried = true;
+
+                                if (options && count < options.retries) {
+                                    attempt(count + 1);
+                                } else {
+                                    _qz.websocket.connection = null;
+                                    reject.apply(null, arguments);
+                                }
+                            }
+                        };
+
+                        var delayed = function() {
+                            var config = _qz.tools.extend({}, _qz.websocket.connectConfig, options);
+                            _qz.websocket.setup.findConnection(config, resolve, nextAttempt)
+                        };
+                        if (count == 0) {
+                            delayed(); // only retries will be called with a delay
+                        } else {
+                            setTimeout(delayed, options.delay * 1000);
+                        }
+                    };
+
+                    attempt(0);
+                });
+            },
+
+            /**
+             * Stop any active connection with QZ Tray.
+             *
+             * @returns {Promise<null|Error>}
+             *
+             * @memberof qz.websocket
+             */
+            disconnect: function() {
+                return _qz.tools.promise(function(resolve, reject) {
+                    if (_qz.websocket.connection != null) {
+                        if (_qz.tools.isActive()) {
+                            // handles closing both 'connecting' and 'connected' states
+                            _qz.websocket.shutdown = true;
+                            _qz.websocket.connection.promise = { resolve: resolve, reject: reject };
+                            _qz.websocket.connection.close();
+                        } else {
+                            reject(new Error("Current connection is still closing"));
+                        }
+                    } else {
+                        reject(new Error("No open connection with " + _qz.TITLE));
+                    }
+                });
+            },
+
+            /**
+             * List of functions called for any connections errors outside of an API call.<p/>
+             * Also called if {@link websocket#connect} fails to connect.
+             *
+             * @param {Function|Array<Function>} calls Single or array of <code>Function({Event} event)</code> calls.
+             *
+             * @memberof qz.websocket
+             */
+            setErrorCallbacks: function(calls) {
+                _qz.websocket.errorCallbacks = calls;
+            },
+
+            /**
+             * List of functions called for any connection closing event outside of an API call.<p/>
+             * Also called when {@link websocket#disconnect} is called.
+             *
+             * @param {Function|Array<Function>} calls Single or array of <code>Function({Event} event)</code> calls.
+             *
+             * @memberof qz.websocket
+             */
+            setClosedCallbacks: function(calls) {
+                _qz.websocket.closedCallbacks = calls;
+            },
+
+            /**
+             * Whether to append the "surf" domain (e.g. "qz.surf") to the end of non-qualified hosts (except "localhost")
+             *
+             * @param {boolean} usingSurf=true Toggles automatic "surf" domain appending
+             * @since 2.2.6
+             *
+             * @memberof qz.websocket
+             */
+            setUsingSurf: function(usingSurf) {
+                _qz.websocket.connectConfig.usingSurf = usingSurf;
+            },
+
+            /**
+             * The domain to automagically append to non-qualified hosts, such as "qz.surf", or "example.com"
+             *
+             * @param {string} surfDomain="qz.surf" The domain to append to non-qualified hosts.
+             * @since 2.2.6
+             *
+             * @memberof qz.websocket
+             */
+            setSurfDomain: function(surfDomain) {
+                if (surfDomain.indexOf('.') === 0) {
+                    surfDomain = surfDomain.substring(1);
+                }
+                _qz.websocket.connectConfig.surfDomain = surfDomain;
+            },
+
+            /**
+             * @deprecated Since 2.1.0.  Please use qz.networking.device() instead
+             *
+             * @param {string} [hostname] Hostname to try to connect to when determining network interfaces, defaults to "google.com"
+             * @param {number} [port] Port to use with custom hostname, defaults to 443
+             * @param {string} [signature] Pre-signed signature of hashed JSON string containing <code>call='websocket.getNetworkInfo'</code>, <code>params</code> object, and <code>timestamp</code>.
+             * @param {number} [signingTimestamp] Required with <code>signature</code>. Timestamp used with pre-signed content.
+             *
+             * @returns {Promise<Object<{ipAddress: string, macAddress: string}>|Error>} Connected system's network information.
+             *
+             * @memberof qz.websocket
+             */
+            getNetworkInfo: _qz.compatible.networking,
+
+            /**
+             * @returns {Object<{socket: String, host: String, port: Number}>} Details of active websocket connection
+             *
+             * @memberof qz.websocket
+             */
+            getConnectionInfo: function() {
+                if (_qz.tools.assertActive()) {
+                    var url = _qz.websocket.connection.url.split(/[:\/]+/g);
+                    return { socket: url[0], host: url[1], port: +url[2] };
+                }
+            }
+        },
+
+
+        /**
+         * Calls related to getting printer information from the connection.
+         * @namespace qz.printers
+         */
+        printers: {
+            /**
+             * @param {string} [signature] Pre-signed signature of hashed JSON string containing <code>call='printers.getDefault</code>, <code>params</code>, and <code>timestamp</code>.
+             * @param {number} [signingTimestamp] Required with <code>signature</code>. Timestamp used with pre-signed content.
+             *
+             * @returns {Promise<string|Error>} Name of the connected system's default printer.
+             *
+             * @memberof qz.printers
+             */
+            getDefault: function(signature, signingTimestamp) {
+                return _qz.websocket.dataPromise('printers.getDefault', null, signature, signingTimestamp);
+            },
+
+            /**
+             * @param {string} [query] Search for a specific printer. All printers are returned if not provided.
+             * @param {string} [signature] Pre-signed signature of hashed JSON string containing <code>call='printers.find'</code>, <code>params</code>, and <code>timestamp</code>.
+             * @param {number} [signingTimestamp] Required with <code>signature</code>. Timestamp used with pre-signed content.
+             *
+             * @returns {Promise<Array<string>|string|Error>} The matched printer name if <code>query</code> is provided.
+             *                                                Otherwise an array of printer names found on the connected system.
+             *
+             * @memberof qz.printers
+             */
+            find: function(query, signature, signingTimestamp) {
+                return _qz.websocket.dataPromise('printers.find', { query: query }, signature, signingTimestamp);
+            },
+
+            /**
+             * Provides a list, with additional information, for each printer available to QZ.
+             *
+             * @returns {Promise<Array<Object>|Object|Error>}
+             *
+             * @memberof qz.printers
+             */
+            details: function() {
+                return _qz.websocket.dataPromise('printers.detail');
+            },
+
+            /**
+             * Start listening for printer status events, such as paper_jam events.
+             * Reported under the ACTION type in the streamEvent on callbacks.
+             *
+             * @returns {Promise<null|Error>}
+             * @since 2.1.0
+             *
+             * @see qz.printers.setPrinterCallbacks
+             *
+             * @param {null|string|Array<string>} printers Printer or list of printers to listen to, null listens to all.
+             * @param {Object|null} [options] Printer listener options
+             *  @param {null|boolean} [options.jobData=false] Flag indicating if raw spool file content should be return as well as status information (Windows only)
+             *  @param {null|number} [options.maxJobData=-1] Maximum number of bytes to returns for raw spooled file content (Windows only)
+             *  @param {null|string} [options.flavor="plain"] Flavor of data format returned. Valid flavors are <code>[base64 | hex | plain*]</code> (Windows only)
+             *
+             * @memberof qz.printers
+             */
+            startListening: function(printers, options) {
+                if (!Array.isArray(printers)) {
+                    printers = [printers];
+                }
+                var params = {
+                    printerNames: printers
+                };
+                if (options && options.jobData == true) params.jobData = true;
+                if (options && options.maxJobData) params.maxJobData = options.maxJobData;
+                if (options && options.flavor) params.flavor = options.flavor;
+                return _qz.websocket.dataPromise('printers.startListening', params);
+            },
+
+            /**
+             * Clear the queue of a specified printer or printers. Does not delete retained jobs.
+             *
+             * @param {string|Object} [options] Name of printer to clear
+             *  @param {string} [options.printerName] Name of printer to clear
+             *  @param {number} [options.jobId] Cancel a job of a specific JobId instead of canceling all. Must include a printerName.
+             *
+             * @returns {Promise<null|Error>}
+             * @since 2.2.4
+             *
+             * @memberof qz.printers
+             */
+            clearQueue: function(options) {
+                if (typeof options !== 'object') {
+                    options = {
+                        printerName: options
+                    };
+                }
+                return _qz.websocket.dataPromise('printers.clearQueue', options);
+            },
+
+            /**
+             * Stop listening for printer status actions.
+             *
+             * @returns {Promise<null|Error>}
+             * @since 2.1.0
+             *
+             * @see qz.printers.setPrinterCallbacks
+             *
+             * @memberof qz.printers
+             */
+            stopListening: function() {
+                return _qz.websocket.dataPromise('printers.stopListening');
+            },
+
+            /**
+             * Retrieve current printer status from any active listeners.
+             *
+             * @returns {Promise<null|Error>}
+             * @since 2.1.0
+             *
+             * @see qz.printers.startListening
+             *
+             * @memberof qz.printers
+             */
+            getStatus: function() {
+                return _qz.websocket.dataPromise('printers.getStatus');
+            },
+
+            /**
+             * List of functions called for any printer status change.
+             * Event data will contain <code>{string} printerName</code> and <code>{string} status</code> for all types.
+             *  For RECEIVE types, <code>{Array} output</code> (in hexadecimal format).
+             *  For ERROR types, <code>{string} exception</code>.
+             *  For ACTION types, <code>{string} actionType</code>.
+             *
+             * @param {Function|Array<Function>} calls Single or array of <code>Function({Object} eventData)</code> calls.
+             * @since 2.1.0
+             *
+             * @memberof qz.printers
+             */
+            setPrinterCallbacks: function(calls) {
+                _qz.printers.printerCallbacks = calls;
+            }
+        },
+
+        /**
+         * Calls related to setting up new printer configurations.
+         * @namespace qz.configs
+         */
+        configs: {
+            /**
+             * Default options used by new configs if not overridden.
+             * Setting a value to NULL will use the printer's default options.
+             * Updating these will not update the options on any created config.
+             *
+             * @param {Object} options Default options used by printer configs if not overridden.
+             *
+             *  @param {Object} [options.bounds=null] Bounding box rectangle.
+             *   @param {number} [options.bounds.x=0] Distance from left for bounding box starting corner
+             *   @param {number} [options.bounds.y=0] Distance from top for bounding box starting corner
+             *   @param {number} [options.bounds.width=0] Width of bounding box
+             *   @param {number} [options.bounds.height=0] Height of bounding box
+             *  @param {string} [options.colorType='color'] Valid values <code>[color | grayscale | blackwhite | default]</code>
+             *  @param {number} [options.copies=1] Number of copies to be printed.
+             *  @param {number|Array<number>|Object|Array<Object>|string} [options.density=0] Pixel density (DPI, DPMM, or DPCM depending on <code>[options.units]</code>).
+             *      If provided as an array, uses the first supported density found (or the first entry if none found).
+             *      If provided as a string, valid values are <code>[best | draft]</code>, corresponding to highest or lowest reported density respectively.
+             *  @param {number} [options.density.cross=0] Asymmetric pixel density for the cross feed direction.
+             *  @param {number} [options.density.feed=0] Asymmetric pixel density for the feed direction.
+             *  @param {boolean|string} [options.duplex=false] Double sided printing, Can specify duplex style by passing a string value: <code>[one-sided | duplex | long-edge | tumble | short-edge]</code>
+             *  @param {number} [options.fallbackDensity=null] Value used when default density value cannot be read, or in cases where reported as "Normal" by the driver, (in DPI, DPMM, or DPCM depending on <code>[options.units]</code>).
+             *  @param {string} [options.interpolation='bicubic'] Valid values <code>[bicubic | bilinear | nearest-neighbor]</code>. Controls how images are handled when resized.
+             *  @param {string} [options.jobName=null] Name to display in print queue.
+             *  @param {boolean} [options.legacy=false] If legacy style printing should be used.
+             *  @param {Object|number} [options.margins=0] If just a number is provided, it is used as the margin for all sides.
+             *   @param {number} [options.margins.top=0]
+             *   @param {number} [options.margins.right=0]
+             *   @param {number} [options.margins.bottom=0]
+             *   @param {number} [options.margins.left=0]
+             *  @param {string} [options.orientation=null] Valid values <code>[portrait | landscape | reverse-landscape | null]</code>.
+             *                                             If set to <code>null</code>, orientation will be determined automatically.
+             *  @param {number} [options.paperThickness=null]
+             *  @param {string|number} [options.printerTray=null] Printer tray to pull from. The number N assumes string equivalent of 'Tray N'. Uses printer default if NULL.
+             *  @param {boolean} [options.rasterize=false] Whether documents should be rasterized before printing.
+             *                                             Specifying <code>[options.density]</code> for PDF print formats will set this to <code>true</code>.
+             *  @param {number} [options.rotation=0] Image rotation in degrees.
+             *  @param {boolean} [options.scaleContent=true] Scales print content to page size, keeping ratio.
+             *  @param {Object} [options.size=null] Paper size.
+             *   @param {number} [options.size.width=null] Page width.
+             *   @param {number} [options.size.height=null] Page height.
+             *   @param {boolean} [options.size.custom=false] If the provided page size is not included in the driver.
+             *  @param {string} [options.units='in'] Page units, applies to paper size, margins, and density. Valid value <code>[in | cm | mm]</code>
+             *
+             *  @param {boolean} [options.forceRaw=false] Print the specified raw data using direct method, skipping the driver.  Not yet supported on Windows.
+             *  @param {string|Object} [options.encoding=null] Character set for commands. Can be provided as an object for converting encoding types for RAW types.
+             *   @param {string} [options.encoding.from] If this encoding type is provided, RAW type commands will be parsed from this for the purpose of being converted to the <code>encoding.to</code> value.
+             *   @param {string} [options.encoding.to] Encoding RAW type commands will be converted into. If <Code>encoding.from</code> is not provided, this will be treated as if a string was passed for encoding.
+             *  @param {string} [options.endOfDoc=null] DEPRECATED Raw only: Character(s) denoting end of a page to control spooling.
+             *  @param {number} [options.perSpool=1] DEPRECATED: Raw only: Number of pages per spool.
+             *  @param {boolean} [options.retainTemp=false] Retain any temporary files used.  Ignored unless <code>forceRaw</code> <code>true</code>.
+             *  @param {Object} [options.spool=null] Advanced spooling options.
+             *   @param {number} [options.spool.size=null] Number of pages per spool.  Default is no limit.  If <code>spool.end</code> is provided, defaults to <code>1</code>
+             *   @param {string} [options.spool.end=null] Raw only: Character(s) denoting end of a page to control spooling.
+             *
+             * @memberof qz.configs
+             */
+            setDefaults: function(options) {
+                _qz.tools.extend(_qz.printing.defaultConfig, options);
+            },
+
+            /**
+             * Creates new printer config to be used in printing.
+             *
+             * @param {string|object} printer Name of printer. Use object type to specify printing to file or host.
+             *  @param {string} [printer.name] Name of printer to send printing.
+             *  @param {string} [printer.file] Name of file to send printing.
+             *  @param {string} [printer.host] IP address or host name to send printing.
+             *  @param {string} [printer.port] Port used by &lt;printer.host>.
+             * @param {Object} [options] Override any of the default options for this config only.
+             *
+             * @returns {Config} The new config.
+             *
+             * @see configs.setDefaults
+             *
+             * @memberof qz.configs
+             */
+            create: function(printer, options) {
+                return new Config(printer, options);
+            }
+        },
+
+
+        /**
+         * Send data to selected config for printing.
+         * The promise for this method will resolve when the document has been sent to the printer. Actual printing may not be complete.
+         * <p/>
+         * Optionally, print requests can be pre-signed:
+         * Signed content consists of a JSON object string containing no spacing,
+         * following the format of the "call" and "params" keys in the API call, with the addition of a "timestamp" key in milliseconds
+         * ex. <code>'{"call":"<callName>","params":{...},"timestamp":1450000000}'</code>
+         *
+         * @param {Object<Config>|Array<Object<Config>>} configs Previously created config object or objects.
+         * @param {Array<Object|string>|Array<Array<Object|string>>} data Array of data being sent to the printer.<br/>
+         *      String values are interpreted as <code>{type: 'raw', format: 'command', flavor: 'plain', data: &lt;string>}</code>.
+         *  @param {string} data.data
+         *  @param {string} data.type Printing type. Valid types are <code>[pixel | raw*]</code>. *Default
+         *  @param {string} data.format Format of data type used. *Default per type<p/>
+         *      For <code>[pixel]</code> types, valid formats are <code>[html | image* | pdf]</code>.<p/>
+         *      For <code>[raw]</code> types, valid formats are <code>[command* | html | image | pdf]</code>.
+         *  @param {string} data.flavor Flavor of data format used. *Default per format<p/>
+         *      For <code>[command]</code> formats, valid flavors are <code>[base64 | file | hex | plain* | xml]</code>.<p/>
+         *      For <code>[html]</code> formats, valid flavors are <code>[file* | plain]</code>.<p/>
+         *      For <code>[image]</code> formats, valid flavors are <code>[base64 | file*]</code>.<p/>
+         *      For <code>[pdf]</code> formats, valid flavors are <code>[base64 | file*]</code>.
+         *  @param {Object} [data.options]
+         *   @param {string} [data.options.language] Required with <code>[raw]</code> type + <code>[html|image|pdf]</code> format. Printer language.
+         *   @param {string} [data.options.quantization="alpha"] Optional with <code>[raw]</code> type + <code>[html|image|pdf]</code> format. The "black pixel" quantization method used.  Valid values are <code>[alpha* | black | luma | dither]</code>.
+         *   @param {number} [data.options.threshold=127] Optional with <code>[raw]</code> type + <code>[html|image|pdf]</code> format. The "black pixel" threshold used for quantization.  Default is <code>127</code>.
+         *   @param {number} [data.options.x=0] Optional with <code>[raw]</code> type + <code>[html|image|pdf]</code> format for language(s) <code>[cpcl|epl]</code>. The X position of the image.
+         *   @param {number} [data.options.y=0] Optional with <code>[raw]</code> type + <code>[html|image|pdf]</code> format for language(s) <code>[cpcl|epl]</code>. The Y position of the image.
+         *   @param {string|number} [data.options.dotDensity="single"] Optional with <code>[raw]</code> type + <code>[html|image|pdf]</code> format for language(s) <code>[escpos]</code>.  Valid values are <code>[single* | double | triple | single-legacy | double-legacy]</code> or the escpos "decimal" equivalent
+         *   @param {string} [data.options.imageEncoding="esc_asterisk"] Optional with <code>[raw]</code> type + <code>[html|image|pdf]</code> format for language(s) <code>[escpos]</code> and imageEncoding(s) <code>esc_asterisk</code>.  Valid values are <code>[esc_asterisk* | gs_l | gs_v_0]</code>.
+         *   @param {number} [data.options.precision=128] Optional with <code>[raw]</code> type <code>[html|image|pdf]</code> format for language(s) <code>[evolis]</code>. Bit precision of the ribbons.
+         *   @param {boolean|string|Array<Array<number>>} [data.options.overlay=false] Optional with <code>[raw]</code> type <code>[html|image|pdf]</code> format for language(s) <code>[evolis]</code>.  Instructions for printing the "clear" overlay ribbon.
+         *       Boolean sets entire layer, string sets mask image, Array sets array of rectangles in format <code>[x1,y1,x2,y2]</code>.
+         *   @param {string} [data.options.logoId] Mandatory with <code>[raw]</code> type <code>[html|image|pdf]</code> format for language(s) <code>[pgl]</code>. Logo identifier to append for storing in the printer's memory.
+         *   @param {boolean} [data.options.igpDots=false] Optional with <code>[raw]</code> type <code>[html|image|pdf]</code> format for language(s) <code>[pgl]</code>. When set to <code>true</code> instructs printer to fallback to legacy 60x72 dpi when printing graphics
+         *   @param {string} [data.options.xmlTag] Required with <code>[xml]</code> flavor. Tag name containing base64 formatted data.
+         *   @param {number} [data.options.pageWidth] Optional with <code>[html | pdf]</code> formats. Width of the rendering.
+         *       Defaults to paper width.
+         *   @param {number} [data.options.pageHeight] Optional with <code>[html | pdf]</code> formats. Height of the rendering.
+         *       Defaults to paper height for <code>[pdf]</code>, or auto sized for <code>[html]</code>.
+         *   @param {string} [data.options.pageRanges] Optional with <code>[pdf]</code> formats. Comma-separated list of page ranges to include.
+         *   @param {boolean} [data.options.ignoreTransparency=false] Optional with <code>[pdf]</code> formats. Instructs transparent PDF elements to be ignored.
+         *       Transparent PDF elements are known to degrade performance and quality when printing.
+         *   @param {boolean} [data.options.altFontRendering=false] Optional with <code>[pdf]</code> formats. Instructs PDF to be rendered using PDFBOX 1.8 techniques.
+         *       Drastically improves low-DPI PDF print quality on Windows.
+         * @param {...*} [arguments] Additionally three more parameters can be specified:<p/>
+         *     <code>{boolean} [resumeOnError=false]</code> Whether the chain should continue printing if it hits an error on one the the prints.<p/>
+         *     <code>{string|Array<string>} [signature]</code> Pre-signed signature(s) of the JSON string for containing <code>call</code>, <code>params</code>, and <code>timestamp</code>.<p/>
+         *     <code>{number|Array<number>} [signingTimestamps]</code> Required to match with <code>signature</code>. Timestamps for each of the passed pre-signed content.
+         *
+         * @returns {Promise<null|Error>}
+         *
+         * @see qz.configs.create
+         *
+         * @memberof qz
+         */
+        print: function(configs, data) {
+            var resumeOnError = false,
+                signatures = [],
+                signaturesTimestamps = [];
+
+            //find optional parameters
+            if (arguments.length >= 3) {
+                if (typeof arguments[2] === 'boolean') {
+                    resumeOnError = arguments[2];
+
+                    if (arguments.length >= 5) {
+                        signatures = arguments[3];
+                        signaturesTimestamps = arguments[4];
+                    }
+                } else if (arguments.length >= 4) {
+                    signatures = arguments[2];
+                    signaturesTimestamps = arguments[3];
+                }
+
+                //ensure values are arrays for consistency
+                if (signatures && !Array.isArray(signatures)) { signatures = [signatures]; }
+                if (signaturesTimestamps && !Array.isArray(signaturesTimestamps)) { signaturesTimestamps = [signaturesTimestamps]; }
+            }
+
+            if (!Array.isArray(configs)) { configs = [configs]; } //single config -> array of configs
+            if (!Array.isArray(data[0])) { data = [data]; } //single data array -> array of data arrays
+
+            //clean up data formatting
+            for(var d = 0; d < data.length; d++) {
+                _qz.tools.relative(data[d]);
+                _qz.compatible.data(data[d]);
+            }
+
+            var sendToPrint = function(mapping) {
+                var params = {
+                    printer: mapping.config.getPrinter(),
+                    options: mapping.config.getOptions(),
+                    data: mapping.data
+                };
+
+                return _qz.websocket.dataPromise('print', params, mapping.signature, mapping.timestamp);
+            };
+
+            //chain instead of Promise.all, so resumeOnError can collect each error
+            var chain = [];
+            for(var i = 0; i < configs.length || i < data.length; i++) {
+                (function(i_) {
+                    var map = {
+                        config: configs[Math.min(i_, configs.length - 1)],
+                        data: data[Math.min(i_, data.length - 1)],
+                        signature: signatures[i_],
+                        timestamp: signaturesTimestamps[i_]
+                    };
+
+                    chain.push(function() { return sendToPrint(map) });
+                })(i);
+            }
+
+            //setup to catch errors if needed
+            var fallThrough = null;
+            if (resumeOnError) {
+                var fallen = [];
+                fallThrough = function(err) { fallen.push(err); };
+
+                //final promise to reject any errors as a group
+                chain.push(function() {
+                    return _qz.tools.promise(function(resolve, reject) {
+                        fallen.length ? reject(fallen) : resolve();
+                    });
+                });
+            }
+
+            var last = null;
+            chain.reduce(function(sequence, link) {
+                last = sequence.catch(fallThrough).then(link); //catch is ignored if fallThrough is null
+                return last;
+            }, _qz.tools.promise(function(r) { r(); })); //an immediately resolved promise to start off the chain
+
+            //return last promise so users can chain off final action or catch when stopping on error
+            return last;
+        },
+
+
+        /**
+         * Calls related to interaction with serial ports.
+         * @namespace qz.serial
+         */
+        serial: {
+            /**
+             * @returns {Promise<Array<string>|Error>} Communication (RS232, COM, TTY) ports available on connected system.
+             *
+             * @memberof qz.serial
+             */
+            findPorts: function() {
+                return _qz.websocket.dataPromise('serial.findPorts');
+            },
+
+            /**
+             * List of functions called for any response from open serial ports.
+             * Event data will contain <code>{string} portName</code> for all types.
+             *  For RECEIVE types, <code>{string} output</code>.
+             *  For ERROR types, <code>{string} exception</code>.
+             *
+             * @param {Function|Array<Function>} calls Single or array of <code>Function({object} streamEvent)</code> calls.
+             *
+             * @memberof qz.serial
+             */
+            setSerialCallbacks: function(calls) {
+                _qz.serial.serialCallbacks = calls;
+            },
+
+            /**
+             * Opens a serial port for sending and receiving data
+             *
+             * @param {string} port Name of serial port to open.
+             * @param {Object} [options] Serial port configurations.
+             *  @param {number} [options.baudRate=9600] Serial port speed. Set to 0 for auto negotiation.
+             *  @param {number} [options.dataBits=8] Serial port data bits. Set to 0 for auto negotiation.
+             *  @param {number} [options.stopBits=1] Serial port stop bits. Set to 0 for auto negotiation.
+             *  @param {string} [options.parity='NONE'] Serial port parity. Set to AUTO for auto negotiation. Valid values <code>[NONE | EVEN | ODD | MARK | SPACE | AUTO]</code>
+             *  @param {string} [options.flowControl='NONE'] Serial port flow control. Set to AUTO for auto negotiation. Valid values <code>[NONE | XONXOFF | XONXOFF_OUT | XONXOFF_IN | RTSCTS | RTSCTS_OUT | RTSCTS_IN | AUTO]</code>
+             *  @param {string} [options.encoding='UTF-8'] Character set for communications.
+             *  @param {string} [options.start=0x0002] DEPRECATED: Legacy character denoting start of serial response. Use <code>options.rx.start</code> instead.
+             *  @param {string} [options.end=0x000D] DEPRECATED: Legacy character denoting end of serial response. Use <code>options.rx.end</code> instead.
+             *  @param {number} [options.width] DEPRECATED: Legacy use for fixed-width response serial communication. Use <code>options.rx.width</code> instead.
+             *  @param {Object} [options.rx] Serial communications response definitions. If an object is passed but no options are defined, all response data will be sent back as it is received unprocessed.
+             *   @param {string|Array<string>} [options.rx.start] Character(s) denoting start of response bytes. Used in conjunction with `end`, `width`, or `lengthbit` property.
+             *   @param {string} [options.rx.end] Character denoting end of response bytes. Used in conjunction with `start` property.
+             *   @param {number} [options.rx.width] Fixed width size of response bytes (not including header if `start` is set). Used alone or in conjunction with `start` property.
+             *   @param {boolean} [options.rx.untilNewline] Returns data between newline characters (`\n` or `\r`) Truncates empty responses.  Overrides `start`, `end`, `width`.
+             *   @param {number|Object} [options.rx.lengthBytes] If a number is passed it is treated as the length index. Other values are left as their defaults.
+             *    @param {number} [options.rx.lengthBytes.index=0] Position of the response byte (not including response `start` bytes) used to denote the length of the remaining response data.
+             *    @param {number} [options.rx.lengthBytes.length=1] Length of response length bytes after response header.
+             *    @param {string} [options.rx.lengthBytes.endian='BIG'] Byte endian for multi-byte length values. Valid values <code>[BIG | LITTLE]</code>
+             *   @param {number|Object} [options.rx.crcBytes] If a number is passed it is treated as the crc length. Other values are left as their defaults.
+             *    @param {number} [options.rx.crcBytes.index=0] Position after the response data (not including length or data bytes) used to denote the crc.
+             *    @param {number} [options.rx.crcBytes.length=1] Length of response crc bytes after the response data length.
+             *   @param {boolean} [options.rx.includeHeader=false] Whether any of the header bytes (`start` bytes and any length bytes) should be included in the processed response.
+             *   @param {string} [options.rx.encoding] Override the encoding used for response data. Uses the same value as <code>options.encoding</code> otherwise.
+             *
+             * @returns {Promise<null|Error>}
+             *
+             * @memberof qz.serial
+             */
+            openPort: function(port, options) {
+                var params = {
+                    port: port,
+                    options: options
+                };
+                return _qz.websocket.dataPromise('serial.openPort', params);
+            },
+
+            /**
+             * Send commands over a serial port.
+             * Any responses from the device will be sent to serial callback functions.
+             *
+             * @param {string} port An open serial port to send data.
+             * @param {string|Array<string>|Object} data Data to be sent to the serial device.
+             *  @param {string} [data.type='PLAIN'] Valid values <code>[FILE | PLAIN | HEX | BASE64]</code>
+             *  @param {string|Array<string>} data.data Data to be sent to the serial device.
+             * @param {Object} options Serial port configuration updates. See <code>qz.serial.openPort</code> `options` docs for available values.
+             *     For best performance, it is recommended to only set these values on the port open call.
+             *
+             * @returns {Promise<null|Error>}
+             *
+             * @see qz.serial.setSerialCallbacks
+             *
+             * @memberof qz.serial
+             */
+            sendData: function(port, data, options) {
+                if (_qz.tools.versionCompare(2, 1, 0, 12) >= 0) {
+                    if (typeof data !== 'object') {
+                        data = {
+                            data: data,
+                            type: "PLAIN"
+                        }
+                    }
+
+                    if (data.type && data.type.toUpperCase() == "FILE") {
+                        data.data = _qz.tools.absolute(data.data);
+                    }
+                }
+
+                var params = {
+                    port: port,
+                    data: data,
+                    options: options
+                };
+                return _qz.websocket.dataPromise('serial.sendData', params);
+            },
+
+            /**
+             * @param {string} port Name of port to close.
+             *
+             * @returns {Promise<null|Error>}
+             *
+             * @memberof qz.serial
+             */
+            closePort: function(port) {
+                return _qz.websocket.dataPromise('serial.closePort', { port: port });
+            }
+        },
+
+        /**
+         * Calls related to interaction with communication sockets.
+         * @namespace qz.socket
+         */
+        socket: {
+            /**
+             * Opens a network port for sending and receiving data.
+             *
+             * @param {string} host The connection hostname.
+             * @param {number} port The connection port number.
+             * @param {Object} [options] Network socket configuration.
+             *  @param {string} [options.encoding='UTF-8'] Character set for communications.
+             *
+             * @memberof qz.socket
+             */
+            open: function(host, port, options) {
+                var params = {
+                    host: host,
+                    port: port,
+                    options: options
+                };
+                return _qz.websocket.dataPromise("socket.open", params);
+            },
+
+            /**
+             * @param {string} host The connection hostname.
+             * @param {number} port The connection port number.
+             *
+             * @memberof qz.socket
+             */
+            close: function(host, port) {
+                var params = {
+                    host: host,
+                    port: port
+                };
+                return _qz.websocket.dataPromise("socket.close", params);
+            },
+
+            /**
+             * Send data over an open socket.
+             *
+             * @param {string} host The connection hostname.
+             * @param {number} port The connection port number.
+             * @param {string|Object} data Data to be sent over the port.
+             *  @param {string} [data.type='PLAIN'] Valid values <code>[PLAIN]</code>
+             *  @param {string} data.data Data to be sent over the port.
+             *
+             * @memberof qz.socket
+             */
+            sendData: function(host, port, data) {
+                if (typeof data !== 'object') {
+                    data = {
+                        data: data,
+                        type: "PLAIN"
+                    };
+                }
+
+                var params = {
+                    host: host,
+                    port: port,
+                    data: data
+                };
+                return _qz.websocket.dataPromise("socket.sendData", params);
+            },
+
+            /**
+             * List of functions called for any response from open network sockets.
+             * Event data will contain <code>{string} host</code> and <code>{number} port</code> for all types.
+             *  For RECEIVE types, <code>{string} response</code>.
+             *  For ERROR types, <code>{string} exception</code>.
+             *
+             * @param {Function|Array<Function>} calls Single or array of <code>Function({Object} eventData)</code> calls.
+             *
+             * @memberof qz.socket
+             */
+            setSocketCallbacks: function(calls) {
+                _qz.socket.socketCallbacks = calls;
+            }
+        },
+
+        /**
+         * Calls related to interaction with USB devices.
+         * @namespace qz.usb
+         */
+        usb: {
+            /**
+             * List of available USB devices. Includes (hexadecimal) vendor ID, (hexadecimal) product ID, and hub status.
+             * If supported, also returns manufacturer and product descriptions.
+             *
+             * @param includeHubs Whether to include USB hubs.
+             * @returns {Promise<Array<Object>|Error>} Array of JSON objects containing information on connected USB devices.
+             *
+             * @memberof qz.usb
+             */
+            listDevices: function(includeHubs) {
+                return _qz.websocket.dataPromise('usb.listDevices', { includeHubs: includeHubs });
+            },
+
+            /**
+             * @param {object} deviceInfo Config details of the HID device.
+             *  @param deviceInfo.vendorId Hex string of USB device's vendor ID.
+             *  @param deviceInfo.productId Hex string of USB device's product ID.
+             * @returns {Promise<Array<string>|Error>} List of available (hexadecimal) interfaces on a USB device.
+             *
+             * @memberof qz.usb
+             */
+            listInterfaces: function(deviceInfo) {
+                if (typeof deviceInfo !== 'object') { deviceInfo = { vendorId: arguments[0], productId: arguments[1] }; } //backwards compatibility
+
+                return _qz.websocket.dataPromise('usb.listInterfaces', deviceInfo);
+            },
+
+            /**
+             * @param {object} deviceInfo Config details of the HID device.
+             *  @param deviceInfo.vendorId Hex string of USB device's vendor ID.
+             *  @param deviceInfo.productId Hex string of USB device's product ID.
+             *  @param deviceInfo.iface Hex string of interface on the USB device to search.
+             * @returns {Promise<Array<string>|Error>} List of available (hexadecimal) endpoints on a USB device's interface.
+             *
+             * @memberof qz.usb
+             */
+            listEndpoints: function(deviceInfo) {
+                //backwards compatibility
+                if (typeof deviceInfo !== 'object') {
+                    deviceInfo = {
+                        vendorId: arguments[0],
+                        productId: arguments[1],
+                        interface: arguments[2]
+                    };
+                }
+
+                return _qz.websocket.dataPromise('usb.listEndpoints', deviceInfo);
+            },
+
+            /**
+             * List of functions called for any response from open usb devices.
+             * Event data will contain <code>{string} vendorId</code> and <code>{string} productId</code> for all types.
+             *  For RECEIVE types, <code>{Array} output</code> (in hexadecimal format).
+             *  For ERROR types, <code>{string} exception</code>.
+             *
+             * @param {Function|Array<Function>} calls Single or array of <code>Function({Object} eventData)</code> calls.
+             *
+             * @memberof qz.usb
+             */
+            setUsbCallbacks: function(calls) {
+                _qz.usb.usbCallbacks = calls;
+            },
+
+            /**
+             * Claim a USB device's interface to enable sending/reading data across an endpoint.
+             *
+             * @param {object} deviceInfo Config details of the HID device.
+             *  @param deviceInfo.vendorId Hex string of USB device's vendor ID.
+             *  @param deviceInfo.productId Hex string of USB device's product ID.
+             *  @param deviceInfo.interface Hex string of interface on the USB device to claim.
+             * @returns {Promise<null|Error>}
+             *
+             * @memberof qz.usb
+             */
+            claimDevice: function(deviceInfo) {
+                //backwards compatibility
+                if (typeof deviceInfo !== 'object') {
+                    deviceInfo = {
+                        vendorId: arguments[0],
+                        productId: arguments[1],
+                        interface: arguments[2]
+                    };
+                }
+
+                return _qz.websocket.dataPromise('usb.claimDevice', deviceInfo);
+            },
+
+            /**
+             * Check the current claim state of a USB device.
+             *
+             * @param {object} deviceInfo Config details of the HID device.
+             *  @param deviceInfo.vendorId Hex string of USB device's vendor ID.
+             *  @param deviceInfo.productId Hex string of USB device's product ID.
+             * @returns {Promise<boolean|Error>}
+             *
+             * @since 2.0.2
+             * @memberOf qz.usb
+             */
+            isClaimed: function(deviceInfo) {
+                if (typeof deviceInfo !== 'object') { deviceInfo = { vendorId: arguments[0], productId: arguments[1] }; } //backwards compatibility
+
+                return _qz.websocket.dataPromise('usb.isClaimed', deviceInfo);
+            },
+
+            /**
+             * Send data to a claimed USB device.
+             *
+             * @param {object} deviceInfo Config details of the HID device.
+             *  @param deviceInfo.vendorId Hex string of USB device's vendor ID.
+             *  @param deviceInfo.productId Hex string of USB device's product ID.
+             *  @param deviceInfo.endpoint Hex string of endpoint on the claimed interface for the USB device.
+             *  @param deviceInfo.data Bytes to send over specified endpoint.
+             *  @param {string} [deviceInfo.type='PLAIN'] Valid values <code>[FILE | PLAIN | HEX | BASE64]</code>
+             * @returns {Promise<null|Error>}
+             *
+             * @memberof qz.usb
+             */
+            sendData: function(deviceInfo) {
+                //backwards compatibility
+                if (typeof deviceInfo !== 'object') {
+                    deviceInfo = {
+                        vendorId: arguments[0],
+                        productId: arguments[1],
+                        endpoint: arguments[2],
+                        data: arguments[3]
+                    };
+                }
+
+                if (_qz.tools.versionCompare(2, 1, 0, 12) >= 0) {
+                    if (typeof deviceInfo.data !== 'object') {
+                        deviceInfo.data = {
+                            data: deviceInfo.data,
+                            type: "PLAIN"
+                        }
+                    }
+
+                    if (deviceInfo.data.type && deviceInfo.data.type.toUpperCase() == "FILE") {
+                        deviceInfo.data.data = _qz.tools.absolute(deviceInfo.data.data);
+                    }
+                }
+
+                return _qz.websocket.dataPromise('usb.sendData', deviceInfo);
+            },
+
+            /**
+             * Read data from a claimed USB device.
+             *
+             * @param {object} deviceInfo Config details of the HID device.
+             *  @param deviceInfo.vendorId Hex string of USB device's vendor ID.
+             *  @param deviceInfo.productId Hex string of USB device's product ID.
+             *  @param deviceInfo.endpoint Hex string of endpoint on the claimed interface for the USB device.
+             *  @param deviceInfo.responseSize Size of the byte array to receive a response in.
+             * @returns {Promise<Array<string>|Error>} List of (hexadecimal) bytes received from the USB device.
+             *
+             * @memberof qz.usb
+             */
+            readData: function(deviceInfo) {
+                //backwards compatibility
+                if (typeof deviceInfo !== 'object') {
+                    deviceInfo = {
+                        vendorId: arguments[0],
+                        productId: arguments[1],
+                        endpoint: arguments[2],
+                        responseSize: arguments[3]
+                    };
+                }
+
+                return _qz.websocket.dataPromise('usb.readData', deviceInfo);
+            },
+
+            /**
+             * Provides a continuous stream of read data from a claimed USB device.
+             *
+             * @param {object} deviceInfo Config details of the HID device.
+             *  @param deviceInfo.vendorId Hex string of USB device's vendor ID.
+             *  @param deviceInfo.productId Hex string of USB device's product ID.
+             *  @param deviceInfo.endpoint Hex string of endpoint on the claimed interface for the USB device.
+             *  @param deviceInfo.responseSize Size of the byte array to receive a response in.
+             *  @param deviceInfo.interval=100 Frequency to send read data back, in milliseconds.
+             * @returns {Promise<null|Error>}
+             *
+             * @see qz.usb.setUsbCallbacks
+             *
+             * @memberof qz.usb
+             */
+            openStream: function(deviceInfo) {
+                //backwards compatibility
+                if (typeof deviceInfo !== 'object') {
+                    deviceInfo = {
+                        vendorId: arguments[0],
+                        productId: arguments[1],
+                        endpoint: arguments[2],
+                        responseSize: arguments[3],
+                        interval: arguments[4]
+                    };
+                }
+
+                return _qz.websocket.dataPromise('usb.openStream', deviceInfo);
+            },
+
+            /**
+             * Stops the stream of read data from a claimed USB device.
+             *
+             * @param {object} deviceInfo Config details of the HID device.
+             *  @param deviceInfo.vendorId Hex string of USB device's vendor ID.
+             *  @param deviceInfo.productId Hex string of USB device's product ID.
+             *  @param deviceInfo.endpoint Hex string of endpoint on the claimed interface for the USB device.
+             * @returns {Promise<null|Error>}
+             *
+             * @memberof qz.usb
+             */
+            closeStream: function(deviceInfo) {
+                //backwards compatibility
+                if (typeof deviceInfo !== 'object') {
+                    deviceInfo = {
+                        vendorId: arguments[0],
+                        productId: arguments[1],
+                        endpoint: arguments[2]
+                    };
+                }
+
+                return _qz.websocket.dataPromise('usb.closeStream', deviceInfo);
+            },
+
+            /**
+             * Release a claimed USB device to free resources after sending/reading data.
+             *
+             * @param {object} deviceInfo Config details of the HID device.
+             *  @param deviceInfo.vendorId Hex string of USB device's vendor ID.
+             *  @param deviceInfo.productId Hex string of USB device's product ID.
+             * @returns {Promise<null|Error>}
+             *
+             * @memberof qz.usb
+             */
+            releaseDevice: function(deviceInfo) {
+                if (typeof deviceInfo !== 'object') { deviceInfo = { vendorId: arguments[0], productId: arguments[1] }; } //backwards compatibility
+
+                return _qz.websocket.dataPromise('usb.releaseDevice', deviceInfo);
+            }
+        },
+
+
+        /**
+         * Calls related to interaction with HID USB devices<br/>
+         * Many of these calls can be accomplished from the <code>qz.usb</code> namespace,
+         * but HID allows for simpler interaction
+         * @namespace qz.hid
+         * @since 2.0.1
+         */
+        hid: {
+            /**
+             * List of available HID devices. Includes (hexadecimal) vendor ID and (hexadecimal) product ID.
+             * If available, also returns manufacturer and product descriptions.
+             *
+             * @returns {Promise<Array<Object>|Error>} Array of JSON objects containing information on connected HID devices.
+             * @since 2.0.1
+             *
+             * @memberof qz.hid
+             */
+            listDevices: function() {
+                return _qz.websocket.dataPromise('hid.listDevices');
+            },
+
+            /**
+             * Start listening for HID device actions, such as attach / detach events.
+             * Reported under the ACTION type in the streamEvent on callbacks.
+             *
+             * @returns {Promise<null|Error>}
+             * @since 2.0.1
+             *
+             * @see qz.hid.setHidCallbacks
+             *
+             * @memberof qz.hid
+             */
+            startListening: function() {
+                return _qz.websocket.dataPromise('hid.startListening');
+            },
+
+            /**
+             * Stop listening for HID device actions.
+             *
+             * @returns {Promise<null|Error>}
+             * @since 2.0.1
+             *
+             * @see qz.hid.setHidCallbacks
+             *
+             * @memberof qz.hid
+             */
+            stopListening: function() {
+                return _qz.websocket.dataPromise('hid.stopListening');
+            },
+
+            /**
+             * List of functions called for any response from open usb devices.
+             * Event data will contain <code>{string} vendorId</code> and <code>{string} productId</code> for all types.
+             *  For RECEIVE types, <code>{Array} output</code> (in hexadecimal format).
+             *  For ERROR types, <code>{string} exception</code>.
+             *  For ACTION types, <code>{string} actionType</code>.
+             *
+             * @param {Function|Array<Function>} calls Single or array of <code>Function({Object} eventData)</code> calls.
+             * @since 2.0.1
+             *
+             * @memberof qz.hid
+             */
+            setHidCallbacks: function(calls) {
+                _qz.hid.hidCallbacks = calls;
+            },
+
+            /**
+             * Claim a HID device to enable sending/reading data across.
+             *
+             * @param {object} deviceInfo Config details of the HID device.
+             *  @param deviceInfo.vendorId Hex string of HID device's vendor ID.
+             *  @param deviceInfo.productId Hex string of HID device's product ID.
+             *  @param deviceInfo.usagePage Hex string of HID device's usage page when multiple are present.
+             *  @param deviceInfo.serial Serial ID of HID device.
+             * @returns {Promise<null|Error>}
+             * @since 2.0.1
+             *
+             * @memberof qz.hid
+             */
+            claimDevice: function(deviceInfo) {
+                if (typeof deviceInfo !== 'object') { deviceInfo = { vendorId: arguments[0], productId: arguments[1] }; } //backwards compatibility
+
+                return _qz.websocket.dataPromise('hid.claimDevice', deviceInfo);
+            },
+
+            /**
+             * Check the current claim state of a HID device.
+             *
+             * @param {object} deviceInfo Config details of the HID device.
+             *  @param deviceInfo.vendorId Hex string of HID device's vendor ID.
+             *  @param deviceInfo.productId Hex string of HID device's product ID.
+             *  @param deviceInfo.usagePage Hex string of HID device's usage page when multiple are present.
+             *  @param deviceInfo.serial Serial ID of HID device.
+             * @returns {Promise<boolean|Error>}
+             *
+             * @since 2.0.2
+             * @memberOf qz.hid
+             */
+            isClaimed: function(deviceInfo) {
+                if (typeof deviceInfo !== 'object') { deviceInfo = { vendorId: arguments[0], productId: arguments[1] }; } //backwards compatibility
+
+                return _qz.websocket.dataPromise('hid.isClaimed', deviceInfo);
+            },
+
+            /**
+             * Send data to a claimed HID device.
+             *
+             * @param {object} deviceInfo Config details of the HID device.
+             *  @param deviceInfo.vendorId Hex string of HID device's vendor ID.
+             *  @param deviceInfo.productId Hex string of HID device's product ID.
+             *  @param deviceInfo.usagePage Hex string of HID device's usage page when multiple are present.
+             *  @param deviceInfo.serial Serial ID of HID device.
+             *  @param deviceInfo.data Bytes to send over specified endpoint.
+             *  @param deviceInfo.endpoint=0x00 First byte of the data packet signifying the HID report ID.
+             *                             Must be 0x00 for devices only supporting a single report.
+             *  @param deviceInfo.reportId=0x00 Alias for <code>deviceInfo.endpoint</code>. Not used if endpoint is provided.
+             *  @param {string} [deviceInfo.type='PLAIN'] Valid values <code>[FILE | PLAIN | HEX | BASE64]</code>
+             * @returns {Promise<null|Error>}
+             * @since 2.0.1
+             *
+             * @memberof qz.hid
+             */
+            sendData: function(deviceInfo) {
+                //backwards compatibility
+                if (typeof deviceInfo !== 'object') {
+                    deviceInfo = {
+                        vendorId: arguments[0],
+                        productId: arguments[1],
+                        data: arguments[2],
+                        endpoint: arguments[3]
+                    };
+                }
+
+                if (_qz.tools.versionCompare(2, 1, 0, 12) >= 0) {
+                    if (typeof deviceInfo.data !== 'object') {
+                        deviceInfo.data = {
+                            data: deviceInfo.data,
+                            type: "PLAIN"
+                        }
+                    }
+
+                    if (deviceInfo.data.type && deviceInfo.data.type.toUpperCase() == "FILE") {
+                        deviceInfo.data.data = _qz.tools.absolute(deviceInfo.data.data);
+                    }
+                } else {
+                    if (typeof deviceInfo.data === 'object') {
+                        if (deviceInfo.data.type.toUpperCase() !== "PLAIN"
+                            || typeof deviceInfo.data.data !== "string") {
+                            return _qz.tools.reject(new Error("Data format is not supported with connected "  + _qz.TITLE + " version " + _qz.websocket.connection.version));
+                        }
+
+                        deviceInfo.data = deviceInfo.data.data;
+                    }
+                }
+
+                return _qz.websocket.dataPromise('hid.sendData', deviceInfo);
+            },
+
+            /**
+             * Read data from a claimed HID device.
+             *
+             * @param {object} deviceInfo Config details of the HID device.
+             *  @param deviceInfo.vendorId Hex string of HID device's vendor ID.
+             *  @param deviceInfo.productId Hex string of HID device's product ID.
+             *  @param deviceInfo.usagePage Hex string of HID device's usage page when multiple are present.
+             *  @param deviceInfo.serial Serial ID of HID device.
+             *  @param deviceInfo.responseSize Size of the byte array to receive a response in.
+             * @returns {Promise<Array<string>|Error>} List of (hexadecimal) bytes received from the HID device.
+             * @since 2.0.1
+             *
+             * @memberof qz.hid
+             */
+            readData: function(deviceInfo) {
+                //backwards compatibility
+                if (typeof deviceInfo !== 'object') {
+                    deviceInfo = {
+                        vendorId: arguments[0],
+                        productId: arguments[1],
+                        responseSize: arguments[2]
+                    };
+                }
+
+                return _qz.websocket.dataPromise('hid.readData', deviceInfo);
+            },
+
+            /**
+             * Send a feature report to a claimed HID device.
+             *
+             * @param {object} deviceInfo Config details of the HID device.
+             *  @param deviceInfo.vendorId Hex string of HID device's vendor ID.
+             *  @param deviceInfo.productId Hex string of HID device's product ID.
+             *  @param deviceInfo.usagePage Hex string of HID device's usage page when multiple are present.
+             *  @param deviceInfo.serial Serial ID of HID device.
+             *  @param deviceInfo.data Bytes to send over specified endpoint.
+             *  @param deviceInfo.endpoint=0x00 First byte of the data packet signifying the HID report ID.
+             *                             Must be 0x00 for devices only supporting a single report.
+             *  @param deviceInfo.reportId=0x00 Alias for <code>deviceInfo.endpoint</code>. Not used if endpoint is provided.
+             *  @param {string} [deviceInfo.type='PLAIN'] Valid values <code>[FILE | PLAIN | HEX | BASE64]</code>
+             * @returns {Promise<null|Error>}
+             *
+             * @memberof qz.hid
+             */
+            sendFeatureReport: function(deviceInfo) {
+                return _qz.websocket.dataPromise('hid.sendFeatureReport', deviceInfo);
+            },
+
+            /**
+             * Get a feature report from a claimed HID device.
+             *
+             * @param {object} deviceInfo Config details of the HID device.
+             *  @param deviceInfo.vendorId Hex string of HID device's vendor ID.
+             *  @param deviceInfo.productId Hex string of HID device's product ID.
+             *  @param deviceInfo.usagePage Hex string of HID device's usage page when multiple are present.
+             *  @param deviceInfo.serial Serial ID of HID device.
+             *  @param deviceInfo.responseSize Size of the byte array to receive a response in.
+             * @returns {Promise<Array<string>|Error>} List of (hexadecimal) bytes received from the HID device.
+             *
+             * @memberof qz.hid
+             */
+            getFeatureReport: function(deviceInfo) {
+                return _qz.websocket.dataPromise('hid.getFeatureReport', deviceInfo);
+            },
+
+            /**
+             * Provides a continuous stream of read data from a claimed HID device.
+             *
+             * @param {object} deviceInfo Config details of the HID device.
+             *  @param deviceInfo.vendorId Hex string of HID device's vendor ID.
+             *  @param deviceInfo.productId Hex string of HID device's product ID.
+             *  @param deviceInfo.usagePage Hex string of HID device's usage page when multiple are present.
+             *  @param deviceInfo.serial Serial ID of HID device.
+             *  @param deviceInfo.responseSize Size of the byte array to receive a response in.
+             *  @param deviceInfo.interval=100 Frequency to send read data back, in milliseconds.
+             * @returns {Promise<null|Error>}
+             * @since 2.0.1
+             *
+             * @see qz.hid.setHidCallbacks
+             *
+             * @memberof qz.hid
+             */
+            openStream: function(deviceInfo) {
+                //backwards compatibility
+                if (typeof deviceInfo !== 'object') {
+                    deviceInfo = {
+                        vendorId: arguments[0],
+                        productId: arguments[1],
+                        responseSize: arguments[2],
+                        interval: arguments[3]
+                    };
+                }
+
+                return _qz.websocket.dataPromise('hid.openStream', deviceInfo);
+            },
+
+            /**
+             * Stops the stream of read data from a claimed HID device.
+             *
+             * @param {object} deviceInfo Config details of the HID device.
+             *  @param deviceInfo.vendorId Hex string of HID device's vendor ID.
+             *  @param deviceInfo.productId Hex string of HID device's product ID.
+             *  @param deviceInfo.usagePage Hex string of HID device's usage page when multiple are present.
+             *  @param deviceInfo.serial Serial ID of HID device.
+             * @returns {Promise<null|Error>}
+             * @since 2.0.1
+             *
+             * @memberof qz.hid
+             */
+            closeStream: function(deviceInfo) {
+                if (typeof deviceInfo !== 'object') { deviceInfo = { vendorId: arguments[0], productId: arguments[1] }; } //backwards compatibility
+
+                return _qz.websocket.dataPromise('hid.closeStream', deviceInfo);
+            },
+
+            /**
+             * Release a claimed HID device to free resources after sending/reading data.
+             *
+             * @param {object} deviceInfo Config details of the HID device.
+             *  @param deviceInfo.vendorId Hex string of HID device's vendor ID.
+             *  @param deviceInfo.productId Hex string of HID device's product ID.
+             *  @param deviceInfo.usagePage Hex string of HID device's usage page when multiple are present.
+             *  @param deviceInfo.serial Serial ID of HID device.
+             * @returns {Promise<null|Error>}
+             * @since 2.0.1
+             *
+             * @memberof qz.hid
+             */
+            releaseDevice: function(deviceInfo) {
+                if (typeof deviceInfo !== 'object') { deviceInfo = { vendorId: arguments[0], productId: arguments[1] }; } //backwards compatibility
+
+                return _qz.websocket.dataPromise('hid.releaseDevice', deviceInfo);
+            }
+        },
+
+
+        /**
+         * Calls related to interactions with the filesystem
+         * @namespace qz.file
+         * @since 2.1
+         */
+        file: {
+            /**
+             * List of files available at the given directory.<br/>
+             * Due to security reasons, paths are limited to the qz data directory unless overridden via properties file.
+             *
+             * @param {string} path Relative or absolute directory path. Must reside in qz data directory or a white-listed location.
+             * @param {Object} [params] Object containing file access parameters
+             *  @param {boolean} [params.sandbox=true] If relative location from root is only available to the certificate's connection, otherwise all connections
+             *  @param {boolean} [params.shared=true] If relative location from root is accessible to all users on the system, otherwise just the current user
+             * @returns {Promise<Array<String>|Error>} Array of files at the given path
+             *
+             * @memberof qz.file
+             */
+            list: function(path, params) {
+                var param = _qz.tools.extend({ path: path }, params);
+                return _qz.websocket.dataPromise('file.list', param);
+            },
+
+            /**
+             * Reads contents of file at the given path.<br/>
+             * Due to security reasons, paths are limited to the qz data directory unless overridden via properties file.
+             *
+             * @param {string} path Relative or absolute file path. Must reside in qz data directory or a white-listed location.
+             * @param {Object} [params] Object containing file access parameters
+             *  @param {boolean} [params.sandbox=true] If relative location from root is only available to the certificate's connection, otherwise all connections
+             *  @param {boolean} [params.shared=true] If relative location from root is accessible to all users on the system, otherwise just the current user
+             *  @param {string} [params.flavor='plain'] Flavor of data format used, valid flavors are <code>[base64 | hex | plain]</code>.
+             * @returns {Promise<String|Error>} String containing the file contents
+             *
+             * @memberof qz.file
+             */
+            read: function(path, params) {
+                var param = _qz.tools.extend({ path: path }, params);
+                return _qz.websocket.dataPromise('file.read', param);
+            },
+
+            /**
+             * Writes data to the file at the given path.<br/>
+             * Due to security reasons, paths are limited to the qz data directory unless overridden via properties file.
+             *
+             * @param {string} path Relative or absolute file path. Must reside in qz data directory or a white-listed location.
+             * @param {Object} params Object containing file access parameters
+             *  @param {string} params.data File data to be written
+             *  @param {boolean} [params.sandbox=true] If relative location from root is only available to the certificate's connection, otherwise all connections
+             *  @param {boolean} [params.shared=true] If relative location from root is accessible to all users on the system, otherwise just the current user
+             *  @param {boolean} [params.append=false] Appends to the end of the file if set, otherwise overwrites existing contents
+             *  @param {string} [params.flavor='plain'] Flavor of data format used, valid flavors are <code>[base64 | file | hex | plain]</code>.
+             * @returns {Promise<null|Error>}
+             *
+             * @memberof qz.file
+             */
+            write: function(path, params) {
+                var param = _qz.tools.extend({ path: path }, params);
+                return _qz.websocket.dataPromise('file.write', param);
+            },
+
+            /**
+             * Deletes a file at given path.<br/>
+             * Due to security reasons, paths are limited to the qz data directory unless overridden via properties file.
+             *
+             * @param {string} path Relative or absolute file path. Must reside in qz data directory or a white-listed location.
+             * @param {Object} [params] Object containing file access parameters
+             *  @param {boolean} [params.sandbox=true] If relative location from root is only available to the certificate's connection, otherwise all connections
+             *  @param {boolean} [params.shared=true] If relative location from root is accessible to all users on the system, otherwise just the current user
+             * @returns {Promise<null|Error>}
+             *
+             * @memberof qz.file
+             */
+            remove: function(path, params) {
+                var param = _qz.tools.extend({ path: path }, params);
+                return _qz.websocket.dataPromise('file.remove', param);
+            },
+
+            /**
+             * Provides a continuous stream of events (and optionally data) from a local file.
+             *
+             * @param {string} path Relative or absolute directory path. Must reside in qz data directory or a white-listed location.
+             * @param {Object} [params] Object containing file access parameters
+             *  @param {boolean} [params.sandbox=true] If relative location from root is only available to the certificate's connection, otherwise all connections
+             *  @param {boolean} [params.shared=true] If relative location from root is accessible to all users on the system, otherwise just the current user
+             *  @param {Object} [params.listener] If defined, file data will be returned on events
+             *   @param {number} [params.listener.bytes=-1] Number of bytes to return or -1 for all
+             *   @param {number} [params.listener.lines=-1] Number of lines to return or -1 for all
+             *   @param {boolean} [params.listener.reverse] Controls whether data should be returned from the bottom of the file.  Default value is true for line mode and false for byte mode.
+             *   @param {string|Array<string>} [params.include] File patterns to match.  Blank values will be ignored.
+             *   @param {string|Array<string>} [params.exclude] File patterns to exclude.  Blank values will be ignored.  Takes priority over <code>params.include</code>.
+             *   @param {boolean} [params.ignoreCase=true] Whether <code>params.include</code> or <code>params.exclude</code> are case-sensitive.
+             * @returns {Promise<null|Error>}
+             * @since 2.1.0
+             *
+             * @see qz.file.setFileCallbacks
+             *
+             * @memberof qz.file
+             */
+            startListening: function(path, params) {
+                if (params && typeof params.include !== 'undefined' && !Array.isArray(params.include)) {
+                    params.include = [params.include];
+                }
+                if (params && typeof params.exclude !== 'undefined' && !Array.isArray(params.exclude)) {
+                    params.exclude = [params.exclude];
+                }
+                var param = _qz.tools.extend({ path: path }, params);
+                return _qz.websocket.dataPromise('file.startListening', param);
+            },
+
+            /**
+             * Closes listeners with the provided settings. Omitting the path parameter will result in all listeners closing.
+             *
+             * @param {string} [path] Previously opened directory path of listener to close, or omit to close all.
+             * @param {Object} [params] Object containing file access parameters
+             *  @param {boolean} [params.sandbox=true] If relative location from root is only available to the certificate's connection, otherwise all connections
+             *  @param {boolean} [params.shared=true] If relative location from root is accessible to all users on the system, otherwise just the current user
+             * @returns {Promise<null|Error>}
+             *
+             * @memberof qz.file
+             */
+            stopListening: function(path, params) {
+                var param = _qz.tools.extend({ path: path }, params);
+                return _qz.websocket.dataPromise('file.stopListening', param);
+            },
+
+            /**
+             * List of functions called for any response from a file listener.
+             *  For ERROR types event data will contain, <code>{string} message</code>.
+             *  For ACTION types event data will contain, <code>{string} file {string} eventType {string} [data]</code>.
+             *
+             * @param {Function|Array<Function>} calls Single or array of <code>Function({Object} eventData)</code> calls.
+             * @since 2.1.0
+             *
+             * @memberof qz.file
+             */
+            setFileCallbacks: function(calls) {
+                _qz.file.fileCallbacks = calls;
+            }
+        },
+
+        /**
+         * Calls related to networking information
+         * @namespace qz.networking
+         * @since 2.1.0
+         */
+        networking: {
+            /**
+             * @param {string} [hostname] Hostname to try to connect to when determining network interfaces, defaults to "google.com"
+             * @param {number} [port] Port to use with custom hostname, defaults to 443
+             * @returns {Promise<Object|Error>} Connected system's network information.
+             *
+             * @memberof qz.networking
+             * @since 2.1.0
+             */
+            device: function(hostname, port) {
+                // Wrap 2.0
+                if (_qz.tools.isVersion(2, 0)) {
+                    return _qz.compatible.networking(hostname, port, null, null, function(data) {
+                        return { ip: data.ipAddress, mac: data.macAddress };
+                    });
+                }
+                // Use 2.1
+                return _qz.websocket.dataPromise('networking.device', {
+                    hostname: hostname,
+                    port: port
+                });
+            },
+
+            /**
+             * Get computer hostname
+             *
+             * @param {string} [hostname] DEPRECATED Hostname to try to connect to when determining network interfaces, defaults to "google.com"
+             * @param {number} [port] DEPRECATED Port to use with custom hostname, defaults to 443
+             * @returns {Promise<string|Error>} Connected system's hostname.
+             *
+             * @memberof qz.networking
+             * @since 2.2.2
+             */
+            hostname: function(hostname, port) {
+                // Wrap < 2.2.2
+                if (_qz.tools.versionCompare(2, 2, 2) < 0) {
+                    return _qz.tools.promise(function(resolve, reject) {
+                        _qz.websocket.dataPromise('networking.device', { hostname: hostname, port: port }).then(function(device) {
+                            console.log(device);
+                            resolve(device.hostname);
+                        });
+                    });
+                } else {
+                    return _qz.websocket.dataPromise('networking.hostname');
+                }
+            },
+
+            /**
+             * @param {string} [hostname] Hostname to try to connect to when determining network interfaces, defaults to "google.com"
+             * @param {number} [port] Port to use with custom hostname, defaults to 443
+             * @returns {Promise<Array<Object>|Error>} Connected system's network information.
+             *
+             * @memberof qz.networking
+             * @since 2.1.0
+             */
+            devices: function(hostname, port) {
+                // Wrap 2.0
+                if (_qz.tools.isVersion(2, 0)) {
+                    return _qz.compatible.networking(hostname, port, null, null, function(data) {
+                        return [{ ip: data.ipAddress, mac: data.macAddress }];
+                    });
+                }
+                // Use 2.1
+                return _qz.websocket.dataPromise('networking.devices', {
+                    hostname: hostname,
+                    port: port
+                });
+            }
+        },
+
+
+        /**
+         * Calls related to signing connection requests.
+         * @namespace qz.security
+         */
+        security: {
+            /**
+             * Set promise resolver for calls to acquire the site's certificate.
+             *
+             * @param {Function|AsyncFunction|Promise<string>} promiseHandler Either a function that will be used as a promise resolver (of format <code>Function({function} resolve, {function}reject)</code>),
+             *     an async function, or a promise. Any of which should return the public certificate via their respective <code>resolve</code> call.
+             * @param {Object} [options] Configuration options for the certificate resolver
+             *  @param {boolean} [options.rejectOnFailure=[false]] Overrides default behavior to call resolve with a blank certificate on failure.
+             * @memberof qz.security
+             */
+            setCertificatePromise: function(promiseHandler, options) {
+                _qz.security.certHandler = promiseHandler;
+                _qz.security.rejectOnCertFailure = !!(options && options.rejectOnFailure);
+            },
+
+            /**
+             * Set promise factory for calls to sign API calls.
+             *
+             * @param {Function|AsyncFunction} promiseFactory Either a function that accepts a string parameter of the data to be signed
+             *     and returns a function to be used as a promise resolver (of format <code>Function({function} resolve, {function}reject)</code>),
+             *     or an async function that can take a string parameter of the data to be signed. Either of which should return the signed contents of
+             *     the passed string parameter via their respective <code>resolve</code> call.
+             *
+             * @example
+             *  qz.security.setSignaturePromise(function(dataToSign) {
+             *    return function(resolve, reject) {
+             *      $.ajax("/signing-url?data=" + dataToSign).then(resolve, reject);
+             *    }
+             *  })
+             *
+             * @memberof qz.security
+             */
+            setSignaturePromise: function(promiseFactory) {
+                _qz.security.signatureFactory = promiseFactory;
+            },
+
+            /**
+             * Set which signing algorithm QZ will check signatures against.
+             *
+             * @param {string} algorithm The algorithm used in signing. Valid values: <code>[SHA1 | SHA256 | SHA512]</code>
+             * @since 2.1.0
+             *
+             * @memberof qz.security
+             */
+            setSignatureAlgorithm: function(algorithm) {
+                //warn for incompatibilities if known
+                if (!_qz.compatible.algorithm()) {
+                    return;
+                }
+
+                if (["SHA1", "SHA256", "SHA512"].indexOf(algorithm.toUpperCase()) < 0) {
+                    _qz.log.error("Signing algorithm '" + algorithm + "' is not supported.");
+                } else {
+                    _qz.security.signAlgorithm = algorithm;
+                }
+            },
+
+            /**
+             * Get the signing algorithm QZ will be checking signatures against.
+             *
+             * @returns {string} The algorithm used in signing.
+             * @since 2.1.0
+             *
+             * @memberof qz.security
+             */
+            getSignatureAlgorithm: function() {
+                return _qz.security.signAlgorithm;
+            }
+        },
+
+        /**
+         * Calls related to compatibility adjustments
+         * @namespace qz.api
+         */
+        api: {
+            /**
+             * Show or hide QZ api debugging statements in the browser console.
+             *
+             * @param {boolean} show Whether the debugging logs for QZ should be shown. Hidden by default.
+             * @returns {boolean} Value of debugging flag
+             * @memberof qz.api
+             */
+            showDebug: function(show) {
+                return (_qz.DEBUG = show);
+            },
+
+
+            /**
+             * Get internal branding title used by logs and exceptions (e.g "QZ Tray")
+             *
+             * @returns {string} Internal title used for logs and exceptions
+             *
+             * @memberof qz.api
+             */
+            getTitle: function() {
+                return _qz.TITLE;
+            },
+
+            /**
+             * Get version of connected QZ Tray application.
+             *
+             * @returns {Promise<string|Error>} Version number of QZ Tray.
+             *
+             * @memberof qz.api
+             */
+            getVersion: function() {
+                return _qz.websocket.dataPromise('getVersion');
+            },
+
+            /**
+             * Checks for the specified version of connected QZ Tray application.
+             *
+             * @param {string|number} [major] Major version to check
+             * @param {string|number} [minor] Minor version to check
+             * @param {string|number} [patch] Patch version to check
+             *
+             * @memberof qz.api
+             */
+            isVersion: _qz.tools.isVersion,
+
+            /**
+             * Checks if the connected QZ Tray application is greater than the specified version.
+             *
+             * @param {string|number} major Major version to check
+             * @param {string|number} [minor] Minor version to check
+             * @param {string|number} [patch] Patch version to check
+             * @param {string|number} [build] Build version to check
+             * @returns {boolean} True if connected version is greater than the version specified.
+             *
+             * @memberof qz.api
+             * @since 2.1.0-4
+             */
+            isVersionGreater: function(major, minor, patch, build) {
+                return _qz.tools.versionCompare(major, minor, patch, build) > 0;
+            },
+
+            /**
+             * Checks if the connected QZ Tray application is less than the specified version.
+             *
+             * @param {string|number} major Major version to check
+             * @param {string|number} [minor] Minor version to check
+             * @param {string|number} [patch] Patch version to check
+             * @param {string|number} [build] Build version to check
+             * @returns {boolean} True if connected version is less than the version specified.
+             *
+             * @memberof qz.api
+             * @since 2.1.0-4
+             */
+            isVersionLess: function(major, minor, patch, build) {
+                return _qz.tools.versionCompare(major, minor, patch, build) < 0;
+            },
+
+            /**
+             * Change the promise library used by QZ API.
+             * Should be called before any initialization to avoid possible errors.
+             *
+             * @param {Function} promiser <code>Function({function} resolver)</code> called to create new promises.
+             *
+             * @memberof qz.api
+             */
+            setPromiseType: function(promiser) {
+                _qz.tools.promise = promiser;
+            },
+
+            /**
+             * Change the SHA-256 hashing function used by QZ API.
+             * Should be called before any initialization to avoid possible errors.
+             *
+             * @param {Function} hasher <code>Function({function} message)</code> called to create hash of passed string.
+             *
+             * @memberof qz.api
+             */
+            setSha256Type: function(hasher) {
+                _qz.tools.hash = hasher;
+            },
+
+            /**
+             * Change the internal branding of "QZ Tray" for logs and exceptions
+             * Must be called before any connection attempts are made to appear in messaging
+             *
+             * @param {string} title Internal name to be used in place of "QZ Tray" for logs and exceptions
+             *
+             * @memberof qz.api
+             */
+            setTitle: function(title) {
+                _qz.TITLE = title;
+            },
+
+            /**
+             * Change the WebSocket handler.
+             * Should be called before any initialization to avoid possible errors.
+             *
+             * @param {Function} ws <code>Function({function} WebSocket)</code> called to override the internal WebSocket handler.
+             *
+             * @memberof qz.api
+             */
+            setWebSocketType: function(ws) {
+                _qz.tools.ws = ws;
+            }
+        },
+
+        /**
+         * Version of this JavaScript library
+         *
+         * @constant {string}
+         *
+         * @memberof qz
+         */
+        version: _qz.VERSION
+    };
+
+    return qz;
+})();
+
+
+(function() {
+    if (typeof define === 'function' && define.amd) {
+        define(qz);
+    } else if (typeof exports === 'object') {
+        module.exports = qz;
+    } else if (typeof window === 'object') {
+        window.qz = qz;
+    } else {
+        self.qz = qz;
+    }
+})();
+/* END embedded vendor:qz-tray.js */
+
 /* BEGIN embedded WMN POS support scripts. */
 /* These files are copied into the page so /app/wmn-pos does not load public POS assets at runtime. */
 
@@ -186,8 +3164,8 @@ wmn_install_pos_pwa_app_css();
          * - Queues invoices when the browser is offline
          *
          * Required server methods for full production usage:
-         * 1) wmn.api.get_pos_offline_data
-         * 2) wmn.api.sync_offline_pos_invoice
+         * 1) wmn.wmn.page.wmn_pos.wmn_pos.get_pos_offline_data
+         * 2) wmn.wmn.page.wmn_pos.wmn_pos.sync_offline_pos_invoice
          */
 
         const WMN_POS_OFFLINE = (() => {
@@ -1164,7 +4142,7 @@ wmn_install_pos_pwa_app_css();
                 }
 
                 const r = await frappe.call({
-                    method: "wmn.api.get_pos_offline_data",
+                    method: "wmn.wmn.page.wmn_pos.wmn_pos.get_pos_offline_data",
                     args: args,
                     freeze: false,
                 });
@@ -1396,7 +4374,7 @@ wmn_install_pos_pwa_app_css();
                     // Suppress preload errors when data was already loaded or the failure is temporary during page initialization.
                     if (!preloadLoaded && !window.__wmn_pos_offline_success_alert_shown) {
                         frappe.show_alert({
-                            message: __("\u062A\u0639\u0630\u0631 \u062A\u062D\u0645\u064A\u0644 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646. \u062A\u0623\u0643\u062F \u0645\u0646 \u0648\u062C\u0648\u062F API: wmn.api.get_pos_offline_data"),
+                            message: __("\u062A\u0639\u0630\u0631 \u062A\u062D\u0645\u064A\u0644 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646. \u062A\u0623\u0643\u062F \u0645\u0646 \u0648\u062C\u0648\u062F API: wmn.wmn.page.wmn_pos.wmn_pos.get_pos_offline_data"),
                             indicator: "orange",
                         });
                     }
@@ -2153,7 +5131,7 @@ wmn_install_pos_pwa_app_css();
                 for (const row of pending || []) {
                     try {
                         const response = await frappe.call({
-                            method: "wmn.api.sync_offline_pos_cash_movement",
+                            method: "wmn.wmn.page.wmn_pos.wmn_pos.sync_offline_pos_cash_movement",
                             args: { movement: row.movement },
                             freeze: false,
                         });
@@ -2597,7 +5575,7 @@ wmn_install_pos_pwa_app_css();
 
                         row.invoice_name = serverInvoiceName;
                         const response = await frappe.call({
-                            method: "wmn.api.sync_offline_payment_entry",
+                            method: "wmn.wmn.page.wmn_pos.wmn_pos.sync_offline_payment_entry",
                             args: {
                                 payment: {
                                     wmn_offline_payment_id: offlinePaymentId,
@@ -2792,7 +5770,7 @@ wmn_install_pos_pwa_app_css();
                         await updateQueueRow(row);
 
                         const r = await frappe.call({
-                            method: "wmn.api.sync_offline_pos_invoice",
+                            method: "wmn.wmn.page.wmn_pos.wmn_pos.sync_offline_pos_invoice",
                             args: {
                                 invoice,
                                 submit: syncAsDraft ? 0 : 1,
@@ -5318,7 +8296,7 @@ wmn_install_pos_pwa_app_css();
             }, 900);
 
             try {
-                const response = await fetch("/api/method/wmn.api.pos_health_check?ts=" + Date.now(), {
+                const response = await fetch("/api/method/wmn.wmn.page.wmn_pos.wmn_pos.pos_health_check?ts=" + Date.now(), {
                     method: "POST",
                     credentials: "same-origin",
                     cache: "no-store",
@@ -5341,7 +8319,7 @@ wmn_install_pos_pwa_app_css();
                     return true;
                 }
 
-                wmn_set_pos_effective_online("wmn.api.pos_health_check ok");
+                wmn_set_pos_effective_online("wmn.wmn.page.wmn_pos.wmn_pos.pos_health_check ok");
                 return false;
             } catch (e) {
                 clearTimeout(timer);
@@ -6226,7 +9204,7 @@ function wmn_is_mobile_pos_device() {
         const normalizedProfile = resolveProfile(profile);
         if (!normalizedProfile || !isOnline()) return readServerState(normalizedProfile);
         const response = await frappe.call({
-            method: "wmn.api.get_pos_profile_settings",
+            method: "wmn.wmn.page.wmn_pos.wmn_pos.get_pos_profile_settings",
             args: { pos_profile: normalizedProfile },
             freeze: false,
         });
@@ -6290,7 +9268,7 @@ function wmn_is_mobile_pos_device() {
         if (!isOnline()) throw new Error(__("Cannot save POS Profile Settings while offline."));
         const normalizedPatch = normalize(patch || {});
         const response = await frappe.call({
-            method: "wmn.api.save_pos_profile_settings",
+            method: "wmn.wmn.page.wmn_pos.wmn_pos.save_pos_profile_settings",
             args: { pos_profile: normalizedProfile, values: normalizedPatch },
             freeze: false,
         });
@@ -9296,7 +12274,7 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
         if (!Common.erpnextOffline() && typeof frappe?.call === "function") {
             try {
                 const response = await frappe.call({
-                    method: "wmn.payment_gateway.api.get_pos_payment_gateways",
+                    method: "wmn.wmn.page.wmn_pos.wmn_pos.get_pos_payment_gateways",
                     args: { pos_profile: profile },
                     freeze: false,
                 });
@@ -9389,7 +12367,7 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
         if (Common.erpnextOffline()) return false;
         try {
             await frappe.call({
-                method: "wmn.payment_gateway.api.record_device_result",
+                method: "wmn.wmn.page.wmn_pos.wmn_pos.record_device_result",
                 args: {
                     gateway_profile: mapping?.gateway?.name || "",
                     action,
@@ -9432,7 +12410,7 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
         const transport = String(profile.transport || "");
         if (transport === Common.TRANSPORT.CLOUD_SERVER) {
             const response = await frappe.call({
-                method: `wmn.payment_gateway.api.${action}`,
+                method: `wmn.wmn.page.wmn_pos.wmn_pos.${action}`,
                 args: { gateway_profile: profile.name, payload: JSON.stringify(payload) },
                 freeze: false,
             });
@@ -9483,7 +12461,7 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
             }
             const clientResult = await provider.completeCloudAction(result, mapping.gateway);
             const response = await frappe.call({
-                method: "wmn.payment_gateway.api.status",
+                method: "wmn.wmn.page.wmn_pos.wmn_pos.status",
                 args: {
                     gateway_profile: mapping.gateway?.name,
                     payload: JSON.stringify({
@@ -11306,7 +14284,7 @@ function wmn_render_raw_print_temp(template, doc) {
             return new Promise(function (resolve, reject) {
                 try {
                     if (!window.pdfMake) {
-                        reject(new Error("pdfMake is not loaded. Add /assets/wmn/js/pdfmake.min.js and /assets/wmn/js/vfs_fonts.js before wmn_pos.js"));
+                        reject(new Error("pdfMake is not loaded for WMN POS printing"));
                         return;
                     }
 
@@ -11853,7 +14831,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             }
 
             if (!window.html2canvas) {
-                throw new Error("html2canvas is not loaded. Add /assets/wmn/js/html2canvas.min.js before wmn_pos.js");
+                throw new Error("html2canvas is not loaded for WMN POS printing");
             }
 
             const holder = document.createElement("div");
@@ -12585,7 +15563,6 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
     ns.Services.Printing = ns.Services.Printing || {};
     ns.Services.Printing.Adapters = ns.Services.Printing.Adapters || {};
 
-    let managedLoadPromise = null;
     let legacyLoadPromise = null;
 
     const MODE_LABELS = {
@@ -12623,39 +15600,8 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
 
     function requireManagedBundle() {
         if (window.WMN_QZ_CLIENT) return Promise.resolve(window.WMN_QZ_CLIENT);
-        if (managedLoadPromise) return managedLoadPromise;
-
-        managedLoadPromise = new Promise((resolve, reject) => {
-            let settled = false;
-            const finish = (error) => {
-                if (settled) return;
-                settled = true;
-                window.clearTimeout(timeout);
-                if (error) {
-                    reject(error);
-                    return;
-                }
-                if (!window.WMN_QZ_CLIENT) {
-                    reject(new Error("WMN managed QZ bundle loaded without exposing WMN_QZ_CLIENT."));
-                    return;
-                }
-                resolve(window.WMN_QZ_CLIENT);
-            };
-            const timeout = window.setTimeout(() => finish(new Error("Timed out loading the WMN managed QZ bundle.")), 15000);
-
-            try {
-                const result = frappe.require("wmn_qz.bundle.js", () => finish());
-                if (result && typeof result.then === "function") {
-                    result.then(() => finish()).catch((error) => finish(error));
-                }
-            } catch (error) {
-                finish(error);
-            }
-        }).finally(() => {
-            if (!window.WMN_QZ_CLIENT) managedLoadPromise = null;
-        });
-
-        return managedLoadPromise;
+        if (window.qz) return Promise.resolve(window.qz);
+        return Promise.reject(new Error("QZ connector is not embedded in this WMN POS page."));
     }
 
     async function loadLegacy(settings, customOnly) {
@@ -12668,8 +15614,8 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 ? [configured]
                 : [
                     configured,
-                    "/assets/wmn/js/vendor/qz-tray.js",
-                    navigator.onLine ? "https://demo.qz.io/js/qz-tray.js" : "",
+                    "",
+                    "",
                 ];
             const urls = [...new Set(candidates.filter(Boolean))];
             if (!urls.length) {
@@ -13324,7 +16270,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             try {
                 if (!wmn_is_pos_offline() && shiftName) {
                     const r = await frappe.call({
-                        method: "wmn.api.get_pos_shift_receipt_counter",
+                        method: "wmn.wmn.page.wmn_pos.wmn_pos.get_pos_shift_receipt_counter",
                         args: {
                             pos_opening_entry: shiftName,
                             pos_profile: doc.pos_profile || "",
@@ -13353,7 +16299,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             try {
                 if (!wmn_is_pos_offline() && shiftName) {
                     await frappe.call({
-                        method: "wmn.api.update_pos_shift_receipt_counter",
+                        method: "wmn.wmn.page.wmn_pos.wmn_pos.update_pos_shift_receipt_counter",
                         args: {
                             pos_opening_entry: shiftName,
                             pos_profile: doc.pos_profile || "",
@@ -13394,7 +16340,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 let serverCounter = 0;
                 if (!wmn_is_pos_offline() && shiftName) {
                     const r = await frappe.call({
-                        method: "wmn.api.get_pos_shift_receipt_counter",
+                        method: "wmn.wmn.page.wmn_pos.wmn_pos.get_pos_shift_receipt_counter",
                         args: {
                             pos_opening_entry: shiftName,
                             pos_profile: doc.pos_profile || "",
@@ -13415,7 +16361,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
 
                 if (!wmn_is_pos_offline() && shiftName && finalCounter > serverCounter) {
                     await frappe.call({
-                        method: "wmn.api.update_pos_shift_receipt_counter",
+                        method: "wmn.wmn.page.wmn_pos.wmn_pos.update_pos_shift_receipt_counter",
                         args: {
                             pos_opening_entry: shiftName,
                             pos_profile: doc.pos_profile || "",
@@ -18230,7 +21176,7 @@ function wmn_render_offline_print_template(template, doc) {
         if (!profile || (typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline())) return null;
         if (navigator.onLine === false) return null;
         const response = await frappe.call({
-            method: "wmn.features.pricing_rule.pricing_rule.get_pricing_rule_snapshot",
+            method: "wmn.wmn.page.wmn_pos.wmn_pos.get_pricing_rule_snapshot",
             args: { pos_profile: profile },
             freeze: false,
         });
@@ -19499,7 +22445,7 @@ function wmn_render_offline_print_template(template, doc) {
 
             const bases = this.wmn_get_coupon_base_amounts();
             const response = await frappe.call({
-                method: "wmn.api.validate_pos_coupon",
+                method: "wmn.wmn.page.wmn_pos.wmn_pos.validate_pos_coupon",
                 args: {
                     coupon_code: couponCode,
                     customer: doc.customer || "",
@@ -20066,7 +23012,7 @@ function wmn_render_offline_print_template(template, doc) {
 
                         const context = this.wmn_get_promotion_context();
                         const response = await frappe.call({
-                            method: "wmn.api.get_active_pos_promotions",
+                            method: "wmn.wmn.page.wmn_pos.wmn_pos.get_active_pos_promotions",
                             args: {
                                 company: context.company,
                                 pos_profile: context.pos_profile,
@@ -21033,7 +23979,7 @@ function wmn_render_offline_print_template(template, doc) {
         if (!force && state.online_request) return state.online_request;
 
         const request = frappe.call({
-            method: "wmn.api.get_pos_supervisor_bundle",
+            method: "wmn.wmn.page.wmn_pos.wmn_pos.get_pos_supervisor_bundle",
             args: { pos_profile: targetProfile },
             freeze: false,
         });
@@ -21499,7 +24445,7 @@ function wmn_render_offline_print_template(template, doc) {
             reason: String(reason || ""),
         };
         const response = await frappe.call({
-            method: "wmn.api.verify_pos_supervisor_pin",
+            method: "wmn.wmn.page.wmn_pos.wmn_pos.verify_pos_supervisor_pin",
             args: {
                 supervisor: supervisorUser,
                 pin,
@@ -21886,7 +24832,7 @@ function wmn_render_offline_print_template(template, doc) {
         }
 
         const response = await frappe.call({
-            method: "wmn.api.get_pos_cash_movement_context",
+            method: "wmn.wmn.page.wmn_pos.wmn_pos.get_pos_cash_movement_context",
             args: {
                 pos_profile: posProfile,
                 pos_opening_entry: posOpeningEntry,
@@ -21981,7 +24927,7 @@ function wmn_render_offline_print_template(template, doc) {
         }
 
         const response = await frappe.call({
-            method: "wmn.api.create_pos_cash_movement",
+            method: "wmn.wmn.page.wmn_pos.wmn_pos.create_pos_cash_movement",
             args: { movement: payload },
             freeze: true,
             freeze_message: __("Posting cash movement..."),
@@ -24242,7 +27188,7 @@ function wmn_render_offline_print_template(template, doc) {
 
     async function getAvailableDoctypes() {
         const response = await frappe.call({
-            method: "wmn.pos_doctype_manager.get_available_pos_doctypes",
+            method: "wmn.wmn.page.wmn_pos.wmn_pos.get_available_pos_doctypes",
             args: {},
             freeze: false,
         });
@@ -24336,7 +27282,7 @@ function wmn_render_offline_print_template(template, doc) {
 
     async function getDialogScripts(doctype) {
         const response = await frappe.call({
-            method: "wmn.pos_doctype_manager.get_dialog_scripts",
+            method: "wmn.wmn.page.wmn_pos.wmn_pos.get_dialog_scripts",
             args: { doctype },
             freeze: false,
         });
@@ -24345,7 +27291,7 @@ function wmn_render_offline_print_template(template, doc) {
 
     async function getOfflineModels(doctype = "") {
         const response = await frappe.call({
-            method: "wmn.pos_doctype_manager.get_offline_doctype_models",
+            method: "wmn.wmn.page.wmn_pos.wmn_pos.get_offline_doctype_models",
             args: { doctype },
             freeze: false,
         });
@@ -24354,7 +27300,7 @@ function wmn_render_offline_print_template(template, doc) {
 
     async function getOfflineSnapshot(doctype) {
         const response = await frappe.call({
-            method: "wmn.pos_doctype_manager.get_offline_doctype_snapshot",
+            method: "wmn.wmn.page.wmn_pos.wmn_pos.get_offline_doctype_snapshot",
             args: { doctype },
             freeze: false,
         });
@@ -24363,7 +27309,7 @@ function wmn_render_offline_print_template(template, doc) {
 
     async function syncOfflineDocument(payload) {
         const response = await frappe.call({
-            method: "wmn.pos_doctype_manager.sync_offline_doctype_document",
+            method: "wmn.wmn.page.wmn_pos.wmn_pos.sync_offline_doctype_document",
             args: { payload },
             freeze: false,
         });
@@ -24574,11 +27520,11 @@ frappe.provide("wmn.MamsekPOS");
     "use strict";
     "use strict";
 
-    const PAGE_NAME = "point-of-sale";
+    const PAGE_NAME = "wmn-pos";
     const ACTIVE_BODY_CLASS = "wmn-mamsek-pos-route";
     const STYLE_ID = "wmn-mamsek-pos-style";
     const EXTENSION_STYLE_ID = "wmn-mamsek-pos-extension-style";
-    const STYLE_URL = "/assets/wmn/css/mamsek.css?v=20260812-pos-promotion-23-invoice-discount";
+    const STYLE_TEXT = "/* Mamsek POS style for ERPNext v16 - preserves native POS component contracts. */\n\n:root {\n\t--wmn-ink: #22262e;\n\t--wmn-muted: #6c7680;\n\t--wmn-soft: #f9fafb;\n\t--wmn-border: #e8edf0;\n\t--wmn-border-strong: #dfe6ea;\n\t--wmn-teal: #0d8c8c;\n\t--wmn-teal-bright: #0da3a3;\n\t--wmn-teal-soft: #e8fdfd;\n\t--wmn-danger: #dc4c4c;\n\t--wmn-radius: 8px;\n}\n\nbody.wmn-mamsek-pos-route {\n\toverflow: hidden !important;\n\theight: 100% !important;\n\tmin-height: 0 !important;\n\tbackground: #fff !important;\n}\n\nbody.wmn-mamsek-pos-route .page-head,\nbody.wmn-mamsek-pos-route .desk-sidebar {\n\tdisplay: none !important;\n}\nbody.wmn-mamsek-pos-route .wmn-global-workspace-header {\n    display: none !important;\n}\n\n/* Keep the real ERPNext navbar and only apply the Mamsek visual language. */\nbody.wmn-mamsek-pos-route header.navbar {\n\tposition: fixed !important;\n\ttop: 0 !important;\n\tright: 0 !important;\n\tleft: 0 !important;\n\tz-index: 1040 !important;\n\tdisplay: flex !important;\n\talign-items: center !important;\n\twidth: 100% !important;\n\theight: 64px !important;\n\tmin-height: 64px !important;\n\tmargin: 0 !important;\n\tpadding: 0 !important;\n\tborder: 0 !important;\n\tbackground: var(--wmn-ink) !important;\n\tbox-shadow: none !important;\n\tcolor: #fff !important;\n}\n\nbody.wmn-mamsek-pos-route header.navbar > .container,\nbody.wmn-mamsek-pos-route header.navbar > .container-fluid {\n\tdisplay: flex !important;\n\talign-items: center !important;\n\twidth: 100% !important;\n\tmax-width: none !important;\n\theight: 64px !important;\n\tmargin: 0 !important;\n\tpadding: 0 24px !important;\n}\n\nbody.wmn-mamsek-pos-route header.navbar .navbar-brand,\nbody.wmn-mamsek-pos-route header.navbar .navbar-home,\nbody.wmn-mamsek-pos-route header.navbar .nav-link,\nbody.wmn-mamsek-pos-route header.navbar .dropdown-toggle,\nbody.wmn-mamsek-pos-route header.navbar #navbar-breadcrumbs a,\nbody.wmn-mamsek-pos-route header.navbar .navbar-nav > li > a {\n\tcolor: #fff !important;\n}\n\nbody.wmn-mamsek-pos-route header.navbar .navbar-brand,\nbody.wmn-mamsek-pos-route header.navbar .navbar-home {\n\tdisplay: flex !important;\n\talign-items: center !important;\n\theight: 44px !important;\n}\n\nbody.wmn-mamsek-pos-route header.navbar #navbar-breadcrumbs {\n\talign-items: center !important;\n\tmargin: 0 !important;\n}\n\nbody.wmn-mamsek-pos-route header.navbar #navbar-breadcrumbs a {\n\tfont-size: 14px !important;\n\tfont-weight: 500 !important;\n}\n\nbody.wmn-mamsek-pos-route header.navbar .search-bar,\nbody.wmn-mamsek-pos-route header.navbar .search-bar .awesomplete,\nbody.wmn-mamsek-pos-route header.navbar #navbar-search {\n\theight: 44px !important;\n\tborder-radius: 8px !important;\n}\n\nbody.wmn-mamsek-pos-route header.navbar #navbar-search {\n\tborder: 1px solid rgba(255, 255, 255, 0.12) !important;\n\tbackground: rgba(255, 255, 255, 0.08) !important;\n\tbox-shadow: none !important;\n\tcolor: #fff !important;\n}\n\nbody.wmn-mamsek-pos-route header.navbar #navbar-search::placeholder {\n\tcolor: rgba(255, 255, 255, 0.7) !important;\n}\n\nbody.wmn-mamsek-pos-route header.navbar .search-icon,\nbody.wmn-mamsek-pos-route header.navbar .es-icon,\nbody.wmn-mamsek-pos-route header.navbar svg {\n\tcolor: currentColor !important;\n}\n\nbody.wmn-mamsek-pos-route header.navbar .navbar-nav {\n\tdisplay: flex !important;\n\talign-items: center !important;\n\theight: 64px !important;\n\tgap: 4px;\n}\n\nbody.wmn-mamsek-pos-route header.navbar .navbar-nav > li,\nbody.wmn-mamsek-pos-route header.navbar .navbar-nav > li > a,\nbody.wmn-mamsek-pos-route header.navbar .navbar-nav > li > button {\n\tdisplay: flex !important;\n\talign-items: center !important;\n}\n\nbody.wmn-mamsek-pos-route header.navbar .navbar-nav > li > a,\nbody.wmn-mamsek-pos-route header.navbar .navbar-nav > li > button {\n\tmin-height: 40px !important;\n\tborder-radius: 8px !important;\n}\n\nbody.wmn-mamsek-pos-route header.navbar .navbar-nav > li > a:hover,\nbody.wmn-mamsek-pos-route header.navbar .navbar-nav > li > button:hover {\n\tbackground: rgba(255, 255, 255, 0.1) !important;\n}\n\nbody.wmn-mamsek-pos-route header.navbar .avatar-frame,\nbody.wmn-mamsek-pos-route header.navbar .standard-image {\n\tbackground-color: var(--wmn-teal-bright) !important;\n\tcolor: #fff !important;\n}\n\nbody.wmn-mamsek-pos-route #page-point-of-sale,\nbody.wmn-mamsek-pos-route #page-point-of-sale .page-body,\nbody.wmn-mamsek-pos-route #page-point-of-sale .page-content,\nbody.wmn-mamsek-pos-route #page-point-of-sale .layout-main,\nbody.wmn-mamsek-pos-route #page-point-of-sale .layout-main-section-wrapper,\nbody.wmn-mamsek-pos-route #page-point-of-sale .layout-main-section,\nbody.wmn-mamsek-pos-route .page-container:has(.wmn-mamsek-shell),\nbody.wmn-mamsek-pos-route .page-container:has(.wmn-mamsek-shell) .page-body,\nbody.wmn-mamsek-pos-route .page-container:has(.wmn-mamsek-shell) .page-content,\nbody.wmn-mamsek-pos-route .page-container:has(.wmn-mamsek-shell) .layout-main,\nbody.wmn-mamsek-pos-route .page-container:has(.wmn-mamsek-shell) .layout-main-section-wrapper,\nbody.wmn-mamsek-pos-route .page-container:has(.wmn-mamsek-shell) .layout-main-section {\n\twidth: 100% !important;\n\tmax-width: none !important;\n\theight: 100% !important;\n\tmin-height: 0 !important;\n\tmargin: 0 !important;\n\tpadding: 0 !important;\n}\n\nbody.wmn-mamsek-pos-route #page-point-of-sale,\nbody.wmn-mamsek-pos-route .page-container:has(.wmn-mamsek-shell) {\n\theight: 100% !important;\n}\n\nbody:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {\n\tdisplay: none !important;\n}\n\n.wmn-mamsek-shell,\n.wmn-mamsek-shell * {\n\tbox-sizing: border-box;\n}\n\n.wmn-mamsek-shell {\n\tposition: fixed;\n\tinset: 64px 0 0;\n\tz-index: 1000;\n\tdisplay: flex;\n\tflex-direction: column;\n\twidth: auto;\n\theight: auto !important;\n\tmax-height: none !important;\n\tmin-height: 0;\n\toverflow: hidden;\n\tbackground: #fff;\n\tcolor: var(--wmn-ink);\n\tfont-family: Inter, var(--font-stack), -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;\n}\n\n.wmn-brand,\n.wmn-topbar-actions,\n.wmn-user-menu,\n.wmn-user-copy,\n.wmn-pos-nav,\n.wmn-pos-nav-links,\n.wmn-nav-btn,\n.wmn-menu-search,\n.wmn-section-title-row,\n.wmn-category-arrows,\n.wmn-category-card,\n.wmn-order-heading,\n.wmn-meta-row,\n.wmn-meta-label {\n\tdisplay: flex;\n\talign-items: center;\n}\n\n.wmn-brand {\n\tgap: 6px;\n\tfont-size: 24px;\n\tfont-style: italic;\n\tfont-weight: 800;\n\tletter-spacing: -0.02em;\n}\n\n.wmn-brand .wmn-icon {\n\tcolor: var(--wmn-teal-bright);\n}\n\n.wmn-topbar-actions {\n\tgap: 10px;\n}\n\n.wmn-top-icon {\n\tdisplay: grid;\n\tplace-items: center;\n\twidth: 40px;\n\theight: 40px;\n\tpadding: 0;\n\tborder: 1px solid rgba(255, 255, 255, 0.12);\n\tborder-radius: 8px;\n\tbackground: rgba(255, 255, 255, 0.06);\n\tcolor: #fff;\n\tcursor: pointer;\n}\n\n.wmn-top-icon:hover,\n.wmn-user-menu:hover {\n\tbackground: rgba(255, 255, 255, 0.11);\n}\n\n.wmn-user-menu {\n\tmin-width: 180px;\n\theight: 44px;\n\tgap: 12px;\n\tpadding: 2px 0 2px 2px;\n\tborder: 0;\n\tborder-radius: 8px;\n\tbackground: transparent;\n\tcolor: #fff;\n\ttext-align: left;\n\tcursor: pointer;\n}\n\n.wmn-user-avatar {\n\tdisplay: grid;\n\tplace-items: center;\n\tflex: 0 0 40px;\n\twidth: 40px;\n\theight: 40px;\n\tborder-radius: 8px;\n\tbackground: var(--wmn-teal-bright);\n\tfont-size: 14px;\n\tfont-weight: 700;\n}\n\n.wmn-user-copy {\n\talign-items: flex-start;\n\tflex-direction: column;\n\tgap: 3px;\n\tmin-width: 0;\n\tline-height: 1.1;\n}\n\n.wmn-user-copy strong,\n.wmn-user-copy small {\n\tdisplay: block;\n\tmax-width: 110px;\n\toverflow: hidden;\n\ttext-overflow: ellipsis;\n\twhite-space: nowrap;\n}\n\n.wmn-user-copy strong {\n\tfont-size: 14px;\n\tfont-weight: 600;\n}\n\n.wmn-user-copy small {\n\tfont-size: 12px;\n\tfont-weight: 500;\n\topacity: 0.76;\n}\n\n.wmn-user-chevron {\n\tmargin-left: auto;\n\tpadding-right: 6px;\n\tfont-size: 18px;\n}\n\n.wmn-mamsek-shell > .point-of-sale-app {\n\tdisplay: grid !important;\n\tflex: 1 1 auto;\n\tgrid-template-columns: minmax(0, 1fr) 400px !important;\n\tgrid-template-rows: minmax(0, 1fr) !important;\n\tgap: 0 !important;\n\twidth: 100% !important;\n\theight: auto !important;\n\tmin-height: 0 !important;\n\tpadding: 0 !important;\n\t\n\tbackground: #fff;\n}\n\n.wmn-mamsek-shell .items-selector,\n.wmn-mamsek-shell .customer-cart-container,\n.wmn-mamsek-shell .item-details-container,\n.wmn-mamsek-shell .payment-container,\n.wmn-mamsek-shell .past-order-list,\n.wmn-mamsek-shell .past-order-summary {\n\tmin-width: 0 !important;\n  height: 100% !important;\n\tmax-height: none !important;\n\tmargin: 0 !important;\n\tborder-radius: 0 !important;\n\tbox-shadow: none !important;\n}\n\n.wmn-mamsek-shell .items-selector {\n\tgrid-column: 1 !important;\n\tgrid-row: 1 !important;\n\tdisplay: flex;\n\tflex-direction: column;\n\toverflow: hidden;\n\tbackground: #fff;\n}\n\n.wmn-mamsek-shell .customer-cart-container {\n\tgrid-column: 2 !important;\n\tgrid-row: 1 !important;\n}\n\n.wmn-mamsek-shell .item-details-container,\n.wmn-mamsek-shell .payment-container {\n\tgrid-column: 1 !important;\n\tgrid-row: 1 !important;\n\toverflow: auto;\n\tpadding: 24px !important;\n\tbackground: #fff;\n}\n\n.wmn-mamsek-shell .past-order-list {\n\tgrid-column: 1 !important;\n\tgrid-row: 1 !important;\n\tpadding: 24px !important;\n\tbackground: #fff;\n}\n\n.wmn-mamsek-shell .past-order-summary {\n\tgrid-column: 2 !important;\n\tgrid-row: 1 !important;\n\tpadding: 24px !important;\n\tbackground: var(--wmn-soft);\n}\n\n.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*=\"display: flex\"]) {\n\tgrid-template-columns:\n\t\tminmax(0, 3fr)\n\t\tminmax(0, 4fr)\n\t\tminmax(0, 3fr) !important;\n}\n\n.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*=\"display: flex\"]) > .item-details-container {\n\tgrid-column: 2 !important;\n}\n\n.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*=\"display: flex\"]) > .customer-cart-container {\n\tgrid-column: 3 !important;\n}\n\n.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*=\"display: flex\"]) .wmn-pos-nav-links .wmn-nav-btn span,\n.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*=\"display: flex\"]) .wmn-menu-search,\n.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*=\"display: flex\"]) .wmn-category-section {\n\tdisplay: none !important;\n}\n\n.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*=\"display: flex\"]) .wmn-pos-nav {\n\tjustify-content: center;\n\tpadding-inline: 8px;\n}\n\n.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*=\"display: flex\"]) .wmn-pos-nav-links {\n\tgap: 2px;\n}\n\n.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*=\"display: flex\"]) .wmn-nav-btn {\n\tpadding: 0 8px;\n}\n\n.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*=\"display: flex\"]) .wmn-items-content {\n\tpadding: 12px 8px;\n}\n\n.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*=\"display: flex\"]) .items-container {\n\tgrid-template-columns: minmax(0, 1fr) !important;\n}\n\n.wmn-mamsek-shell\n.point-of-sale-app:not(:has(> .past-order-list[style*=\"display: flex\"]))\n> .past-order-summary[style*=\"span 10\"] {\n    grid-column: 1 / -1 !important;\n}\n\n.wmn-mamsek-shell\n.point-of-sale-app:has(> .past-order-list[style*=\"display: flex\"])\n> .past-order-summary {\n    grid-column: 2 !important;\n    grid-row: 1 !important;\n}\n\n.wmn-pos-nav {\n\tjustify-content: space-between;\n\tflex: 0 0 84px;\n\theight: 84px;\n\tpadding: 20px 24px;\n\tborder-bottom: 1px solid var(--wmn-border);\n\tbackground: #fff;\n}\n\n.wmn-pos-nav-links {\n\tgap: 8px;\n\tmin-width: 0;\n}\n\n.wmn-nav-btn {\n\tjustify-content: center;\n\theight: 44px;\n\tgap: 6px;\n\tpadding: 0 14px;\n\tborder: 1px solid transparent;\n\tborder-radius: 8px;\n\tbackground: #fff;\n\tcolor: var(--wmn-ink);\n\tfont-size: 14px;\n\tfont-weight: 500;\n\twhite-space: nowrap;\n\tcursor: pointer;\n}\n\n.wmn-nav-btn:hover {\n\tbackground: #f7f9fa;\n}\n\n.wmn-nav-btn.is-active {\n\tborder-color: var(--wmn-border);\n\tbackground: #fdfdfd;\n\tcolor: var(--wmn-teal);\n\tfont-weight: 600;\n}\n\n.wmn-nav-btn.is-danger {\n\tcolor: var(--wmn-danger);\n}\n\n.wmn-nav-btn.is-danger:hover {\n\tborder-color: #f1caca;\n\tbackground: #fff7f7;\n}\n\n.wmn-tools-menu {\n\tposition: relative;\n\tdisplay: flex;\n\talign-items: center;\n\tflex: 0 0 auto;\n}\n\n.wmn-tools-menu-toggle[aria-expanded=\"true\"] {\n\tborder-color: var(--wmn-border);\n\tbackground: var(--wmn-soft);\n\tcolor: var(--wmn-teal);\n}\n\n.wmn-tools-menu-panel {\n\tposition: absolute;\n\ttop: calc(100% + 8px);\n\tinset-inline-end: 0;\n\tz-index: 120;\n\tdisplay: grid;\n\twidth: 260px;\n\tpadding: 8px;\n\tgap: 4px;\n\tborder: 1px solid var(--wmn-border);\n\tborder-radius: 10px;\n\tbackground: #fff;\n\tbox-shadow: 0 14px 34px rgba(22, 35, 45, 0.16);\n}\n\n.wmn-tools-menu-panel[hidden] {\n\tdisplay: none !important;\n}\n\n.wmn-tools-menu-item {\n\tdisplay: grid;\n\tgrid-template-columns: 22px minmax(0, 1fr) auto;\n\talign-items: center;\n\twidth: 100%;\n\tmin-height: 42px;\n\tpadding: 8px 10px;\n\tgap: 10px;\n\tborder: 0;\n\tborder-radius: 7px;\n\tbackground: transparent;\n\tcolor: var(--wmn-ink);\n\tfont-size: 14px;\n\tfont-weight: 500;\n\ttext-align: start;\n\tcursor: pointer;\n}\n\n.wmn-tools-menu-item:hover,\n.wmn-tools-menu-item:focus-visible {\n\tbackground: var(--wmn-soft);\n\tcolor: var(--wmn-teal);\n\toutline: none;\n}\n\n.wmn-tools-menu-item.is-selected {\n\tbackground: #eaf7f3;\n\tcolor: var(--wmn-teal);\n\tfont-weight: 700;\n}\n\n.wmn-tools-menu-item .wmn-icon {\n\tjustify-self: center;\n}\n\n.wmn-tools-menu-item kbd {\n\tdisplay: grid;\n\tplace-items: center;\n\tmin-width: 24px;\n\theight: 24px;\n\tpadding: 0 6px;\n\tborder: 1px solid var(--wmn-border-strong);\n\tborder-radius: 5px;\n\tbackground: #fff;\n\tcolor: var(--wmn-muted);\n\tfont-family: inherit;\n\tfont-size: 11px;\n\tfont-weight: 700;\n\tbox-shadow: none;\n}\n\n.wmn-menu-search {\n\tposition: relative;\n\tflex: 0 0 229px;\n\twidth: 229px;\n\theight: 44px;\n\tpadding-left: 12px;\n\tgap: 6px;\n\tborder: 1px solid var(--wmn-border-strong);\n\tborder-radius: 8px;\n\tbackground: #fdfdfd;\n}\n\n.wmn-menu-search > .wmn-icon {\n\tflex: 0 0 20px;\n\tcolor: var(--wmn-ink);\n}\n\n.wmn-menu-search .search-field,\n.wmn-menu-search .frappe-control,\n.wmn-menu-search .form-group,\n.wmn-menu-search .control-input-wrapper,\n.wmn-menu-search .control-input {\n\twidth: 100% !important;\n\theight: 42px !important;\n\tmargin: 0 !important;\n\tpadding: 0 !important;\n}\n\n.wmn-menu-search .form-control {\n\theight: 42px !important;\n\tpadding: 0 44px 0 0 !important;\n\tborder: 0 !important;\n\tbackground: transparent !important;\n\tbox-shadow: none !important;\n\tfont-size: 14px !important;\n}\n\n.wmn-menu-search .link-btn {\n\tdisplay: none !important;\n}\n\n.wmn-search-shortcut {\n\tposition: absolute;\n\ttop: 6px;\n\tright: 7px;\n\tdisplay: grid;\n\tplace-items: center;\n\twidth: 29px;\n\theight: 30px;\n\tborder: 1px solid var(--wmn-border-strong);\n\tborder-radius: 6px;\n\tbackground: #fff;\n\tfont-size: 12px;\n\tfont-weight: 600;\n}\n\n.wmn-items-content {\n\tdisplay: flex;\n\tflex: 1 1 auto;\n\tflex-direction: column;\n\tmin-height: 0;\n\tgap: 9px;\n\tpadding: 2px;\n\toverflow: hidden;\n}\n\n.wmn-category-section {\n\tdisplay: flex !important;\n\tflex: 0 0 98px;\n\tflex-direction: column;\n\tgap: 16px;\n\twidth: 100%;\n\tmin-height: 98px;\n\tmargin: 0 !important;\n\tpadding: 0 !important;\n\tbackground: transparent !important;\n}\n\n.wmn-section-title-row {\n\tjustify-content: space-between;\n\theight: 22px;\n}\n\n.wmn-section-title-row .label {\n\tfont-size: 18px !important;\n\tfont-weight: 600 !important;\n\tline-height: 22px;\n}\n\n.wmn-category-arrows {\n\tgap: 2px;\n}\n\n.wmn-category-arrow {\n\tdisplay: grid;\n\tplace-items: center;\n\twidth: 26px;\n\theight: 22px;\n\tpadding: 0;\n\tborder: 0;\n\tbackground: transparent;\n\tcolor: var(--wmn-ink);\n\tcursor: pointer;\n}\n\n.wmn-category-arrow.is-previous {\n\ttransform: rotate(180deg);\n}\n\n.wmn-category-track {\n\tdisplay: flex;\n\twidth: 100%;\n\theight: 60px;\n\tgap: 12px;\n\toverflow-x: auto;\n\toverflow-y: hidden;\n\tscrollbar-width: none;\n}\n\n.wmn-category-track::-webkit-scrollbar {\n\tdisplay: none;\n}\n\n.wmn-category-card {\n\tjustify-content: space-between;\n\tflex: 0 0 160px;\n\twidth: 160px;\n\theight: 60px;\n\tgap: 6px;\n\tpadding: 0 14px;\n\tborder: 1px solid var(--wmn-border);\n\tborder-radius: 8px;\n\tbackground: #fff;\n\tcolor: var(--wmn-ink);\n\ttext-align: left;\n\tcursor: pointer;\n}\n\n.wmn-category-card.is-active {\n\tborder-color: #10bcbc;\n\tbackground: var(--wmn-teal-soft);\n}\n\n.wmn-category-copy {\n\tdisplay: flex;\n\tmin-width: 0;\n\tflex-direction: column;\n\tgap: 4px;\n}\n\n.wmn-category-copy strong,\n.wmn-category-copy small {\n\tdisplay: block;\n\toverflow: hidden;\n\ttext-overflow: ellipsis;\n\twhite-space: nowrap;\n}\n\n.wmn-category-copy strong {\n\tfont-size: 14px;\n\tfont-weight: 600;\n}\n\n.wmn-category-copy small {\n\tfont-size: 12px;\n\tfont-weight: 500;\n\tcolor: var(--wmn-muted);\n}\n\n.wmn-category-emoji {\n\tdisplay: grid;\n\tplace-items: center;\n\tflex: 0 0 36px;\n\twidth: 36px;\n\theight: 36px;\n\tborder: 1px solid var(--wmn-border);\n\tborder-radius: 50%;\n\tbackground: #fff;\n\tfont-size: 14px;\n}\n\n.wmn-native-item-group-field {\n\tposition: absolute !important;\n\twidth: 1px !important;\n\theight: 1px !important;\n\toverflow: hidden !important;\n\topacity: 0 !important;\n\tpointer-events: none !important;\n}\n\n.wmn-mamsek-shell .wmn-items-selector .items-container {\n\tdisplay: grid !important;\n\tgrid-template-columns: repeat(4, minmax(0, 1fr)) !important;\n\tgrid-auto-rows: max-content;\n\talign-content: start;\n\tflex: 1 1 auto;\n\twidth: 100% !important;\n\tmin-height: 0;\n\tgap: 16px !important;\n\tpadding: 0 4px 20px 0 !important;\n\toverflow-x: hidden !important;\n\toverflow-y: auto !important;\n\tbackground: transparent !important;\n}\n\n.wmn-item-card {\n\tposition: relative;\n\tmin-width: 0;\n\theight: 247px;\n\toverflow: hidden;\n\tborder: 1px solid var(--wmn-border);\n\tborder-radius: 12px;\n\tbackground: #fff;\n\ttransition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;\n}\n\n.wmn-item-card:hover {\n\tborder-color: #cdd7dc;\n\tbox-shadow: 0 8px 22px rgba(34, 38, 46, 0.08);\n\ttransform: translateY(-1px);\n}\n\n.wmn-item-card.has-quantity {\n\tborder-color: #9be2e2;\n}\n\n.wmn-item-card .item-wrapper {\n\tdisplay: flex !important;\n\tflex-direction: column;\n\twidth: 100% !important;\n\theight: 100% !important;\n\tmargin: 0 !important;\n\tpadding: 0 !important;\n\tborder: 0 !important;\n\tborder-radius: 0 !important;\n\tbackground: transparent !important;\n\tcursor: pointer;\n}\n\n.wmn-card-media {\n\tposition: relative;\n\tdisplay: grid;\n\tplace-items: center;\n\tflex: 0 0 135px;\n\twidth: 100%;\n\theight: 135px;\n\toverflow: hidden;\n\tbackground: #d9d9d9;\n}\n\n.wmn-card-media .item-img {\n\twidth: 100% !important;\n\theight: 100% !important;\n\tobject-fit: cover !important;\n}\n\n.wmn-card-media .item-display.abbr {\n\tdisplay: grid;\n\tplace-items: center;\n\twidth: 100%;\n\theight: 100%;\n\tbackground: linear-gradient(135deg, #d5dadd, #eef1f2);\n\tcolor: #8d979f;\n\tfont-size: 36px;\n\tfont-weight: 700;\n}\n\n.wmn-stock-pill {\n\tposition: absolute;\n\ttop: 8px;\n\tright: 8px;\n\tdisplay: grid;\n\tplace-items: center;\n\tmin-width: 28px;\n\theight: 22px;\n\tpadding: 0 7px;\n\tborder-radius: 11px;\n\tbackground: rgba(255, 255, 255, 0.92);\n\tcolor: var(--wmn-teal);\n\tfont-size: 11px;\n\tfont-weight: 700;\n\tbox-shadow: 0 1px 4px rgba(34, 38, 46, 0.12);\n}\n\n.wmn-stock-pill.is-low {\n\tcolor: #c4790b;\n}\n\n.wmn-stock-pill.is-empty {\n\tcolor: var(--wmn-danger);\n}\n\n.wmn-item-card .item-detail {\n\tdisplay: flex !important;\n\tflex: 1 1 auto;\n\tflex-direction: column;\n\tjustify-content: space-between;\n\tmin-height: 0;\n\tpadding: 12px 14px 14px !important;\n}\n\n.wmn-item-card .item-name {\n\tdisplay: -webkit-box;\n\tmin-height: 40px;\n  text-align: center;\n\toverflow: hidden;\n\tcolor: var(--wmn-ink);\n\tfont-size: 15px !important;\n\tfont-weight: 800 !important;\n\tline-height: 20px !important;\n\t-webkit-box-orient: vertical;\n\t-webkit-line-clamp: 2;\n}\n\n.wmn-item-card .item-rate {\n\talign-self: flex-start;\n\tmargin-top: auto;\n\tcolor: var(--wmn-teal) !important;\n\tfont-size: 18px !important;\n\tfont-weight: 600 !important;\n\tline-height: 25px;\n}\n\n.wmn-item-stepper {\n\tposition: absolute;\n\tright: 14px;\n\tbottom: 14px;\n\tdisplay: grid;\n\tgrid-template-columns: repeat(3, 32px);\n\talign-items: center;\n\twidth: 104px;\n\theight: 40px;\n\tpadding: 4px;\n\tborder: 1px solid var(--wmn-border);\n\tborder-radius: 999px;\n\tbackground: #fff;\n}\n\n.wmn-qty-button,\n.wmn-item-count {\n\tdisplay: grid;\n\tplace-items: center;\n\twidth: 32px;\n\theight: 32px;\n\tborder: 0;\n\tborder-radius: 50%;\n}\n\n.wmn-qty-button {\n\tpadding: 0;\n\tbackground: #f7f9fa;\n\tcolor: var(--wmn-ink);\n\tcursor: pointer;\n}\n\n.wmn-qty-button.is-plus,\n.wmn-item-card.has-quantity .wmn-qty-button.is-plus {\n\tbackground: var(--wmn-teal);\n\tcolor: #fff;\n}\n\n.wmn-item-count {\n\tdisplay: block;\n\tmin-width: 0;\n\tpadding: 0;\n\toutline: 0;\n\tbackground: transparent;\n\tcolor: var(--wmn-ink);\n\tfont-family: inherit;\n\tfont-size: 14px;\n\tfont-weight: 600;\n\tline-height: 32px;\n\ttext-align: center;\n\t-moz-appearance: textfield;\n}\n\n.wmn-item-count:focus {\n\tbackground: var(--wmn-teal-soft);\n\tbox-shadow: inset 0 0 0 1px #9be2e2;\n}\n\n.wmn-item-count::-webkit-inner-spin-button,\n.wmn-item-count::-webkit-outer-spin-button {\n\tmargin: 0;\n\t-webkit-appearance: none;\n}\n\n.wmn-order-sidebar {\n\tdisplay: flex;\n\tflex-direction: column;\n\tpadding: 20px 22px !important;\n\tborder-left: 1px solid var(--wmn-border) !important;\n\tbackground: #fdfdfd !important;\n}\n\n.wmn-order-panel {\n\tdisplay: flex;\n\tflex: 1 1 auto;\n\tflex-direction: column;\n\tmin-height: 0;\n}\n\n.wmn-customer-area {\n\tdisplay: flex;\n\tflex: 0 0 auto;\n\tflex-direction: column;\n\twidth: 100%;\n\tmin-height: 100px;\n\tpadding: 14px;\n\tborder: 1px solid var(--wmn-border-strong);\n\tborder-radius: 10px;\n\tbackground: #fff;\n}\n\n.wmn-customer-title-row,\n.wmn-customer-title {\n\tdisplay: flex;\n\talign-items: center;\n}\n\n.wmn-customer-title-row {\n\tjustify-content: space-between;\n\tgap: 12px;\n}\n\n.wmn-customer-title {\n\tgap: 7px;\n\tcolor: var(--wmn-ink);\n\tfont-size: 15px;\n\tfont-weight: 650;\n}\n\n.wmn-customer-title .wmn-icon {\n\tcolor: var(--wmn-teal);\n}\n\n.wmn-customer-hint {\n\tcolor: var(--wmn-muted);\n\tfont-size: 11px;\n\tfont-weight: 500;\n\twhite-space: nowrap;\n}\n\n.wmn-customer-area > .customer-section {\n\twidth: 100%;\n\tmin-height: 44px;\n\tmargin-top: 12px;\n}\n\n.wmn-customer-area .customer-field,\n.wmn-customer-area .frappe-control,\n.wmn-customer-area .form-group,\n.wmn-customer-area .control-input-wrapper,\n.wmn-customer-area .control-input {\n\twidth: 100% !important;\n\tmin-height: 44px !important;\n\tmargin: 0 !important;\n\tpadding: 0 !important;\n}\n\n.wmn-customer-area .form-control {\n\theight: 44px !important;\n\tmin-height: 44px !important;\n\tpadding: 0 38px 0 12px !important;\n\tborder: 1px solid var(--wmn-border-strong) !important;\n\tborder-radius: 8px !important;\n\tbackground: #fafbfb !important;\n\tbox-shadow: none !important;\n\tcolor: var(--wmn-ink) !important;\n\tfont-size: 13px !important;\n}\n\n.wmn-customer-area .form-control:focus {\n\tborder-color: var(--wmn-teal) !important;\n\tbackground: #fff !important;\n\tbox-shadow: 0 0 0 3px rgba(13, 140, 140, 0.1) !important;\n}\n\n.wmn-customer-area .customer-details {\n\tdisplay: grid;\n\tgrid-template-columns: minmax(0, 1fr) auto;\n\talign-items: center;\n\twidth: 100%;\n\tmin-height: 48px;\n\tgap: 10px;\n}\n\n.wmn-customer-area .customer-display {\n\tdisplay: flex;\n\talign-items: center;\n\tmin-width: 0;\n\tgap: 10px;\n\tcursor: pointer;\n}\n\n.wmn-customer-area .customer-image {\n\tdisplay: grid;\n\tplace-items: center;\n\tflex: 0 0 42px;\n\twidth: 42px;\n\theight: 42px;\n\toverflow: hidden;\n\tborder-radius: 50%;\n\tbackground: var(--wmn-teal-soft);\n\tcolor: var(--wmn-teal);\n\tfont-size: 13px;\n\tfont-weight: 700;\n}\n\n.wmn-customer-area .customer-image img {\n\twidth: 100%;\n\theight: 100%;\n\tobject-fit: cover;\n}\n\n.wmn-customer-area .customer-name-desc {\n\tmin-width: 0;\n}\n\n.wmn-customer-area .customer-name,\n.wmn-customer-area .customer-desc {\n\toverflow: hidden;\n\ttext-overflow: ellipsis;\n\twhite-space: nowrap;\n}\n\n.wmn-customer-area .customer-name {\n\tcolor: var(--wmn-ink);\n\tfont-size: 13px !important;\n\tfont-weight: 650;\n}\n\n.wmn-customer-area .customer-desc {\n\tmargin-top: 3px;\n\tcolor: var(--wmn-muted);\n\tfont-size: 11px;\n}\n\n.wmn-customer-area .reset-customer-btn {\n\tdisplay: none !important;\n}\n\n.wmn-change-customer-btn {\n\theight: 32px;\n\tpadding: 0 10px;\n\tborder: 1px solid #9be2e2;\n\tborder-radius: 7px;\n\tbackground: var(--wmn-teal-soft);\n\tcolor: var(--wmn-teal);\n\tfont-size: 11px;\n\tfont-weight: 600;\n\twhite-space: nowrap;\n\tcursor: pointer;\n}\n\n.wmn-change-customer-btn:hover {\n\tborder-color: var(--wmn-teal);\n\tbackground: #dbf8f8;\n}\n\n.wmn-change-customer-btn:disabled {\n\topacity: 0.45;\n\tcursor: not-allowed;\n}\n\n.wmn-order-divider {\n\tflex: 0 0 1px;\n\theight: 1px;\n\tmargin-top: 16px;\n\tbackground: var(--wmn-border-strong);\n}\n\n.wmn-cart-slot {\n\tdisplay: flex;\n\tflex: 1 1 auto;\n\tmin-height: 0;\n}\n\n.wmn-order-sidebar .cart-container,\n.wmn-order-sidebar .abs-cart-container {\n\tposition: static !important;\n\tdisplay: flex !important;\n\tflex: 1 1 auto;\n\tflex-direction: column;\n\twidth: 100% !important;\n\theight: 100% !important;\n\tmin-height: 0 !important;\n\tmargin: 0 !important;\n\tpadding: 0 !important;\n\toverflow: hidden !important;\n\tbackground: transparent !important;\n}\n\n.wmn-order-sidebar .cart-label,\n.wmn-order-sidebar .cart-header {\n\tdisplay: none !important;\n}\n\n.wmn-order-sidebar .cart-items-section {\n\tdisplay: block !important;\n\tflex: 1 1 0 !important;\n\theight: auto !important;\n\tmin-height: 120px !important;\n\tmax-height: none !important;\n\tpadding: 16px 0 14px !important;\n\toverflow-x: hidden !important;\n\toverflow-y: auto !important;\n\toverscroll-behavior: contain;\n}\n\n.wmn-order-sidebar .no-item-wrapper {\n\tdisplay: grid;\n\tplace-items: center;\n\theight: 100%;\n\tmin-height: 160px;\n\tcolor: var(--wmn-muted);\n\tfont-size: 13px;\n}\n\n.wmn-order-sidebar .cart-item-wrapper {\n\tdisplay: grid !important;\n\tgrid-template-columns: 44px minmax(0, 1fr) 34px;\n\talign-items: center;\n\tmin-height: 52px;\n\tgap: 12px;\n\tpadding: 4px 0 !important;\n\tborder: 0 !important;\n\tborder-radius: 8px;\n\tbackground: transparent;\n\tcursor: pointer;\n}\n\n.wmn-order-sidebar .cart-item-wrapper:hover {\n\tbackground: #f5f7f8;\n}\n\n.wmn-order-sidebar .item-image {\n\tdisplay: grid;\n\tplace-items: center;\n\twidth: 44px !important;\n\theight: 44px !important;\n\toverflow: hidden;\n\tborder-radius: 8px;\n\tbackground: #d9d9d9;\n\tcolor: #7f8a92;\n\tfont-size: 14px;\n\tfont-weight: 700;\n}\n\n.wmn-order-sidebar .item-image img {\n\twidth: 100%;\n\theight: 100%;\n\tobject-fit: cover;\n}\n\n.wmn-cart-item-copy {\n\tmin-width: 0;\n}\n\n.wmn-cart-item-copy .item-name {\n\toverflow: hidden;\n\tcolor: var(--wmn-ink);\n\tfont-size: 14px !important;\n\tfont-weight: 500 !important;\n\tline-height: 17px;\n\ttext-overflow: ellipsis;\n\twhite-space: nowrap;\n}\n\n.wmn-cart-item-price {\n\tmargin-top: 6px;\n\tcolor: var(--wmn-ink);\n\tfont-size: 16px;\n\tfont-weight: 600;\n\tline-height: 19px;\n}\n\n.wmn-cart-old-rate {\n\tmargin-left: 4px;\n\tcolor: var(--wmn-muted);\n\tfont-size: 11px;\n\tfont-weight: 500;\n\ttext-decoration: line-through;\n}\n\n.wmn-cart-qty {\n\tdisplay: grid;\n\tplace-items: center;\n\twidth: 28px;\n\theight: 28px;\n\tborder-radius: 6px;\n\tbackground: var(--wmn-ink);\n\tcolor: #fff;\n\tfont-size: 12px;\n\tfont-weight: 600;\n}\n\n.wmn-order-sidebar .seperator {\n\theight: 1px !important;\n\tmargin: 14px 0 !important;\n\tbackground: var(--wmn-border) !important;\n}\n\n.wmn-order-sidebar .cart-totals-section {\n\t/* Let ERPNext toggle this section with its inline display value. */\n\tdisplay: flex;\n\tflex: 0 0 auto !important;\n\tflex-direction: column;\n\theight: auto !important;\n\tmin-height: 0 !important;\n\tmax-height: none !important;\n\tgap: 12px;\n\tpadding: 18px 0 0 !important;\n\tborder-top: 1px solid var(--wmn-border-strong);\n\tbackground: #fdfdfd !important;\n}\n\n.wmn-order-sidebar .add-discount-wrapper {\n\talign-self: flex-start;\n\tmin-height: 30px;\n\tmargin: 0 0 2px !important;\n\tpadding: 5px 10px !important;\n\tborder: 1px solid #9be2e2 !important;\n\tborder-radius: 6px !important;\n\tbackground: var(--wmn-teal-soft) !important;\n\tcolor: var(--wmn-teal) !important;\n\tfont-size: 12px !important;\n}\n\n.wmn-order-sidebar .discount-icon {\n\twidth: 16px;\n\theight: 16px;\n}\n\n.wmn-order-sidebar .item-qty-total-container {\n\tdisplay: none !important;\n}\n\n.wmn-order-sidebar .net-total-container,\n.wmn-order-sidebar .tax-row,\n.wmn-order-sidebar .grand-total-container {\n\tdisplay: flex !important;\n\talign-items: center;\n\tjustify-content: space-between;\n\twidth: 100%;\n\tmin-height: 17px;\n\tfont-size: 14px;\n\tline-height: 17px;\n}\n\n.wmn-order-sidebar .net-total-container,\n.wmn-order-sidebar .tax-row {\n\tfont-weight: 500;\n}\n\n.wmn-order-sidebar .taxes-container {\n\tdisplay: flex;\n\tflex-direction: column;\n\tgap: 8px;\n\twidth: 100%;\n}\n\n.wmn-order-sidebar .grand-total-container {\n\tmargin-top: 2px;\n\tpadding-top: 12px;\n\tborder-top: 1px solid var(--wmn-border-strong);\n\tfont-weight: 600;\n}\n\n.wmn-order-sidebar .checkout-btn,\n.wmn-order-sidebar .edit-cart-btn {\n\tdisplay: flex;\n\talign-items: center;\n\tjustify-content: center;\n\twidth: 100%;\n\theight: 40px;\n\tmin-height: 40px;\n\tmargin-top: 18px !important;\n\tborder: 0 !important;\n\tborder-radius: 8px !important;\n\tbackground: var(--wmn-teal) !important;\n\tcolor: #fff !important;\n\tfont-size: 14px !important;\n\tfont-weight: 600 !important;\n\tcursor: pointer;\n}\n\n.wmn-order-sidebar .checkout-btn:hover,\n.wmn-order-sidebar .edit-cart-btn:hover {\n\tbackground: #087979 !important;\n}\n\n.wmn-order-sidebar .checkout-btn[style*=\"--blue-200\"] {\n\tbackground: #9bcfcf !important;\n\tcursor: not-allowed;\n}\n\n.wmn-order-sidebar .checkout-btn[style*=\"--blue-500\"] {\n\tbackground: var(--wmn-teal) !important;\n\tcursor: pointer;\n}\n\n.wmn-order-sidebar .numpad-section {\n\t/* Hidden initially; ERPNext toggle_numpad() changes the inline display to flex. */\n\tdisplay: none;\n\tflex: 0 0 auto !important;\n\tflex-direction: column;\n\twidth: 100% !important;\n\theight: auto !important;\n\tmin-height: 0 !important;\n\tmargin: 0 !important;\n\tpadding: 16px 0 0 !important;\n\toverflow-x: hidden !important;\n\toverflow-y: auto !important;\n}\n\n.wmn-order-sidebar .numpad-totals {\n\tdisplay: flex;\n\tjustify-content: space-between;\n\tmargin-bottom: var(--margin-md);\n\tfont-size: var(--text-md);\n\tfont-weight: 700;\n}\n\n.wmn-order-sidebar .numpad-container {\n\tdisplay: grid;\n\tgrid-template-columns: repeat(4, minmax(0, 1fr));\n\tgap: var(--margin-md);\n\tmargin-bottom: var(--margin-md);\n}\n\n.wmn-order-sidebar .numpad-btn {\n\tborder-radius: 8px !important;\n}\n\n.wmn-mamsek-shell .item-details-container,\n.wmn-mamsek-shell .payment-container,\n.wmn-mamsek-shell .past-order-list,\n.wmn-mamsek-shell .past-order-summary {\n\tborder: 0 !important;\n}\n\n.wmn-mamsek-shell .item-details-header,\n.wmn-mamsek-shell .payment-container .section-label,\n.wmn-mamsek-shell .past-order-list .label,\n.wmn-mamsek-shell .past-order-summary .label {\n\tcolor: var(--wmn-ink);\n\tfont-weight: 600;\n}\n\n.wmn-mamsek-shell .payment-container .submit-order-btn,\n.wmn-mamsek-shell .past-order-summary .summary-btn:last-child {\n\tborder-radius: 8px !important;\n\tbackground: var(--wmn-teal) !important;\n\tcolor: #fff !important;\n}\n\n.wmn-mamsek-shell .payment-container .wmn-sell-on-credit-btn {\n\tdisplay: flex;\n\talign-items: center;\n\tjustify-content: center;\n\tmin-height: 44px;\n\tmargin-top: 10px;\n\tmargin-bottom: 8px;\n\tborder: 1px solid var(--wmn-teal);\n\tborder-radius: 8px;\n\tbackground: #fff;\n\tcolor: var(--wmn-teal);\n\tfont-weight: 600;\n\tcursor: pointer;\n}\n\n.wmn-mamsek-shell .payment-container .wmn-sell-on-credit-btn:hover {\n\tbackground: var(--wmn-soft);\n}\n\n/* --------------------------------------------------------------------------\n * WMN v7: restored item Button View + single category bar\n * -------------------------------------------------------------------------- */\n\n/* Mamsek renders the category cards; suppress the legacy duplicated strip. */\n.wmn-mamsek-shell .wmn-item-group-buttons {\n\tdisplay: none !important;\n}\n\n/* Button View turns every item card into a compact item button. */\n.wmn-mamsek-shell.wmn-button-view-active .wmn-items-content {\n\tgap: 16px;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active .wmn-items-selector .items-container.wmn-button-mode {\n\tgrid-template-columns: repeat(6, minmax(0, 1fr)) !important;\n\tgrid-auto-rows: 74px !important;\n\tgap: 8px !important;\n\tpadding: 0 4px 20px 0 !important;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card {\n\theight: 74px !important;\n\tmin-height: 74px !important;\n\tborder-radius: 8px;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card .item-wrapper {\n\tdisplay: flex !important;\n\talign-items: center !important;\n\tjustify-content: center !important;\n\theight: 100% !important;\n\tpadding: 8px 10px !important;\n\ttext-align: center !important;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active .wmn-card-media,\n.wmn-mamsek-shell.wmn-button-view-active .wmn-item-stepper {\n\tdisplay: none !important;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card .item-rate {\n\tdisplay: block !important;\n\tmargin-top: 2px !important;\n\tfont-size: 11px !important;\n\tline-height: 14px !important;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card .item-detail {\n\tdisplay: flex !important;\n\talign-items: center !important;\n\tjustify-content: center !important;\n\twidth: 100% !important;\n\theight: 100% !important;\n\tpadding: 0 !important;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card .item-name {\n\tdisplay: -webkit-box !important;\n\tmin-height: 0 !important;\n\tmax-width: 100%;\n\toverflow: hidden;\n\tfont-size: 13px !important;\n\tfont-weight: 650 !important;\n\tline-height: 18px !important;\n\ttext-align: center !important;\n\twhite-space: normal !important;\n\t-webkit-box-orient: vertical;\n\t-webkit-line-clamp: 2;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card.has-quantity {\n\tborder-color: var(--wmn-teal) !important;\n\tbackground: var(--wmn-teal-soft) !important;\n\tbox-shadow: inset 0 0 0 1px rgba(13, 140, 140, 0.08);\n}\n\n/* ========================================================================== \n * WMN v15 responsive layout\n * One clean responsive system. Mobile landscape is detected by device input\n * capabilities and orientation, not by viewport width alone.\n * ========================================================================== */\n\n:root {\n\t--wmn-pos-header-height: 64px;\n\t--wmn-pos-mobile-header-height: 52px;\n\t--wmn-pos-min-app-height: 660px;\n}\n\n/* Search is a full row above the item-group browser. */\n.wmn-pos-nav {\n\tdisplay: flex !important;\n\talign-items: center !important;\n\tjustify-content: flex-start !important;\n\tflex: 0 0 72px !important;\n\twidth: 100% !important;\n\theight: 72px !important;\n\tmin-height: 72px !important;\n\tgap: 0 !important;\n\tpadding: 14px 24px !important;\n\toverflow: visible !important;\n}\n\n.wmn-pos-nav-links {\n\tdisplay: flex !important;\n\talign-items: center !important;\n\tflex: 1 1 auto !important;\n\tflex-wrap: nowrap !important;\n\twidth: 100% !important;\n\tmin-width: 0 !important;\n\tgap: 8px;\n\toverflow: visible !important;\n}\n\n.wmn-category-section {\n\tdisplay: flex !important;\n\tflex: 0 0 116px !important;\n\tflex-direction: column !important;\n\twidth: 100% !important;\n\tmin-width: 0 !important;\n\tmin-height: 116px !important;\n\tgap: 12px !important;\n}\n\n.wmn-category-search-row {\n\tdisplay: flex !important;\n\talign-items: center !important;\n\tflex: 0 0 44px !important;\n\twidth: 100% !important;\n\tmin-width: 0 !important;\n\theight: 44px !important;\n}\n\n.wmn-menu-search {\n\tposition: relative !important;\n\tdisplay: flex !important;\n\talign-items: center !important;\n\tflex: 1 1 auto !important;\n\twidth: 100% !important;\n\tmin-width: 0 !important;\n\tmax-width: none !important;\n\theight: 44px !important;\n\tmargin: 0 !important;\n}\n\n.wmn-category-browser {\n\tdisplay: grid !important;\n\tgrid-template-columns: 36px minmax(0, 1fr) 36px !important;\n\talign-items: stretch !important;\n\tflex: 0 0 60px !important;\n\twidth: 100% !important;\n\tmin-width: 0 !important;\n\theight: 60px !important;\n\tgap: 8px !important;\n}\n\n.wmn-category-track {\n\tmin-width: 0 !important;\n\twidth: 100% !important;\n\theight: 60px !important;\n}\n\n.wmn-category-arrow {\n\tdisplay: grid !important;\n\tplace-items: center !important;\n\twidth: 36px !important;\n\tmin-width: 36px !important;\n\theight: 60px !important;\n\tpadding: 0 !important;\n\tborder: 1px solid var(--wmn-border) !important;\n\tborder-radius: 8px !important;\n\tbackground: #fff !important;\n\tcolor: var(--wmn-ink) !important;\n\tbox-shadow: none !important;\n\tcursor: pointer;\n}\n\n.wmn-category-arrow:hover,\n.wmn-category-arrow:focus-visible {\n\tborder-color: #9be2e2 !important;\n\tbackground: var(--wmn-teal-soft) !important;\n\tcolor: var(--wmn-teal) !important;\n\toutline: none !important;\n}\n\n.wmn-items-content {\n\tgap: 9px !important;\n}\n\n/* --------------------------------------------------------------------------\n * Desktop only. Touch landscape is overridden later even when it is wider\n * than 860px.\n * -------------------------------------------------------------------------- */\n@media (min-width: 720px) {\n\tbody.wmn-mamsek-pos-route {\n\t\theight: 100vh !important;\n\t\theight: 100dvh !important;\n\t\tmin-height: 100vh !important;\n\t\tmin-height: 100dvh !important;\n\t\toverflow: hidden !important;\n\t}\n\n\tbody.wmn-mamsek-pos-route header.navbar,\n\tbody.wmn-mamsek-pos-route header.navbar > .container,\n\tbody.wmn-mamsek-pos-route header.navbar > .container-fluid,\n\tbody.wmn-mamsek-pos-route header.navbar .navbar-nav {\n\t\theight: var(--wmn-pos-header-height) !important;\n\t\tmin-height: var(--wmn-pos-header-height) !important;\n\t}\n\n\t.wmn-mamsek-shell {\n\t\tposition: fixed !important;\n\t\ttop: 0 !important;\n\t\tright: 0 !important;\n\t\tbottom: 0 !important;\n\t\tleft: 0 !important;\n\t\theight: auto !important;\n\t\tmin-height: 0 !important;\n\t\toverflow-x: hidden !important;\n\t\toverflow-y: auto !important;\n\t\tscrollbar-gutter: stable;\n\t}\n\n\t.wmn-mamsek-shell > .point-of-sale-app {\n\t\tmin-height: var(--wmn-pos-min-app-height) !important;\n\t}\n\n\t.wmn-customer-area {\n\t\tposition: relative !important;\n\t\tz-index: 2 !important;\n\t\tflex: 0 0 auto !important;\n\t}\n}\n\n@media (min-width: 1281px) {\n\t.wmn-mamsek-shell > .point-of-sale-app {\n\t\tgrid-template-columns: minmax(0, 1fr) 400px !important;\n\t}\n\n\t.wmn-mamsek-shell .wmn-items-selector .items-container {\n\t\tgrid-template-columns: repeat(4, minmax(0, 1fr)) !important;\n\t}\n\n\t.wmn-mamsek-shell.wmn-button-view-active .wmn-items-selector .items-container.wmn-button-mode {\n\t\tgrid-template-columns: repeat(6, minmax(0, 1fr)) !important;\n\t}\n}\n\n@media (min-width: 1101px) and (max-width: 1280px) {\n\t.wmn-mamsek-shell > .point-of-sale-app {\n\t\tgrid-template-columns: minmax(0, 1fr) 360px !important;\n\t}\n\n\t.wmn-mamsek-shell .wmn-items-selector .items-container {\n\t\tgrid-template-columns: repeat(3, minmax(0, 1fr)) !important;\n\t}\n\n\t.wmn-pos-nav {\n\t\tpadding-inline: 14px !important;\n\t}\n\n\t.wmn-pos-nav-links {\n\t\tgap: 4px !important;\n\t}\n\n\t.wmn-nav-btn {\n\t\tgap: 4px;\n\t\tpadding-inline: 7px;\n\t\tfont-size: 12px;\n\t}\n\n\t.wmn-mamsek-shell.wmn-button-view-active .wmn-items-selector .items-container.wmn-button-mode {\n\t\tgrid-template-columns: repeat(5, minmax(0, 1fr)) !important;\n\t}\n}\n\n@media (min-width: 720px) and (max-width: 1100px) {\n\t.wmn-mamsek-shell > .point-of-sale-app {\n\t\tgrid-template-columns: minmax(0, 1fr) 330px !important;\n\t}\n\n\t.wmn-mamsek-shell .wmn-items-selector .items-container {\n\t\tgrid-template-columns: repeat(3, minmax(0, 1fr)) !important;\n\t}\n\n\n\n\t.wmn-pos-nav-links > .wmn-nav-btn,\n\t.wmn-pos-nav-links > .wmn-tools-menu .wmn-nav-btn {\n\t\tflex: 0 0 40px !important;\n\t\twidth: 40px !important;\n\t\tmin-width: 40px !important;\n\t\theight: 40px !important;\n\t\tpadding: 0 !important;\n\t}\n\n\t.wmn-pos-nav-links .wmn-nav-btn > span {\n\t\tdisplay: none !important;\n\t}\n\n\t.wmn-mamsek-shell.wmn-button-view-active .wmn-items-selector .items-container.wmn-button-mode {\n\t\tgrid-template-columns: repeat(4, minmax(0, 1fr)) !important;\n\t}\n}\n\n/* --------------------------------------------------------------------------\n * Shared phone/tablet mode. The second query catches mobile landscape whose\n * viewport width exceeds the old 860px breakpoint.\n * -------------------------------------------------------------------------- */\n@media (max-width: 720px),\n\t(orientation: landscape) and (hover: none) and (pointer: coarse) and (max-height: 60px),\n\t(orientation: landscape) and (any-hover: none) and (any-pointer: coarse) and (max-height: 60px) {\n\tbody.wmn-mamsek-pos-route {\n\t\theight: auto !important;\n\t\tmin-height: 100vh !important;\n\t\tmin-height: 100dvh !important;\n\t\toverflow-x: hidden !important;\n\t\toverflow-y: auto !important;\n\t}\n\n\tbody.wmn-mamsek-pos-route header.navbar,\n\tbody.wmn-mamsek-pos-route header.navbar > .container,\n\tbody.wmn-mamsek-pos-route header.navbar > .container-fluid,\n\tbody.wmn-mamsek-pos-route header.navbar .navbar-nav {\n\t\theight: var(--wmn-pos-mobile-header-height) !important;\n\t\tmin-height: var(--wmn-pos-mobile-header-height) !important;\n\t}\n\n\tbody.wmn-mamsek-pos-route header.navbar > .container,\n\tbody.wmn-mamsek-pos-route header.navbar > .container-fluid {\n\t\tpadding-inline: 10px !important;\n\t}\n\n\t.wmn-mamsek-shell {\n\t\t\n\t\twidth: 100% !important;\n\t\theight: auto !important;\n\t\tmin-height: calc(100dvh - var(--wmn-pos-mobile-header-height)) !important;\n\t\t\n\t\toverflow: visible !important;\n\t}\n\n\t.wmn-mamsek-shell > .point-of-sale-app {\n\t\tdisplay: grid !important;\n\t\tgrid-template-columns: minmax(0, 1fr) !important;\n\t\tgrid-template-rows: auto auto !important;\n\t\twidth: 100% !important;\n\t\theight: auto !important;\n\t\tmin-height: 0 !important;\n\t\toverflow-x: hidden !important;\n\t\toverflow-y: auto !important;\n\t}\n\n\t.wmn-mamsek-shell .items-selector,\n\t.wmn-mamsek-shell .customer-cart-container,\n\t.wmn-mamsek-shell .item-details-container,\n\t.wmn-mamsek-shell .payment-container,\n\t.wmn-mamsek-shell .past-order-list,\n\t.wmn-mamsek-shell .past-order-summary {\n\t\tgrid-column: 1 !important;\n\t\twidth: 100% !important;\n\t\tmin-width: 0 !important;\n\t\theight: auto !important;\n\t\tmax-height: none !important;\n\t}\n\n\t.wmn-mamsek-shell .items-selector {\n\t\tgrid-row: 1 !important;\n\t\tmin-height: calc(100dvh - var(--wmn-pos-mobile-header-height)) !important;\n\t}\n\n\t.wmn-mamsek-shell .customer-cart-container {\n\t\tgrid-row: 2 !important;\n\t\tmin-height: 520px !important;\n\t\tborder-top: 1px solid var(--wmn-border) !important;\n\t\tborder-left: 0 !important;\n\t}\n\n\t.wmn-pos-nav {\n\t\t\n\t\tflex: 0 0 1px !important;\n\t\t\n\t\tmin-height: 2px !important;\n\t\t\n\t}\n\n\n\t.wmn-pos-nav-links::-webkit-scrollbar {\n\t\tdisplay: none;\n\t}\n\n\t.wmn-pos-nav-links .wmn-nav-btn > span {\n\t\tdisplay: none !important;\n\t}\n\n\t.wmn-pos-nav-links > .wmn-nav-btn,\n\t.wmn-pos-nav-links > .wmn-tools-menu .wmn-nav-btn {\n\t\tflex: 0 0 40px !important;\n\t\twidth: 40px !important;\n\t\tmin-width: 40px !important;\n\t\theight: 40px !important;\n\t\tpadding: 0 !important;\n\t}\n\n\t.wmn-items-content {\n\t\tmin-height: 0 !important;\n\t\tgap: 12px !important;\n\t\tpadding: 10px !important;\n\t}\n\n\t.wmn-category-section {\n\t\tflex: 0 0 106px !important;\n\t\tmin-height: 106px !important;\n\t\tgap: 8px !important;\n\t}\n\n\t.wmn-category-search-row,\n\t.wmn-menu-search {\n\t\theight: 42px !important;\n\t\tmin-height: 42px !important;\n\t}\n\n\t.wmn-menu-search .search-field,\n\t.wmn-menu-search .frappe-control,\n\t.wmn-menu-search .form-group,\n\t.wmn-menu-search .control-input-wrapper,\n\t.wmn-menu-search .control-input,\n\t.wmn-menu-search .form-control {\n\t\theight: 40px !important;\n\t\tmin-height: 40px !important;\n\t}\n\n\t.wmn-category-browser {\n\t\tgrid-template-columns: 38px minmax(0, 1fr) 38px !important;\n\t\tflex-basis: 56px !important;\n\t\theight: 56px !important;\n\t\tgap: 6px !important;\n\t}\n\n\t.wmn-category-track,\n\t.wmn-category-arrow,\n\t.wmn-category-card {\n\t\theight: 56px !important;\n\t}\n\n\t.wmn-category-arrow {\n\t\twidth: 38px !important;\n\t\tmin-width: 38px !important;\n\t}\n\n\t.wmn-category-card {\n\t\tflex-basis: 144px !important;\n\t\twidth: 144px !important;\n\t\tpadding-inline: 10px !important;\n\t}\n\n\t.wmn-category-copy strong {\n\t\tfont-size: 13px !important;\n\t}\n\n\t.wmn-category-copy small {\n\t\tfont-size: 11px !important;\n\t}\n\n\t.wmn-mamsek-shell .wmn-items-selector .items-container {\n\t\twidth: 100% !important;\n\t\tmin-height: 360px !important;\n\t\tgap: 8px !important;\n\t\tpadding: 0 0 12px !important;\n\t\toverflow-x: hidden !important;\n\t\toverflow-y: auto !important;\n\t}\n\n\t.wmn-item-card {\n\t\tmin-width: 0 !important;\n\t\tborder-radius: 10px !important;\n\t}\n\n\t.wmn-order-sidebar {\n\t\tpadding: 12px !important;\n\t}\n\n\t.wmn-order-sidebar .cart-items-section {\n\t\tmin-height: 220px !important;\n\t\tmax-height: 420px !important;\n\t}\n}\n\n/* Phone/tablet portrait: two compact cards instead of one oversized card. */\n@media (orientation: portrait) and (min-width: 340px) and (max-width: 860px) {\n\t.wmn-mamsek-shell .wmn-items-selector .items-container {\n\t\tgrid-template-columns: repeat(3, minmax(0, 1fr)) !important;\n\t\tgrid-auto-rows: max-content !important;\n\t}\n\n\t.wmn-item-card {\n\t\theight: 214px !important;\n\t}\n\n\t.wmn-card-media {\n\t\tflex: 0 0 102px !important;\n\t\theight: 102px !important;\n\t}\n\n\t.wmn-item-card .item-detail {\n\t\tpadding: 9px 10px 10px !important;\n\t}\n\n\t.wmn-item-card .item-name {\n\t\tmin-height: 36px !important;\n\t\tfont-size: 13px !important;\n\t\tline-height: 18px !important;\n\t}\n\n\t.wmn-item-card .item-rate {\n\t\tfont-size: 15px !important;\n\t\tline-height: 22px !important;\n\t}\n\n\t.wmn-item-stepper {\n\t\tright: 8px !important;\n\t\tbottom: 8px !important;\n\t\tgrid-template-columns: repeat(3, 26px) !important;\n\t\twidth: 86px !important;\n\t\theight: 34px !important;\n\t\tpadding: 3px !important;\n\t}\n\n\t.wmn-qty-button,\n\t.wmn-item-count {\n\t\twidth: 26px !important;\n\t\theight: 26px !important;\n\t\tline-height: 26px !important;\n\t}\n\n\t.wmn-mamsek-shell.wmn-button-view-active .wmn-items-selector .items-container.wmn-button-mode {\n\t\tgrid-template-columns: repeat(3, minmax(0, 1fr)) !important;\n\t\tgrid-auto-rows: 68px !important;\n\t}\n}\n\n/* Very narrow portrait only. */\n@media (orientation: portrait) and (max-width: 339px) {\n\t.wmn-mamsek-shell .wmn-items-selector .items-container {\n\t\tgrid-template-columns: minmax(0, 1fr) !important;\n\t\tgrid-auto-rows: 205px !important;\n\t}\n\n\t.wmn-item-card {\n\t\theight: 205px !important;\n\t}\n\n\t.wmn-card-media {\n\t\tflex-basis: 96px !important;\n\t\theight: 96px !important;\n\t}\n\n\t.wmn-mamsek-shell.wmn-button-view-active .wmn-items-selector .items-container.wmn-button-mode {\n\t\tgrid-template-columns: repeat(2, minmax(0, 1fr)) !important;\n\t}\n}\n\n/* Mobile/tablet landscape: never fall back to the desktop two-pane layout. */\n@media (orientation: landscape) and (max-height: 60px) and (max-width: 1100px) {\n\t.wmn-mamsek-shell {\n\t\tmargin-top: var(--wmn-pos-mobile-header-height) !important;\n\t}\n\n\t.wmn-pos-nav {\n\t\tflex-basis: 48px !important;\n\t\theight: 48px !important;\n\t\tmin-height: 48px !important;\n\t\tpadding-block: 4px !important;\n\t}\n\n\t.wmn-items-content {\n\t\tgap: 8px !important;\n\t\tpadding: 8px 10px !important;\n\t}\n\n\t.wmn-category-section {\n\t\tflex-basis: 94px !important;\n\t\tmin-height: 94px !important;\n\t\tgap: 6px !important;\n\t}\n\n\t.wmn-category-search-row,\n\t.wmn-menu-search {\n\t\theight: 40px !important;\n\t\tmin-height: 40px !important;\n\t}\n\n\t.wmn-category-browser,\n\t.wmn-category-track,\n\t.wmn-category-arrow,\n\t.wmn-category-card {\n\t\theight: 48px !important;\n\t}\n\n\t.wmn-category-browser {\n\t\tgrid-template-columns: 34px minmax(0, 1fr) 34px !important;\n\t\tflex-basis: 48px !important;\n\t}\n\n\t.wmn-category-arrow {\n\t\twidth: 34px !important;\n\t\tmin-width: 34px !important;\n\t}\n\n\t.wmn-category-card {\n\t\tflex-basis: 152px !important;\n\t\twidth: 152px !important;\n\t}\n\n\t.wmn-mamsek-shell .wmn-items-selector .items-container {\n\t\tgrid-template-columns: repeat(3, minmax(0, 1fr)) !important;\n\t\tgrid-auto-rows: 178px !important;\n\t\tmin-height: 260px !important;\n\t\tgap: 8px !important;\n\t}\n\n\t.wmn-item-card {\n\t\theight: 178px !important;\n\t}\n\n\t.wmn-card-media {\n\t\tflex: 0 0 78px !important;\n\t\theight: 78px !important;\n\t}\n\n\t.wmn-item-card .item-detail {\n\t\tpadding: 7px 9px 9px !important;\n\t}\n\n\t.wmn-item-card .item-name {\n\t\tmin-height: 32px !important;\n\t\tfont-size: 12px !important;\n\t\tline-height: 16px !important;\n\t}\n\n\t.wmn-item-card .item-rate {\n\t\tfont-size: 14px !important;\n\t\tline-height: 20px !important;\n\t}\n\n\t.wmn-item-stepper {\n\t\tright: 7px !important;\n\t\tbottom: 7px !important;\n\t\tgrid-template-columns: repeat(3, 24px) !important;\n\t\twidth: 80px !important;\n\t\theight: 32px !important;\n\t\tpadding: 3px !important;\n\t}\n\n\t.wmn-qty-button,\n\t.wmn-item-count {\n\t\twidth: 24px !important;\n\t\theight: 24px !important;\n\t\tline-height: 24px !important;\n\t}\n\n\t.wmn-mamsek-shell.wmn-button-view-active .wmn-items-selector .items-container.wmn-button-mode {\n\t\tgrid-template-columns: repeat(5, minmax(0, 1fr)) !important;\n\t\tgrid-auto-rows: 62px !important;\n\t}\n}\n\n@media (orientation: landscape) and (min-width: 900px) and (max-height: 60px) and (max-width: 1100px) {\n\t.wmn-mamsek-shell .wmn-items-selector .items-container {\n\t\tgrid-template-columns: repeat(4, minmax(0, 1fr)) !important;\n\t}\n}\n\n/* Short desktop windows only; touch landscape has its own rules above. */\n@media (min-width: 861px) and (hover: hover) and (pointer: fine) and (max-height: 760px) {\n\t.wmn-pos-nav {\n\t\tflex-basis: 64px !important;\n\t\theight: 64px !important;\n\t\tmin-height: 64px !important;\n\t\tpadding-block: 10px !important;\n\t}\n\n\t.wmn-category-section {\n\t\tflex-basis: 108px !important;\n\t\tmin-height: 108px !important;\n\t\tgap: 8px !important;\n\t}\n}\n\n/* ========================================================================== \n * v16 \u2014 Proportional item cards\n * One sizing rule for every viewport. The grid decides the number of cards\n * from the available width; portrait/landscape breakpoints no longer set a\n * fixed card count or fixed card height.\n * ========================================================================== */\n.wmn-mamsek-shell .items-selector {\n\tcontainer-type: inline-size;\n}\n\n.wmn-mamsek-shell11 .items-container11:not(.wmn-button-mode) {\n\tgrid-template-columns: repeat(\n\t\tauto-fill,\n\t\tminmax(clamp(145px, 23cqw, 235px), 1fr)\n\t) !important;\n\tgrid-auto-rows: auto !important;\n\talign-items: start !important;\n}\n\n.wmn-mamsek-shell .wmn-items-selector .items-container:not(.wmn-button-mode) .wmn-item-card {\n\tcontainer-type: inline-size;\n\twidth: 100% !important;\n\theight: auto !important;\n\tmax-height: 247px !important;\n\taspect-ratio: 1 / 1.08;\n}\n\n.wmn-mamsek-shell .wmn-items-selector .items-container:not(.wmn-button-mode) .wmn-card-media {\n\tflex: 0 0 52% !important;\n\twidth: 100% !important;\n\theight: auto !important;\n\tmin-height: 0 !important;\n}\n\n.wmn-mamsek-shell .wmn-items-selector .items-container:not(.wmn-button-mode) .wmn-card-media .item-display.abbr {\n\tfont-size: clamp(24px, 18cqw, 36px) !important;\n}\n\n.wmn-mamsek-shell .wmn-items-selector .items-container:not(.wmn-button-mode) .wmn-item-card .item-detail {\n\tpadding: clamp(7px, 5cqw, 14px) !important;\n}\n\n.wmn-mamsek-shell .wmn-items-selector .items-container:not(.wmn-button-mode) .wmn-item-card .item-name {\n\tmin-height: clamp(30px, 18cqw, 40px) !important;\n\tfont-size: clamp(14px, 6.5cqw, 14px) !important;\n\tline-height: 1.35 !important;\n}\n\n.wmn-mamsek-shell .wmn-items-selector .items-container:not(.wmn-button-mode) .wmn-item-card .item-rate {\n\tfont-size: clamp(13px, 7.5cqw, 18px) !important;\n\tline-height: 1.35 !important;\n}\n\n.wmn-mamsek-shell .wmn-items-selector .items-container:not(.wmn-button-mode) .wmn-stock-pill {\n\ttop: clamp(5px, 3.5cqw, 8px) !important;\n\tright: clamp(5px, 3.5cqw, 8px) !important;\n\tmin-width: clamp(24px, 12cqw, 28px) !important;\n\theight: clamp(19px, 10cqw, 22px) !important;\n\tpadding-inline: clamp(5px, 3cqw, 7px) !important;\n\tfont-size: clamp(9px, 5cqw, 11px) !important;\n}\n\n.wmn-mamsek-shell .wmn-items-selector .items-container:not(.wmn-button-mode) .wmn-item-stepper {\n\t--wmn-proportional-step-size: clamp(24px, 15cqw, 32px);\n\t--wmn-proportional-step-padding: clamp(3px, 2cqw, 4px);\n\n\tright: clamp(6px, 5cqw, 14px) !important;\n\tbottom: clamp(6px, 5cqw, 14px) !important;\n\tgrid-template-columns: repeat(3, var(--wmn-proportional-step-size)) !important;\n\twidth: calc(\n\t\t(var(--wmn-proportional-step-size) * 3) +\n\t\t(var(--wmn-proportional-step-padding) * 2)\n\t) !important;\n\theight: calc(\n\t\tvar(--wmn-proportional-step-size) +\n\t\t(var(--wmn-proportional-step-padding) * 2)\n\t) !important;\n\tpadding: var(--wmn-proportional-step-padding) !important;\n}\n\n.wmn-mamsek-shell .wmn-items-selector .items-container:not(.wmn-button-mode) .wmn-qty-button,\n.wmn-mamsek-shell .wmn-items-selector .items-container:not(.wmn-button-mode) .wmn-item-count {\n\twidth: var(--wmn-proportional-step-size) !important;\n\theight: var(--wmn-proportional-step-size) !important;\n\tline-height: var(--wmn-proportional-step-size) !important;\n\tfont-size: clamp(11px, 6cqw, 14px) !important;\n}\n\n/* ========================================================================== \n * v19 \u2014 Mobile landscape: items and cart side by side\n * Layout only. Preserve the existing page and section overflow behavior.\n * ========================================================================== */\n@media (orientation: landscape) and (min-width: 600px) and (max-width: 1100px) and (max-height: 60px) {\n\t.wmn-mamsek-shell > .point-of-sale-app {\n\t\tdisplay: grid !important;\n\t\tgrid-template-columns: minmax(0, 1fr) clamp(280px, 36vw, 380px) !important;\n\t\tgrid-template-rows: auto !important;\n\t\talign-items: start !important;\n\t\twidth: 100% !important;\n\t\theight: auto !important;\n\t\tmin-height: 0 !important;\n\t}\n\n\t.wmn-mamsek-shell .items-selector {\n\t\tgrid-column: 1 !important;\n\t\tgrid-row: 1 !important;\n\t\twidth: 100% !important;\n\t\theight: auto !important;\n\t\tmin-width: 0 !important;\n\t\tmin-height: 0 !important;\n\t}\n\n\t.wmn-mamsek-shell .customer-cart-container {\n\t\tgrid-column: 2 !important;\n\t\tgrid-row: 1 !important;\n\t\twidth: 100% !important;\n\t\theight: auto !important;\n\t\tmin-width: 0 !important;\n\t\tmin-height: 0 !important;\n\t\tborder-top: 0 !important;\n\t\tborder-left: 1px solid var(--wmn-border) !important;\n\t}\n\n\t/* Keep the item list itself scrollable in landscape. */\n\t.wmn-mamsek-shell .wmn-items-selector .items-container {\n\t\toverflow-x: hidden !important;\n\t\toverflow-y: auto !important;\n\t}\n}\n\nbody.wmn-mamsek-pos-route:has(.wmn-mamsek-shell.wmn-button-view-active) header.navbar {\n\tdisplay: none !important;\n\theight: 0 !important;\n\tmin-height: 0 !important;\n\tmargin: 0 !important;\n\tpadding: 0 !important;\n\tborder: 0 !important;\n}\n\nbody.wmn-mamsek-pos-route:has(.wmn-mamsek-shell.wmn-button-view-active)\n\t.wmn-mamsek-shell.wmn-button-view-active {\n\ttop: 0 !important;\n\tinset-block-start: 0 !important;\n\tmargin-top: 0 !important;\n}\n\nbody.wmn-mamsek-pos-route:has(.wmn-mamsek-shell.wmn-button-view-active)\n\t.wmn-mamsek-shell.wmn-button-view-active,\nbody.wmn-mamsek-pos-route:has(.wmn-mamsek-shell.wmn-button-view-active)\n\t.wmn-mamsek-shell.wmn-button-view-active .items-selector {\n\tmin-height: 100vh !important;\n\tmin-height: 100dvh !important;\n}\n\n/* 2) Hide category browser and reclaim its full height */\n.wmn-mamsek-shell.wmn-button-view-active .wmn-category-browser {\n\tdisplay: none !important;\n\twidth: 0 !important;\n\theight: 0 !important;\n\tmin-height: 0 !important;\n\tflex: 0 0 0 !important;\n\tmargin: 0 !important;\n\tpadding: 0 !important;\n\tgap: 0 !important;\n\toverflow: hidden !important;\n}\n\n/* Keep only search row */\n.wmn-mamsek-shell.wmn-button-view-active .wmn-category-section {\n\tflex: 0 0 44px !important;\n\theight: 44px !important;\n\tmin-height: 44px !important;\n\tmax-height: 44px !important;\n\tgap: 0 !important;\n\tmargin: 0 !important;\n\tpadding: 0 !important;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active .wmn-category-search-row,\n.wmn-mamsek-shell.wmn-button-view-active .wmn-menu-search {\n\theight: 44px !important;\n\tmin-height: 44px !important;\n\tmax-height: 44px !important;\n\tmargin: 0 !important;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active .wmn-items-content {\n\tgap: 5px !important;\n\tpadding: 6px 8px 8px !important;\n}\n\n/* 3) Smaller button-mode items */\n.wmn-mamsek-shell.wmn-button-view-active .wmn-items-selector .items-container.wmn-button-mode {\n\tgrid-template-columns: repeat(auto-fill, minmax(108px, 1fr)) !important;\n\tgrid-auto-rows: 54px !important;\n\talign-content: start !important;\n\tgap: 5px !important;\n\tpadding: 0 2px 10px 0 !important;\n\toverflow-x: hidden !important;\n\toverflow-y: auto !important;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card {\n\theight: 54px !important;\n\tmin-height: 54px !important;\n\tmax-height: 54px !important;\n\tborder-radius: 7px !important;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card .item-wrapper {\n\tposition: relative !important;\n\tdisplay: flex !important;\n\talign-items: center !important;\n\tjustify-content: center !important;\n\theight: 100% !important;\n\tpadding: 6px 9px !important;\n\ttext-align: center !important;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card .item-detail {\n\tdisplay: flex !important;\n\talign-items: center !important;\n\tjustify-content: center !important;\n\twidth: 100% !important;\n\theight: 100% !important;\n\tmin-height: 0 !important;\n\tpadding: 0 !important;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card .item-name {\n\tdisplay: -webkit-box !important;\n\twidth: 100% !important;\n\tmax-width: 100% !important;\n\tmin-height: 0 !important;\n\tpadding-inline: 2px !important;\n\toverflow: hidden !important;\n\tfont-size: 12px !important;\n\tfont-weight: 650 !important;\n\tline-height: 15px !important;\n\ttext-align: center !important;\n\twhite-space: normal !important;\n\t-webkit-box-orient: vertical;\n\t-webkit-line-clamp: 2;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active .wmn-card-media {\n\tdisplay: none !important;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card .item-rate {\n\tdisplay: none !important;\n}\n\n/* 4) Live cart quantity badge using existing .wmn-item-count */\n.wmn-mamsek-shell.wmn-button-view-active .wmn-item-stepper {\n\tdisplay: none !important;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active\n\t.wmn-item-card.has-quantity .wmn-item-stepper {\n\tposition: absolute !important;\n\ttop: 4px !important;\n\tright: 4px !important;\n\tbottom: auto !important;\n\tleft: auto !important;\n\tz-index: 8 !important;\n\tdisplay: block !important;\n\twidth: 22px !important;\n\theight: 22px !important;\n\tmargin: 0 !important;\n\tpadding: 0 !important;\n\tborder: 0 !important;\n\tborder-radius: 50% !important;\n\tbackground: transparent !important;\n\tbox-shadow: none !important;\n\tpointer-events: none !important;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active\n\t.wmn-item-card.has-quantity .wmn-item-stepper .wmn-qty-button {\n\tdisplay: none !important;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active\n\t.wmn-item-card.has-quantity .wmn-item-count {\n\tdisplay: grid !important;\n\tplace-items: center !important;\n\twidth: 22px !important;\n\tmin-width: 22px !important;\n\tmax-width: 22px !important;\n\theight: 22px !important;\n\tmin-height: 22px !important;\n\tmax-height: 22px !important;\n\tmargin: 0 !important;\n\tpadding: 0 !important;\n\tborder: 2px solid #fff !important;\n\tborder-radius: 50% !important;\n\toutline: 0 !important;\n\tbackground: var(--wmn-teal) !important;\n\tcolor: #fff !important;\n\tbox-shadow: 0 2px 6px rgba(34, 38, 46, 0.20) !important;\n\tfont-family: inherit !important;\n\tfont-size: 10px !important;\n\tfont-weight: 800 !important;\n\tline-height: 18px !important;\n\ttext-align: center !important;\n\t-moz-appearance: textfield !important;\n\tpointer-events: none !important;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card.has-quantity {\n\tborder-color: #82d5d5 !important;\n\tbackground: var(--wmn-teal-soft) !important;\n\tbox-shadow: inset 0 0 0 1px rgba(13, 140, 140, 0.08) !important;\n}\n\n/* RTL badge corner */\nbody[dir=\"rtl\"] .wmn-mamsek-shell.wmn-button-view-active\n\t.wmn-item-card.has-quantity .wmn-item-stepper,\nbody.rtl-mode .wmn-mamsek-shell.wmn-button-view-active\n\t.wmn-item-card.has-quantity .wmn-item-stepper {\n\tright: auto !important;\n\tleft: 4px !important;\n}\n\n/* Touch/mobile button mode */\n@media (max-width: 720px),\n\t(orientation: landscape) and (hover: none) and (pointer: coarse) {\n\n\t.wmn-mamsek-shell.wmn-button-view-active .wmn-category-section,\n\t.wmn-mamsek-shell.wmn-button-view-active .wmn-category-search-row,\n\t.wmn-mamsek-shell.wmn-button-view-active .wmn-menu-search {\n\t\tflex-basis: 40px !important;\n\t\theight: 40px !important;\n\t\tmin-height: 40px !important;\n\t\tmax-height: 40px !important;\n\t}\n\n\t.wmn-mamsek-shell.wmn-button-view-active .wmn-items-selector .items-container.wmn-button-mode {\n\t\tgrid-template-columns: repeat(auto-fill, minmax(96px, 1fr)) !important;\n\t\tgrid-auto-rows: 50px !important;\n\t\tgap: 4px !important;\n\t}\n\n\t.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card {\n\t\theight: 50px !important;\n\t\tmin-height: 50px !important;\n\t\tmax-height: 50px !important;\n\t}\n\n\t.wmn-mamsek-shell.wmn-button-view-active .wmn-item-card .item-name {\n\t\tfont-size: 11px !important;\n\t\tline-height: 14px !important;\n\t}\n}\n\n\n\n.wmn-mamsek-shell.wmn-button-view-active .wmn-item-stepper {\n\tposition: absolute !important;\n\tinset: 0 !important;\n\tz-index: 9 !important;\n\n\tdisplay: block !important;\n\n\twidth: 100% !important;\n\theight: 100% !important;\n\n\tmargin: 0 !important;\n\tpadding: 0 !important;\n\n\tborder: 0 !important;\n\tborder-radius: inherit !important;\n\tbackground: transparent !important;\n\tbox-shadow: none !important;\n\n\t/* Let normal clicks pass through to the item card. */\n\tpointer-events: none !important;\n}\n\n\n/* ----------------------------------------------------------\n * Hide PLUS completely.\n * Clicking the item itself is the increase action.\n * ---------------------------------------------------------- */\n.wmn-mamsek-shell.wmn-button-view-active\n\t.wmn-item-stepper .wmn-qty-button.is-plus {\n\n\tdisplay: none !important;\n}\n\n\n/* ----------------------------------------------------------\n * Hide MINUS when quantity is zero.\n * ---------------------------------------------------------- */\n.wmn-mamsek-shell.wmn-button-view-active\n\t.wmn-item-stepper .wmn-qty-button:not(.is-plus) {\n\n\tdisplay: none !important;\n}\n\n\n/* ----------------------------------------------------------\n * Show MINUS only when item exists in cart.\n * ---------------------------------------------------------- */\n.wmn-mamsek-shell.wmn-button-view-active\n\t.wmn-item-card.has-quantity\n\t.wmn-item-stepper .wmn-qty-button:not(.is-plus) {\n\n\tposition: absolute !important;\n\n\ttop: 50% !important;\n\tleft: 5px !important;\n\tright: auto !important;\n\n\ttransform: translateY(-50%) !important;\n\n\tz-index: 11 !important;\n\n\tdisplay: grid !important;\n\tplace-items: center !important;\n\n\twidth: 28px !important;\n\theight: 28px !important;\n\tmin-width: 28px !important;\n\tmin-height: 28px !important;\n\n\tmargin: 0 !important;\n\tpadding: 0 !important;\n\n\tborder: 1px solid #d5dde1 !important;\n\tborder-radius: 50% !important;\n\n\tbackground: rgba(255,255,255,.96) !important;\n\tcolor: var(--wmn-danger) !important;\n\n\tbox-shadow: 0 2px 7px rgba(34,38,46,.12) !important;\n\n\tcursor: pointer !important;\n\n\t/* Only minus intercepts the click. */\n\tpointer-events: auto !important;\n}\n\n\n/* Minus hover */\n.wmn-mamsek-shell.wmn-button-view-active\n\t.wmn-item-card.has-quantity\n\t.wmn-item-stepper .wmn-qty-button:not(.is-plus):hover {\n\n\tborder-color: #efbcbc !important;\n\tbackground: #fff3f3 !important;\n\tcolor: #c63838 !important;\n\n\ttransform: translateY(-50%) scale(1.06) !important;\n}\n\n\n/* ----------------------------------------------------------\n * Quantity badge remains in top corner.\n * ---------------------------------------------------------- */\n.wmn-mamsek-shell.wmn-button-view-active\n\t.wmn-item-stepper .wmn-item-count {\n\n\tposition: absolute !important;\n\n\ttop: 3px !important;\n\tright: 3px !important;\n\tleft: auto !important;\n\n\tz-index: 12 !important;\n\n\tdisplay: none !important;\n\n\twidth: 20px !important;\n\tmin-width: 20px !important;\n\tmax-width: 20px !important;\n\n\theight: 20px !important;\n\tmin-height: 20px !important;\n\tmax-height: 20px !important;\n\n\tmargin: 0 !important;\n\tpadding: 0 !important;\n\n\tborder: 2px solid #fff !important;\n\tborder-radius: 50% !important;\n\n\tbackground: var(--wmn-teal) !important;\n\tcolor: #fff !important;\n\n\tbox-shadow: 0 2px 6px rgba(34,38,46,.20) !important;\n\n\tfont-size: 10px !important;\n\tfont-weight: 800 !important;\n\tline-height: 16px !important;\n\ttext-align: center !important;\n\n\tpointer-events: none !important;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active\n\t.wmn-item-card.has-quantity\n\t.wmn-item-count {\n\n\tdisplay: grid !important;\n\tplace-items: center !important;\n}\n\n\n/* ----------------------------------------------------------\n * Item text:\n * no need to reserve right-side space for the removed + button.\n * Reserve only a little room near minus.\n * ---------------------------------------------------------- */\n.wmn-mamsek-shell.wmn-button-view-active\n\t.wmn-item-card .item-detail {\n\n\tpadding-inline: 8px !important;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active\n\t.wmn-item-card.has-quantity .item-detail {\n\n\tpadding-left: 36px !important;\n\tpadding-right: 8px !important;\n}\n\n\n/* ----------------------------------------------------------\n * RTL:\n * Minus moves to right side.\n * Quantity badge moves to left corner.\n * ---------------------------------------------------------- */\nbody[dir=\"rtl\"]\n\t.wmn-mamsek-shell.wmn-button-view-active\n\t.wmn-item-card.has-quantity\n\t.wmn-item-stepper .wmn-qty-button:not(.is-plus),\nbody.rtl-mode\n\t.wmn-mamsek-shell.wmn-button-view-active\n\t.wmn-item-card.has-quantity\n\t.wmn-item-stepper .wmn-qty-button:not(.is-plus) {\n\n\tleft: auto !important;\n\tright: 5px !important;\n}\n\nbody[dir=\"rtl\"]\n\t.wmn-mamsek-shell.wmn-button-view-active\n\t.wmn-item-stepper .wmn-item-count,\nbody.rtl-mode\n\t.wmn-mamsek-shell.wmn-button-view-active\n\t.wmn-item-stepper .wmn-item-count {\n\n\tright: auto !important;\n\tleft: 3px !important;\n}\n\nbody[dir=\"rtl\"]\n\t.wmn-mamsek-shell.wmn-button-view-active\n\t.wmn-item-card.has-quantity .item-detail,\nbody.rtl-mode\n\t.wmn-mamsek-shell.wmn-button-view-active\n\t.wmn-item-card.has-quantity .item-detail {\n\n\tpadding-right: 36px !important;\n\tpadding-left: 8px !important;\n}\n\n\n/* ----------------------------------------------------------\n * Touch/mobile: slightly smaller minus.\n * ---------------------------------------------------------- */\n@media (max-width: 720px),\n\t(orientation: landscape) and (hover: none) and (pointer: coarse) {\n\n\t.wmn-mamsek-shell.wmn-button-view-active\n\t\t.wmn-item-card.has-quantity\n\t\t.wmn-item-stepper .wmn-qty-button:not(.is-plus) {\n\n\t\twidth: 25px !important;\n\t\theight: 25px !important;\n\t\tmin-width: 25px !important;\n\t\tmin-height: 25px !important;\n\n\t\tleft: 4px !important;\n\t}\n\n\t.wmn-mamsek-shell.wmn-button-view-active\n\t\t.wmn-item-card.has-quantity .item-detail {\n\n\t\tpadding-left: 32px !important;\n\t}\n\n\tbody[dir=\"rtl\"]\n\t\t.wmn-mamsek-shell.wmn-button-view-active\n\t\t.wmn-item-card.has-quantity\n\t\t.wmn-item-stepper .wmn-qty-button:not(.is-plus),\n\tbody.rtl-mode\n\t\t.wmn-mamsek-shell.wmn-button-view-active\n\t\t.wmn-item-card.has-quantity\n\t\t.wmn-item-stepper .wmn-qty-button:not(.is-plus) {\n\n\t\tleft: auto !important;\n\t\tright: 4px !important;\n\t}\n\n\tbody[dir=\"rtl\"]\n\t\t.wmn-mamsek-shell.wmn-button-view-active\n\t\t.wmn-item-card.has-quantity .item-detail,\n\tbody.rtl-mode\n\t\t.wmn-mamsek-shell.wmn-button-view-active\n\t\t.wmn-item-card.has-quantity .item-detail {\n\n\t\tpadding-right: 32px !important;\n\t\tpadding-left: 8px !important;\n\t}\n}\n\n/* ========================================================================== \n * WMN adaptive cart + modal item details\n * - Desktop/tablet: resizable order sidebar.\n * - Small screens: full-width item selector + floating cart drawer.\n * - All modes: Item Details is a modal using the original ERPNext component\n *   and the original numpad, so Online/Offline behavior stays unified.\n * ========================================================================== */\n.wmn-mamsek-shell {\n\t--wmn-cart-width: 400px;\n}\n\n.wmn-mamsek-shell > .point-of-sale-app {\n\tposition: relative !important;\n}\n\n.wmn-cart-resizer,\n.wmn-cart-fab,\n.wmn-cart-drawer-backdrop,\n.wmn-cart-drawer-close {\n\tdisplay: none;\n}\n\n@media (min-width: 721px) {\n\t.wmn-mamsek-shell.wmn-cart-resize-enabled > .point-of-sale-app {\n\t\tgrid-template-columns: minmax(0, 1fr) var(--wmn-cart-width) !important;\n\t}\n\n\t.wmn-mamsek-shell.wmn-cart-context-active .wmn-cart-resizer {\n\t\tposition: absolute;\n\t\ttop: 0;\n\t\tinset-inline-end: calc(var(--wmn-cart-width) - 5px);\n\t\tinset-inline-start: auto;\n\t\tbottom: 0;\n\t\tz-index: 120;\n\t\tdisplay: block;\n\t\twidth: 10px;\n\t\tcursor: col-resize;\n\t\ttouch-action: none;\n\t}\n\n\t.wmn-mamsek-shell.wmn-cart-context-active .wmn-cart-resizer::before {\n\t\tcontent: \"\";\n\t\tposition: absolute;\n\t\ttop: 0;\n\t\tbottom: 0;\n\t\tleft: 4px;\n\t\twidth: 2px;\n\t\tbackground: transparent;\n\t\ttransition: background 0.15s ease, box-shadow 0.15s ease;\n\t}\n\n\t.wmn-mamsek-shell.wmn-cart-context-active .wmn-cart-resizer:hover::before,\n\tbody.wmn-cart-is-resizing .wmn-cart-resizer::before {\n\t\tbackground: var(--wmn-teal);\n\t\tbox-shadow: 0 0 0 2px rgba(13, 140, 140, 0.12);\n\t}\n}\n\nbody.wmn-cart-is-resizing,\nbody.wmn-cart-is-resizing * {\n\tcursor: col-resize !important;\n\tuser-select: none !important;\n}\n\n\n\n/* Item Details modal base */\n.wmn-item-details-layer {\n\tposition: fixed;\n\ttop: var(--wmn-pos-header-height, 64px);\n\tright: 0;\n\tbottom: 0;\n\tleft: 0;\n\tz-index: 1600;\n\tdisplay: none;\n\tplace-items: center;\n\tpadding: 18px 24px 24px;\n}\n\n.wmn-mamsek-shell.wmn-button-view-active .wmn-item-details-layer {\n\ttop: 0;\n}\n\n.wmn-item-details-layer.is-open {\n\tdisplay: grid;\n}\n\n.wmn-item-details-backdrop {\n\tposition: absolute;\n\tinset: 0;\n\tbackground: rgba(17, 31, 48, 0.44);\n\tbackdrop-filter: blur(3px);\n}\n\n.wmn-item-details-modal {\n\tposition: relative;\n\tz-index: 1;\n\tdisplay: grid;\n\tgrid-template-columns: minmax(0, 1fr) minmax(280px, 320px);\n\twidth: min(1080px, calc(100vw - 48px));\n\theight: min(720px, calc(100dvh - var(--wmn-pos-header-height, 64px) - 42px));\n\tmin-width: 0;\n\tmin-height: 0;\n\toverflow: hidden;\n\tborder: 1px solid var(--wmn-border-strong);\n\tborder-radius: 20px;\n\tbackground: #fff;\n\tbox-shadow: 0 24px 70px rgba(19, 35, 51, 0.28);\n}\n\n.wmn-mamsek-shell.wmn-button-view-active .wmn-item-details-modal {\n\theight: min(720px, calc(100dvh - 36px));\n}\n\n.wmn-item-details-host {\n\tmin-width: 0;\n\tmin-height: 0;\n\toverflow: auto;\n\tbackground: #fff;\n}\n\n.wmn-item-details-numpad-host {\n\tdisplay: flex;\n\tmin-width: 0;\n\tmin-height: 0;\n\toverflow: auto;\n\tborder-left: 1px solid var(--wmn-border-strong);\n\tbackground: #f7f9fb;\n}\n\nbody[dir=\"rtl\"] .wmn-item-details-numpad-host,\nbody.rtl-mode .wmn-item-details-numpad-host {\n\tborder-right: 1px solid var(--wmn-border-strong);\n\tborder-left: 0;\n}\n\n.wmn-item-details-modal .item-details-container {\n\tposition: relative !important;\n\tgrid-column: auto !important;\n\tgrid-row: auto !important;\n\tdisplay: none;\n\twidth: 100% !important;\n\theight: auto !important;\n\tmin-height: 100% !important;\n\tmax-height: none !important;\n\tmargin: 0 !important;\n\toverflow: visible !important;\n\tborder: 0 !important;\n\tborder-radius: 0 !important;\n\tbackground: #fff !important;\n\tbox-shadow: none !important;\n}\n\n.wmn-item-details-modal .numpad-section {\n\tdisplay: none;\n}\n\n/* Mobile cart drawer ------------------------------------------------------- */\n@media (max-width: 720px) {\n\t.wmn-mamsek-shell.wmn-cart-resize-enabled > .point-of-sale-app {\n\t\tgrid-template-columns: minmax(0, 1fr) !important;\n\t\tgrid-template-rows: auto !important;\n\t}\n\n\t.wmn-mamsek-shell .wmn-items-selector {\n\t\tgrid-column: 1 !important;\n\t\tgrid-row: 1 !important;\n\t\twidth: 100% !important;\n\t}\n\n\n\n\n\n\t/* Recent Orders follows the WMN small-screen breakpoint so list and summary\n\t * remain readable when the cart changes to drawer mode. */\n\t.wmn-mamsek-shell > .point-of-sale-app:has(> .past-order-list[style*=\"display: flex\"]) {\n\t\tgrid-template-columns: minmax(0, 1fr) !important;\n\t\tgrid-template-rows: auto auto !important;\n\t}\n\n\t.wmn-mamsek-shell > .point-of-sale-app > .past-order-list[style*=\"display: flex\"],\n\t.wmn-mamsek-shell > .point-of-sale-app > .past-order-summary[style*=\"display: flex\"] {\n\t\tgrid-column: 1 / -1 !important;\n\t\twidth: 100% !important;\n\t\tmax-width: none !important;\n\t\tmin-width: 0 !important;\n\t\tjustify-self: stretch !important;\n\t\talign-self: stretch !important;\n\t}\n\n\t.wmn-mamsek-shell > .point-of-sale-app > .past-order-list[style*=\"display: flex\"] {\n\t\tgrid-row: 1 !important;\n\t}\n\n\t.wmn-mamsek-shell > .point-of-sale-app > .past-order-summary[style*=\"display: flex\"] {\n\t\tgrid-row: 2 !important;\n\t}\n\n\t.wmn-mamsek-shell .customer-cart-container.wmn-order-sidebar {\n\t\tposition: fixed !important;\n\t\ttop: var(--wmn-pos-mobile-header-height) !important;\n\t\tright: 0 !important;\n\t\tbottom: 0 !important;\n\t\tleft: auto !important;\n\t\tz-index: 1450 !important;\n\t\tgrid-column: auto !important;\n\t\tgrid-row: auto !important;\n\t\twidth: min(92vw, 430px) !important;\n\t\theight: auto !important;\n\t\tmin-height: 0 !important;\n\t\tmax-height: none !important;\n\t\tpadding: 12px !important;\n\t\toverflow: hidden !important;\n\t\tborder-top: 0 !important;\n\t\tborder-left: 1px solid var(--wmn-border-strong) !important;\n\t\tbackground: #fff !important;\n\t\tbox-shadow: -18px 0 46px rgba(21, 39, 58, 0.18) !important;\n\t\ttransform: translateX(105%);\n\t\ttransition: transform 0.22s ease;\n\t}\n\n\t.wmn-mamsek-shell.wmn-button-view-active .customer-cart-container.wmn-order-sidebar {\n\t\ttop: 0 !important;\n\t}\n\n\t.wmn-mamsek-shell.wmn-cart-drawer-open .customer-cart-container.wmn-order-sidebar {\n\t\ttransform: translateX(0);\n\t}\n\n\t.wmn-mamsek-shell .wmn-order-panel,\n\t.wmn-mamsek-shell .wmn-cart-slot,\n\t.wmn-mamsek-shell .wmn-order-sidebar .cart-container,\n\t.wmn-mamsek-shell .wmn-order-sidebar .abs-cart-container {\n\t\tmin-height: 0 !important;\n\t\theight: 100% !important;\n\t}\n\n\t.wmn-mamsek-shell .wmn-order-sidebar .cart-items-section {\n\t\tflex: 1 1 0 !important;\n\t\tmin-height: 0 !important;\n\t\tmax-height: none !important;\n\t\toverflow-y: auto !important;\n\t}\n\n\t.wmn-mamsek-shell .wmn-order-sidebar .cart-totals-section {\n\t\tflex: 0 0 auto !important;\n\t}\n\n\t.wmn-mamsek-shell.wmn-cart-context-active .wmn-cart-fab {\n\t\tposition: fixed;\n\t\tright: 18px;\n\t\tbottom: 20px;\n\t\tz-index: 1410;\n\t\tdisplay: grid;\n\t\tplace-items: center;\n\t\twidth: 58px;\n\t\theight: 58px;\n\t\tpadding: 0;\n\t\tborder: 0;\n\t\tborder-radius: 50%;\n\t\tbackground: var(--wmn-teal);\n\t\tcolor: #fff;\n\t\tbox-shadow: 0 12px 28px rgba(13, 140, 140, 0.28);\n\t\tcursor: pointer;\n\t}\n\n\t.wmn-cart-fab svg {\n\t\twidth: 27px;\n\t\theight: 27px;\n\t}\n\n\t.wmn-cart-fab-badge {\n\t\tposition: absolute;\n\t\ttop: -4px;\n\t\tright: -3px;\n\t\tdisplay: grid;\n\t\tplace-items: center;\n\t\tmin-width: 22px;\n\t\theight: 22px;\n\t\tpadding: 0 5px;\n\t\tborder: 2px solid #fff;\n\t\tborder-radius: 999px;\n\t\tbackground: var(--wmn-danger);\n\t\tcolor: #fff;\n\t\tfont-size: 10px;\n\t\tfont-weight: 800;\n\t\tline-height: 1;\n\t}\n\n\t.wmn-cart-fab-badge.is-empty {\n\t\tdisplay: none;\n\t}\n\n\t.wmn-mamsek-shell.wmn-cart-drawer-open .wmn-cart-drawer-backdrop {\n\t\tposition: fixed;\n\t\ttop: var(--wmn-pos-mobile-header-height);\n\t\tright: 0;\n\t\tbottom: 0;\n\t\tleft: 0;\n\t\tz-index: 1440;\n\t\tdisplay: block;\n\t\twidth: 100%;\n\t\tpadding: 0;\n\t\tborder: 0;\n\t\tbackground: rgba(17, 31, 48, 0.34);\n\t}\n\n\t.wmn-mamsek-shell.wmn-button-view-active.wmn-cart-drawer-open .wmn-cart-drawer-backdrop {\n\t\ttop: 0;\n\t}\n\n\t.wmn-cart-drawer-close {\n\t\tmargin-inline-start: auto;\n\t\tflex: 0 0 34px;\n\t\twidth: 34px;\n\t\theight: 34px;\n\t\tpadding: 0;\n\t\tborder: 1px solid var(--wmn-border-strong);\n\t\tborder-radius: 8px;\n\t\tbackground: #fff;\n\t\tcolor: var(--wmn-ink);\n\t\tfont-size: 24px;\n\t\tline-height: 30px;\n\t\tcursor: pointer;\n\t}\n\n\t.wmn-mamsek-shell.wmn-cart-context-active .wmn-cart-drawer-close {\n\t\tdisplay: grid;\n\t\tplace-items: center;\n\t}\n\n\t/* Item Details becomes a full-screen modal below the mobile navbar. */\n\t.wmn-item-details-layer {\n\t\ttop: var(--wmn-pos-mobile-header-height, 52px);\n\t\tpadding: 0;\n\t}\n\n\t.wmn-mamsek-shell.wmn-button-view-active .wmn-item-details-layer {\n\t\ttop: 0;\n\t}\n\n\t.wmn-item-details-modal {\n\t\tgrid-template-columns: minmax(0, 1fr);\n\t\tgrid-template-rows: minmax(0, 1fr) auto;\n\t\twidth: 100vw;\n\t\theight: 100%;\n\t\tborder: 0;\n\t\tborder-radius: 0;\n\t}\n\n\t.wmn-item-details-modal .item-details-container {\n\t\tgrid-template-columns: minmax(0, 1fr) !important;\n\t\tgrid-template-rows: auto auto auto auto auto !important;\n\t\tgrid-template-areas:\n\t\t\t\"header\"\n\t\t\t\"preview\"\n\t\t\t\"form\"\n\t\t\t\"discount\"\n\t\t\t\"serial\" !important;\n\t\tgap: 12px !important;\n\t}\n\n\t.wmn-item-details-modal .form-container {\n\t\tgrid-template-columns: minmax(0, 1fr) !important;\n\t}\n\n\t.wmn-item-details-modal .item-display > .item-image {\n\t\tmax-height: 260px;\n\t}\n\n\t.wmn-item-details-host {\n\t\tmin-height: 0;\n\t\toverflow: auto;\n\t}\n\n\t.wmn-item-details-numpad-host {\n\t\tmax-height: 43dvh;\n\t\tborder-top: 1px solid var(--wmn-border-strong);\n\t\tborder-right: 0 !important;\n\t\tborder-left: 0 !important;\n\t}\n\n\t.wmn-item-details-modal .item-details-container {\n\t\tmin-height: 0 !important;\n\t\tpadding: 14px !important;\n\t}\n\n\t.wmn-item-details-modal .numpad-section {\n\t\tpadding: 10px 12px !important;\n\t}\n}\n\n/* ========================================================================== \n * WMN connectivity status button\n * Server state is driven by wmn.wmn.page.wmn_pos.wmn_pos.pos_health_check in common.js.\n * Offline Sync remains in the existing Menu action.\n * ========================================================================== */\n.wmn-connectivity-btn {\n\tposition: relative;\n\tflex: 0 0 auto !important;\n\tgap: 7px !important;\n\tmin-width: 108px;\n\tpadding-inline: 12px !important;\n\tborder: 1px solid var(--wmn-border-strong) !important;\n\ttransition: background-color .16s ease, border-color .16s ease, color .16s ease !important;\n}\n\n.wmn-connectivity-dot {\n\tdisplay: inline-block !important;\n\tflex: 0 0 9px;\n\twidth: 9px;\n\theight: 9px;\n\tborder-radius: 50%;\n\tbackground: #9aa4ad;\n\tbox-shadow: 0 0 0 3px rgba(154, 164, 173, 0.12);\n}\n\n.wmn-connectivity-label {\n\tdisplay: inline-block !important;\n\tfont-size: 12px;\n\tfont-weight: 700;\n}\n\n.wmn-pending-badge {\n\tdisplay: inline-grid !important;\n\tplace-items: center;\n\tmin-width: 20px;\n\theight: 20px;\n\tpadding: 0 6px;\n\tborder-radius: 999px;\n\tbackground: #dc4c4c;\n\tcolor: #fff;\n\tfont-size: 11px;\n\tfont-weight: 800;\n\tline-height: 1;\n}\n\n.wmn-pending-badge[hidden] {\n\tdisplay: none !important;\n}\n\n.wmn-connectivity-btn.is-online {\n\tborder-color: #9fdbc0 !important;\n\tbackground: #eefaf4 !important;\n\tcolor: #16734d !important;\n}\n\n.wmn-connectivity-btn.is-online .wmn-connectivity-dot {\n\tbackground: #20a66a;\n\tbox-shadow: 0 0 0 3px rgba(32, 166, 106, 0.14);\n}\n\n.wmn-connectivity-btn.is-offline {\n\tborder-color: #efb4b4 !important;\n\tbackground: #fff2f2 !important;\n\tcolor: #b43f3f !important;\n}\n\n.wmn-connectivity-btn.is-offline .wmn-connectivity-dot {\n\tbackground: #dc4c4c;\n\tbox-shadow: 0 0 0 3px rgba(220, 76, 76, 0.14);\n}\n\n.wmn-connectivity-btn.is-checking {\n\tborder-color: #d6dde2 !important;\n\tbackground: #f7f9fa !important;\n\tcolor: var(--wmn-muted) !important;\n}\n\n.wmn-connectivity-btn.is-checking .wmn-connectivity-dot {\n\tbackground: #9aa4ad;\n\tanimation: wmn-connectivity-pulse 1s ease-in-out infinite;\n}\n\n@keyframes wmn-connectivity-pulse {\n\t0%, 100% { opacity: .45; transform: scale(.85); }\n\t50% { opacity: 1; transform: scale(1); }\n}\n\n@media (max-width: 1100px) {\n\t.wmn-pos-nav-links > .wmn-connectivity-btn {\n\t\tflex: 0 0 auto !important;\n\t\twidth: auto !important;\n\t\tmin-width: 52px !important;\n\t\theight: 40px !important;\n\t\tpadding: 0 8px !important;\n\t}\n\n\t.wmn-pos-nav-links .wmn-connectivity-btn > .wmn-connectivity-label {\n\t\tdisplay: none !important;\n\t}\n\n\t.wmn-pos-nav-links .wmn-connectivity-btn > .wmn-connectivity-dot,\n\t.wmn-pos-nav-links .wmn-connectivity-btn > .wmn-pending-badge:not([hidden]) {\n\t\tdisplay: inline-grid !important;\n\t}\n}\n\n.wmn-mamsek-shell .items-selector {\n    container-type: inline-size;\n    container-name: wmn-items-area;\n}\n\n@container wmn-items-area (min-width: 700px) {\n    .wmn-mamsek-shell .wmn-items-selector .items-container:not(.wmn-button-mode) {\n        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;\n    }\n}\n\n@container wmn-items-area (min-width: 900px) {\n    .wmn-mamsek-shell .wmn-items-selector .items-container:not(.wmn-button-mode) {\n        grid-template-columns: repeat(5, minmax(0, 1fr)) !important;\n    }\n}\n\n@container wmn-items-area (min-width: 1100px) {\n    .wmn-mamsek-shell .wmn-items-selector .items-container:not(.wmn-button-mode) {\n        grid-template-columns: repeat(6, minmax(0, 1fr)) !important;\n    }\n}\n\n/* ==========================================================\n   Compact POS navigation according to Items Selector width\n   ========================================================== */\n\n@container wmn-items-area (max-width: 980px) {\n\n    .wmn-pos-nav {\n        padding-inline: 10px !important;\n    }\n\n    .wmn-pos-nav-links {\n        gap: 4px !important;\n    }\n\n  \n    .wmn-pos-nav-links > .wmn-nav-btn,\n    .wmn-pos-nav-links > .wmn-tools-menu > .wmn-nav-btn {\n        flex: 0 0 40px !important;\n        width: 40px !important;\n        min-width: 40px !important;\n        height: 40px !important;\n        padding: 0 !important;\n        gap: 0 !important;\n    }\n\n    .wmn-pos-nav-links > .wmn-nav-btn > span,\n    .wmn-pos-nav-links > .wmn-tools-menu > .wmn-nav-btn > span {\n        display: none !important;\n    }\n\n    /* Online / Offline */\n    .wmn-pos-nav-links > .wmn-connectivity-btn {\n        flex: 0 0 40px !important;\n        width: 40px !important;\n        min-width: 40px !important;\n        height: 40px !important;\n        padding: 0 !important;\n        gap: 5px !important;\n    }\n\n    .wmn-connectivity-btn .wmn-connectivity-label {\n        display: none !important;\n    }\n}\n\n\n@container wmn-items-area (max-width: 980px) {\n\n    .wmn-connectivity-btn:has(\n        .wmn-pending-badge:not([hidden])\n    ) {\n        flex-basis: 56px !important;\n        width: 56px !important;\n        min-width: 56px !important;\n    }\n}\n\n\n\n\n/* =========================================================\n   WMN ITEM DETAILS - FINAL COMPACT RESPONSIVE LAYOUT\n   ========================================================= */\n\n/* ---------------------------------------------------------\n   Modal\n   --------------------------------------------------------- */\n\n.wmn-item-details-modal {\n    grid-template-columns:\n        minmax(0, 1fr)\n        minmax(280px, 320px) !important;\n}\n\n.wmn-item-details-host {\n    min-width: 0 !important;\n    overflow-x: hidden !important;\n    overflow-y: auto !important;\n}\n\n\n/* Keep ERPNext in control of display state; only restyle the component while it is open. */\n\n.wmn-item-details-modal\n.item-details-container[style*=\"display: flex\"] {\n    display: grid !important;\n\n    grid-template-columns: minmax(0, 1fr) !important;\n\n    grid-template-rows:\n        auto\n        auto\n        auto\n        auto\n        auto !important;\n\n    grid-template-areas:\n        \"header\"\n        \"preview\"\n        \"form\"\n        \"discount\"\n        \"serial\" !important;\n\n    align-content: start !important;\n    align-items: start !important;\n\n    width: 100% !important;\n    min-width: 0 !important;\n    height: auto !important;\n    min-height: 100% !important;\n\n    padding: 16px 18px 18px !important;\n    gap: 10px !important;\n\n    overflow-x: hidden !important;\n    overflow-y: visible !important;\n}\n\n\n/* =========================================================\n   HEADER\n   ========================================================= */\n\n.wmn-item-details-modal .item-details-header {\n    grid-area: header !important;\n\n    display: flex !important;\n    align-items: center !important;\n    justify-content: space-between !important;\n\n    width: 100% !important;\n    min-width: 0 !important;\n\n    min-height: 42px !important;\n    margin: 0 !important;\n    padding: 0 0 10px !important;\n\n    border-bottom: 1px solid var(--wmn-border) !important;\n}\n\n.wmn-item-details-modal .item-details-header .label {\n    font-size: 18px !important;\n    font-weight: 750 !important;\n}\n\n.wmn-item-details-modal .item-details-header .close-btn {\n    flex: 0 0 34px !important;\n\n    width: 34px !important;\n    height: 34px !important;\n\n    display: grid !important;\n    place-items: center !important;\n}\n\n\n/* =========================================================\n   ITEM PREVIEW\n   Compact item summary with a small image\n   ========================================================= */\n\n.wmn-item-details-modal .item-display {\n    grid-area: preview !important;\n\n    display: grid !important;\n\n    grid-template-columns:\n        minmax(0, 1fr)\n        96px !important;\n\n    grid-template-rows: auto !important;\n\n    align-items: center !important;\n\n    width: 100% !important;\n    min-width: 0 !important;\n\n    margin: 0 !important;\n    padding: 4px 0 8px !important;\n\n    gap: 12px !important;\n\n    border: 0 !important;\n    border-radius: 0 !important;\n    background: transparent !important;\n}\n\n\n/* Item name, description, and price */\n\n.wmn-item-details-modal\n.item-display\n> .item-name-desc-price {\n    grid-column: 1 !important;\n    grid-row: 1 !important;\n\n    display: flex !important;\n    flex-direction: column !important;\n\n    justify-content: center !important;\n    align-items: flex-start !important;\n\n    width: 100% !important;\n    min-width: 0 !important;\n\n    margin: 0 !important;\n    padding: 0 !important;\n\n    gap: 2px !important;\n}\n\n.wmn-item-details-modal .item-display .item-name {\n    font-size: 17px !important;\n    line-height: 1.3 !important;\n    font-weight: 750 !important;\n}\n\n.wmn-item-details-modal .item-display .item-desc {\n    max-height: 34px !important;\n\n    font-size: 11px !important;\n    line-height: 17px !important;\n\n    overflow: hidden !important;\n}\n\n.wmn-item-details-modal .item-display .item-price {\n    margin-top: 2px !important;\n\n    font-size: 17px !important;\n    line-height: 1.3 !important;\n    font-weight: 800 !important;\n}\n\n\n/* =========================================================\n   SMALL IMAGE\n   ========================================================= */\n\n.wmn-item-details-modal\n.item-display\n> .item-image {\n    grid-column: 2 !important;\n    grid-row: 1 !important;\n\n    display: grid !important;\n    place-items: center !important;\n\n    width: 96px !important;\n    min-width: 96px !important;\n    max-width: 96px !important;\n\n    height: 78px !important;\n    min-height: 78px !important;\n    max-height: 78px !important;\n\n    aspect-ratio: auto !important;\n\n    margin: 0 !important;\n    padding: 0 !important;\n\n    overflow: hidden !important;\n\n    border: 1px solid var(--wmn-border) !important;\n    border-radius: 10px !important;\n\n    background: #f2f4f5 !important;\n}\n\n.wmn-item-details-modal\n.item-display\n> .item-image\n> img {\n    display: block !important;\n\n    width: 100% !important;\n    height: 100% !important;\n\n    min-width: 0 !important;\n    min-height: 0 !important;\n\n    max-width: none !important;\n    max-height: none !important;\n\n    object-fit: cover !important;\n    object-position: center !important;\n\n    margin: 0 !important;\n    padding: 0 !important;\n}\n\n.wmn-item-details-modal\n.item-display\n> .item-image\n.item-abbr {\n    display: grid !important;\n    place-items: center !important;\n\n    width: 100% !important;\n    height: 100% !important;\n\n    font-size: 24px !important;\n}\n\n\n/* =========================================================\n   FORM\n   Fields below the item summary\n   ========================================================= */\n\n.wmn-item-details-modal .form-container {\n    grid-area: form !important;\n\n    display: grid !important;\n\n    grid-template-columns:\n        repeat(2, minmax(0, 1fr)) !important;\n\n    align-content: start !important;\n    align-items: start !important;\n\n    width: 100% !important;\n    min-width: 0 !important;\n\n    margin: 0 !important;\n    padding: 0 !important;\n\n    column-gap: 12px !important;\n    row-gap: 8px !important;\n\n    overflow: hidden !important;\n}\n\n\n/* Field wrappers */\n\n.wmn-item-details-modal\n.form-container\n> [data-fieldname] {\n    width: 100% !important;\n    min-width: 0 !important;\n    max-width: 100% !important;\n\n    margin: 0 !important;\n    padding: 0 !important;\n}\n\n.wmn-item-details-modal\n.form-container\n.frappe-control,\n\n.wmn-item-details-modal\n.form-container\n.form-group,\n\n.wmn-item-details-modal\n.form-container\n.control-input-wrapper,\n\n.wmn-item-details-modal\n.form-container\n.control-input,\n\n.wmn-item-details-modal\n.form-container\n.awesomplete {\n    width: 100% !important;\n    min-width: 0 !important;\n    max-width: 100% !important;\n\n    margin: 0 !important;\n}\n\n\n/* Labels */\n\n.wmn-item-details-modal\n.form-container\n.control-label,\n\n.wmn-item-details-modal\n.form-container\nlabel {\n    margin: 0 0 3px !important;\n\n    font-size: 11px !important;\n    line-height: 16px !important;\n    font-weight: 650 !important;\n}\n\n\n/* Compact field controls */\n\n.wmn-item-details-modal\n.form-container\n.form-control,\n\n.wmn-item-details-modal\n.form-container\n.input-with-feedback {\n    width: 100% !important;\n    min-width: 0 !important;\n    max-width: 100% !important;\n\n    height: 34px !important;\n    min-height: 34px !important;\n\n    padding: 4px 9px !important;\n\n    border-radius: 8px !important;\n\n    font-size: 13px !important;\n    line-height: 24px !important;\n\n    box-sizing: border-box !important;\n}\n\n\n/* Serial / Batch */\n\n.wmn-item-details-modal\n.form-container\n.serial_no-control,\n\n.wmn-item-details-modal\n.form-container\n.batch_no-control,\n\n.wmn-item-details-modal\n.form-container\n.auto-fetch-btn,\n\n.wmn-item-details-modal\n.form-container\n.grid-filler {\n    grid-column: 1 / -1 !important;\n}\n\n\n/* =========================================================\n   DISCOUNT / SERIAL AREA\n   ========================================================= */\n\n.wmn-item-details-modal .discount-section {\n    grid-area: discount !important;\n\n    width: 100% !important;\n    min-width: 0 !important;\n\n    margin: 0 !important;\n}\n\n.wmn-item-details-modal .discount-section:empty {\n    display: none !important;\n}\n\n.wmn-item-details-modal .serial-batch-container {\n    grid-area: serial !important;\n\n    width: 100% !important;\n    min-width: 0 !important;\n\n    margin: 0 !important;\n}\n\n\n/* =========================================================\n   NUMPAD - COMPACT\n   ========================================================= */\n\n.wmn-item-details-numpad-host {\n    display: flex !important;\n    flex-direction: column !important;\n    align-items: stretch !important;\n    min-width: 0 !important;\n    min-height: 0 !important;\n    padding: 0 !important;\n    overflow-x: hidden !important;\n    overflow-y: auto !important;\n}\n\n.wmn-item-details-modal .numpad-section {\n    flex: 1 1 auto !important;\n    flex-direction: column !important;\n    align-items: stretch !important;\n    width: 100% !important;\n    height: auto !important;\n    min-height: 0 !important;\n    margin: 0 !important;\n    padding: 14px 12px !important;\n    overflow-x: hidden !important;\n    overflow-y: auto !important;\n    background: #f7f9fb !important;\n}\n\n.wmn-item-details-modal .numpad-totals {\n    display: flex !important;\n    align-items: center !important;\n    justify-content: space-between !important;\n    flex: 0 0 auto !important;\n    width: 100% !important;\n    gap: 8px !important;\n    margin: 0 0 10px !important;\n    padding: 8px 10px !important;\n    border: 1px solid var(--wmn-border) !important;\n    border-radius: 10px !important;\n    background: #fff !important;\n    font-size: 12px !important;\n    line-height: 18px !important;\n    font-weight: 700 !important;\n}\n\n.wmn-item-details-modal .numpad-container {\n    display: grid !important;\n    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;\n    flex: 0 0 auto !important;\n    width: 100% !important;\n    gap: 7px !important;\n    margin: 0 0 10px !important;\n}\n\n.wmn-item-details-modal .numpad-btn {\n    display: flex !important;\n    align-items: center !important;\n    justify-content: center !important;\n    width: 100% !important;\n    height: 46px !important;\n    min-height: 46px !important;\n    max-height: 46px !important;\n    padding: 0 5px !important;\n    margin: 0 !important;\n    border: 1px solid var(--wmn-border-strong) !important;\n    border-radius: 8px !important;\n    background: #fff !important;\n    color: var(--wmn-ink) !important;\n    box-shadow: none !important;\n    font-size: 13px !important;\n    font-weight: 650 !important;\n    line-height: 1 !important;\n    text-align: center !important;\n    box-sizing: border-box !important;\n}\n\n.wmn-item-details-modal .numpad-btn:hover {\n    border-color: #9bcfcf !important;\n    background: #eefafa !important;\n}\n\n.wmn-item-details-modal .checkout-btn {\n    display: flex !important;\n    align-items: center !important;\n    justify-content: center !important;\n    flex: 0 0 auto !important;\n    width: 100% !important;\n    height: 40px !important;\n    min-height: 40px !important;\n    margin: 0 !important;\n    border: 0 !important;\n    border-radius: 8px !important;\n    background: var(--wmn-teal) !important;\n    color: #fff !important;\n    font-size: 14px !important;\n    font-weight: 700 !important;\n}\n\n\n/* =========================================================\n   MEDIUM / SMALL WIDTH\n   Move the numpad below the details when the viewport becomes narrow.\n   ========================================================= */\n\n@media (max-width: 900px) {\n\n    .wmn-item-details-modal {\n        grid-template-columns: minmax(0, 1fr) !important;\n\n        grid-template-rows:\n            minmax(0, 1fr)\n            auto !important;\n\n        width: calc(100vw - 16px) !important;\n\n        height:\n            calc(\n                100dvh -\n                var(--wmn-pos-header-height, 64px) -\n                16px\n            ) !important;\n    }\n\n\n    .wmn-item-details-host {\n        min-height: 0 !important;\n\n        overflow-x: hidden !important;\n        overflow-y: auto !important;\n    }\n\n\n    .wmn-item-details-numpad-host {\n        width: 100% !important;\n\n        max-height: 280px !important;\n\n        overflow-y: auto !important;\n\n        border-left: 0 !important;\n        border-right: 0 !important;\n\n        border-top:\n            1px solid\n            var(--wmn-border-strong) !important;\n    }\n\n\n    .wmn-item-details-modal .numpad-section {\n        padding: 10px 12px !important;\n    }\n\n\n    .wmn-item-details-modal\n    .wmn-item-details-numpad-host\n    .numpad-container\n    > .numpad-btn {\n        height: 40px !important;\n        min-height: 40px !important;\n        max-height: 40px !important;\n    }\n}\n\n\n/* Very narrow screens */\n\n@media (max-width: 420px) {\n\n    .wmn-item-details-modal .form-container {\n        grid-template-columns:\n            minmax(0, 1fr) !important;\n    }\n\n    .wmn-item-details-modal .item-display {\n        grid-template-columns:\n            minmax(0, 1fr)\n            82px !important;\n    }\n\n    .wmn-item-details-modal\n    .item-display\n    > .item-image {\n        width: 82px !important;\n        min-width: 82px !important;\n        max-width: 82px !important;\n\n        height: 68px !important;\n        min-height: 68px !important;\n        max-height: 68px !important;\n    }\n} \n\n\n/* Past order summary responsive sizing */\n\n.wmn-mamsek-shell\n.past-order-summary {\n    min-width: 0 !important;\n    width: 100% !important;\n    max-width: 100% !important;\n    overflow: hidden !important;\n}\n\n.wmn-mamsek-shell\n.past-order-summary\n> .invoice-summary-wrapper {\n    width: 100% !important;\n    max-width: 31rem !important;\n    min-width: 0 !important;\n    height: 100% !important;\n    margin-inline: auto !important;\n}\n\n.wmn-mamsek-shell\n.past-order-summary\n> .invoice-summary-wrapper\n> .abs-container {\n    width: 100% !important;\n    min-width: 0 !important;\n    max-width: 100% !important;\n    overflow-x: hidden !important;\n}\n\n.wmn-mamsek-shell\n.past-order-summary\n.upper-section,\n.wmn-mamsek-shell\n.past-order-summary\n.items-container,\n.wmn-mamsek-shell\n.past-order-summary\n.totals,\n.wmn-mamsek-shell\n.past-order-summary\n.payments,\n.wmn-mamsek-shell\n.past-order-summary\n.summary-btns {\n    width: 100% !important;\n    min-width: 0 !important;\n    max-width: 100% !important;\n}\n\n.wmn-mamsek-shell\n.past-order-summary\n.summary-btns\n> .summary-btn {\n    min-width: 0 !important;\n}\n\n/* Item Details link dropdown visibility */\n\n.wmn-item-details-modal\n.wmn-item-details-host\n.form-container {\n    overflow: visible !important;\n}\n\n.wmn-item-details-modal\n.wmn-item-details-host\n.form-container\n> *,\n\n.wmn-item-details-modal\n.wmn-item-details-host\n.form-container\n.frappe-control,\n\n.wmn-item-details-modal\n.wmn-item-details-host\n.form-container\n.form-group,\n\n.wmn-item-details-modal\n.wmn-item-details-host\n.form-container\n.control-input-wrapper,\n\n.wmn-item-details-modal\n.wmn-item-details-host\n.form-container\n.control-input,\n\n.wmn-item-details-modal\n.wmn-item-details-host\n.form-container\n.awesomplete {\n    overflow: visible !important;\n}\n\n.wmn-item-details-modal\n.wmn-item-details-host\n.awesomplete {\n    position: relative !important;\n}\n\n.wmn-item-details-modal\n.wmn-item-details-host\n.frappe-control:focus-within {\n    position: relative !important;\n    z-index: 2100 !important;\n}\n\n.wmn-item-details-modal\n.wmn-item-details-host\n.awesomplete\n> ul {\n    z-index: 2200 !important;\n    max-height: 220px !important;\n    overflow-x: hidden !important;\n    overflow-y: auto !important;\n}\n\n\n/* Batch and Serial controls */\n\n.wmn-item-details-modal\n.wmn-item-details-host\n.serial-batch-container,\n\n.wmn-item-details-modal\n.wmn-item-details-host\n.serial-batch-container\n.frappe-control,\n\n.wmn-item-details-modal\n.wmn-item-details-host\n.serial-batch-container\n.form-group,\n\n.wmn-item-details-modal\n.wmn-item-details-host\n.serial-batch-container\n.control-input-wrapper,\n\n.wmn-item-details-modal\n.wmn-item-details-host\n.serial-batch-container\n.control-input,\n\n.wmn-item-details-modal\n.wmn-item-details-host\n.serial-batch-container\n.awesomplete {\n    position: relative !important;\n    overflow: visible !important;\n}\n\n\n/* Open Batch No suggestions upward */\n\n.wmn-item-details-modal\n.wmn-item-details-host\n.batch_no-control\n.awesomplete\n> ul {\n    top: auto !important;\n    bottom: calc(100% + 4px) !important;\n\n    width: 100% !important;\n    max-height: 220px !important;\n\n    overflow-x: hidden !important;\n    overflow-y: auto !important;\n\n    z-index: 2300 !important;\n}\n\n\n/* Keep Warehouse suggestions above surrounding controls */\n\n.wmn-item-details-modal\n.wmn-item-details-host\n[data-fieldname=\"warehouse\"]:focus-within,\n\n.wmn-item-details-modal\n.wmn-item-details-host\n.warehouse-control:focus-within {\n    position: relative !important;\n    z-index: 2250 !important;\n}\n\n\n.wmn-mamsek-shell\n.past-order-list\n.wmn-recent-orders-title-row {\n    display: flex;\n    align-items: center;\n    justify-content: space-between;\n    width: 100%;\n    min-width: 0;\n    gap: 12px;\n}\n\n.wmn-mamsek-shell\n.past-order-list\n.wmn-recent-orders-title {\n    min-width: 0;\n}\n\n.wmn-mamsek-shell\n.past-order-list\n.wmn-recent-orders-title\n.label {\n    margin: 0 !important;\n}\n\n.wmn-mamsek-shell\n.past-order-list\n.wmn-recent-orders-back {\n    display: inline-flex;\n    align-items: center;\n    justify-content: center;\n    flex: 0 0 auto;\n    height: 36px;\n    padding: 0 12px;\n    gap: 6px;\n    border: 1px solid var(--wmn-border-strong);\n    border-radius: 8px;\n    background: #fff;\n    color: var(--wmn-ink);\n    font-size: 13px;\n    font-weight: 600;\n    cursor: pointer;\n}\n\n.wmn-mamsek-shell\n.past-order-list\n.wmn-recent-orders-back:hover {\n    border-color: var(--wmn-teal);\n    background: var(--wmn-teal-soft);\n    color: var(--wmn-teal);\n}\n\n.wmn-variant-template-card .wmn-card-media {\n    position: relative;\n}\n\n.wmn-variant-pill {\n    position: absolute;\n    inset-inline-end: 8px;\n    top: 8px;\n    display: inline-flex;\n    align-items: center;\n    justify-content: center;\n    min-height: 24px;\n    padding: 2px 8px;\n    border-radius: 999px;\n    background: var(--bg-color, #fff);\n    border: 1px solid var(--border-color, #d1d8dd);\n    font-size: 11px;\n    font-weight: 700;\n    line-height: 1;\n}\n\n.wmn-variant-select-label {\n    font-weight: 600;\n}\n\n.wmn-pos-choice-list {\n    display: grid;\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n    gap: 10px;\n    max-height: min(62vh, 520px);\n    overflow-y: auto;\n    padding: 2px;\n}\n\n.wmn-pos-choice-card {\n    display: flex;\n    flex-direction: column;\n    align-items: stretch;\n    gap: 6px;\n    width: 100%;\n    min-width: 0;\n    padding: 12px;\n    border: 1px solid var(--border-color, #d1d8dd);\n    border-radius: 10px;\n    background: var(--card-bg, #fff);\n    color: var(--text-color, #1f272e);\n    text-align: start;\n    cursor: pointer;\n}\n\n.wmn-pos-choice-card:hover,\n.wmn-pos-choice-card:focus-visible {\n    border-color: var(--primary, #2490ef);\n    box-shadow: 0 0 0 1px var(--primary, #2490ef);\n    outline: none;\n}\n\n.wmn-choice-title {\n    font-size: 14px;\n    font-weight: 700;\n    overflow-wrap: anywhere;\n}\n\n.wmn-choice-code,\n.wmn-choice-conversion,\n.wmn-choice-stock {\n    font-size: 12px;\n    color: var(--text-muted, #687178);\n}\n\n.wmn-choice-attributes {\n    display: flex;\n    flex-wrap: wrap;\n    gap: 5px 10px;\n    font-size: 12px;\n}\n\n.wmn-choice-footer {\n    display: flex;\n    align-items: center;\n    justify-content: space-between;\n    gap: 10px;\n    margin-top: auto;\n    padding-top: 4px;\n}\n\n@media (max-width: 640px) {\n    .wmn-pos-choice-list {\n        grid-template-columns: 1fr;\n    }\n}\n\n.wmn-multi-uom-card .wmn-card-media {\n    position: relative;\n}\n\n.wmn-uom-pill {\n    position: absolute;\n    inset-inline-start: 8px;\n    top: 8px;\n    display: inline-flex;\n    align-items: center;\n    justify-content: center;\n    min-height: 24px;\n    padding: 2px 8px;\n    border-radius: 999px;\n    background: var(--bg-color, #fff);\n    border: 1px solid var(--border-color, #d1d8dd);\n    font-size: 11px;\n    font-weight: 700;\n    line-height: 1;\n}\n\n.wmn-pos-choice-card.is-disabled,\n.wmn-pos-choice-card:disabled {\n    opacity: 0.58;\n    cursor: not-allowed;\n    box-shadow: none;\n}\n\n.wmn-pos-choice-card.is-disabled:hover,\n.wmn-pos-choice-card:disabled:hover {\n    border-color: var(--border-color, #d1d8dd);\n    box-shadow: none;\n}\n\n.wmn-choice-unavailable {\n    font-size: 12px;\n    font-weight: 600;\n    color: var(--text-muted, #687178);\n}\n\n/* WMN unified item configuration dialogs */\n.wmn-pos-config-dialog .modal-dialog {\n    width: min(760px, calc(100vw - 24px)) !important;\n    max-width: 760px !important;\n}\n\n.wmn-pos-config-dialog .modal-content {\n    border: 1px solid var(--wmn-border) !important;\n    border-radius: 14px !important;\n    overflow: hidden !important;\n    box-shadow: 0 18px 48px rgba(34, 38, 46, 0.14) !important;\n}\n\n.wmn-pos-config-dialog .modal-header {\n    min-height: 62px !important;\n    padding: 16px 20px !important;\n    border-bottom: 1px solid var(--wmn-border) !important;\n    background: #fff !important;\n}\n\n.wmn-pos-config-dialog .modal-title {\n    color: var(--wmn-ink) !important;\n    font-size: 20px !important;\n    font-weight: 800 !important;\n}\n\n.wmn-pos-config-dialog .modal-body {\n    padding: 18px 20px 20px !important;\n    background: #fff !important;\n}\n\n.wmn-pos-config-dialog .modal-footer {\n    display: none !important;\n}\n\n.wmn-pos-config-dialog .modal-header .btn-modal-close,\n.wmn-pos-config-dialog .modal-header .btn-close {\n    border: 1px solid var(--wmn-border-strong) !important;\n    border-radius: 9px !important;\n    background: var(--wmn-soft) !important;\n}\n\n.wmn-config-shell {\n    display: flex;\n    flex-direction: column;\n    gap: 16px;\n}\n\n.wmn-config-item-head {\n    display: flex;\n    align-items: center;\n    gap: 12px;\n    min-width: 0;\n}\n\n.wmn-config-item-head > div:last-child {\n    display: flex;\n    flex-direction: column;\n    min-width: 0;\n}\n\n.wmn-config-item-head strong {\n    color: var(--wmn-ink);\n    font-size: 15px;\n    font-weight: 800;\n    overflow-wrap: anywhere;\n}\n\n.wmn-config-item-head small {\n    color: var(--wmn-muted);\n    font-size: 12px;\n}\n\n.wmn-config-item-icon {\n    display: grid;\n    place-items: center;\n    width: 52px;\n    height: 52px;\n    flex: 0 0 52px;\n    border: 1px solid var(--wmn-border);\n    border-radius: 11px;\n    background: var(--wmn-soft);\n    color: var(--wmn-teal);\n    font-size: 22px;\n    font-weight: 800;\n}\n\n.wmn-config-section,\n.wmn-config-variant-detail {\n    display: flex;\n    flex-direction: column;\n    gap: 10px;\n}\n\n.wmn-config-section-label,\n.wmn-config-embedded-title {\n    color: var(--wmn-ink);\n    font-size: 13px;\n    font-weight: 800;\n}\n\n.wmn-config-uom-grid,\n.wmn-config-variant-grid {\n    display: grid;\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n    gap: 10px;\n}\n\n.wmn-config-uom-card,\n.wmn-config-variant-card,\n.wmn-config-batch-card {\n    min-width: 0;\n    border: 1px solid var(--wmn-border-strong);\n    border-radius: 11px;\n    background: #fff;\n    color: var(--wmn-ink);\n    cursor: pointer;\n    transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;\n}\n\n.wmn-config-uom-card:hover,\n.wmn-config-variant-card:hover,\n.wmn-config-batch-card:hover {\n    border-color: var(--wmn-teal);\n}\n\n.wmn-config-uom-card.is-selected,\n.wmn-config-variant-card.is-selected,\n.wmn-config-batch-card.is-selected {\n    border-color: var(--wmn-teal) !important;\n    background: var(--wmn-teal-soft) !important;\n    box-shadow: 0 0 0 2px rgba(13, 140, 140, .12) !important;\n}\n\n.wmn-config-uom-card {\n    display: flex;\n    flex-direction: column;\n    align-items: flex-start;\n    gap: 3px;\n    min-height: 82px;\n    padding: 12px 14px;\n    text-align: start;\n}\n\n.wmn-config-uom-name {\n    font-size: 15px;\n    font-weight: 800;\n}\n\n.wmn-config-uom-rate {\n    color: var(--wmn-teal);\n    font-size: 15px;\n    font-weight: 800;\n}\n\n.wmn-config-uom-factor,\n.wmn-config-derived {\n    color: var(--wmn-muted);\n    font-size: 11px;\n    font-weight: 500;\n}\n\n.wmn-config-derived {\n    color: var(--wmn-teal);\n}\n\n.wmn-config-variant-card {\n    display: flex;\n    flex-direction: column;\n    align-items: stretch;\n    gap: 4px;\n    padding: 12px 14px;\n    text-align: start;\n}\n\n.wmn-config-variant-card > strong {\n    font-size: 14px;\n    font-weight: 800;\n}\n\n.wmn-config-variant-card > small,\n.wmn-config-variant-card > span {\n    color: var(--wmn-muted);\n    font-size: 11px;\n}\n\n.wmn-config-variant-card > div {\n    display: flex;\n    align-items: center;\n    justify-content: space-between;\n    gap: 10px;\n    margin-top: 5px;\n}\n\n.wmn-config-variant-card b {\n    color: var(--wmn-teal);\n    font-size: 14px;\n}\n\n.wmn-config-variant-card em {\n    color: var(--wmn-muted);\n    font-size: 11px;\n    font-style: normal;\n}\n\n.wmn-config-variant-card.is-disabled,\n.wmn-config-variant-card:disabled {\n    opacity: .48;\n    cursor: not-allowed;\n}\n\n.wmn-config-batch-list {\n    display: grid;\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n    gap: 8px;\n}\n\n.wmn-config-batch-card {\n    display: flex;\n    align-items: center;\n    justify-content: space-between;\n    gap: 12px;\n    padding: 11px 13px;\n    text-align: start;\n}\n\n.wmn-config-batch-card > span {\n    display: flex;\n    flex-direction: column;\n    min-width: 0;\n}\n\n.wmn-config-batch-card strong {\n    font-size: 13px;\n    font-weight: 800;\n}\n\n.wmn-config-batch-card small {\n    color: var(--wmn-muted);\n    font-size: 10px;\n}\n\n.wmn-config-qty-label {\n    margin-top: 4px;\n}\n\n.wmn-config-qty-row {\n    display: grid;\n    grid-template-columns: 50px minmax(0, 1fr) 50px;\n    min-height: 48px;\n    border: 1px solid var(--wmn-border-strong);\n    border-radius: 11px;\n    overflow: hidden;\n    background: #fff;\n}\n\n.wmn-config-qty-btn {\n    border: 0;\n    background: var(--wmn-soft);\n    color: var(--wmn-ink);\n    font-size: 20px;\n    font-weight: 700;\n}\n\n.wmn-config-qty-btn:hover {\n    background: var(--wmn-teal-soft);\n    color: var(--wmn-teal);\n}\n\n.wmn-config-qty-input {\n    width: 100%;\n    min-width: 0;\n    border: 0 !important;\n    border-inline: 1px solid var(--wmn-border) !important;\n    border-radius: 0 !important;\n    background: #fff !important;\n    color: var(--wmn-ink) !important;\n    box-shadow: none !important;\n    text-align: center;\n    font-size: 16px;\n    font-weight: 800;\n}\n\n.wmn-config-quick-qty {\n    display: grid;\n    grid-template-columns: repeat(4, minmax(0, 1fr));\n    gap: 8px;\n}\n\n.wmn-config-quick-btn {\n    min-height: 40px;\n    border: 1px solid var(--wmn-border);\n    border-radius: 10px;\n    background: var(--wmn-soft);\n    color: var(--wmn-muted);\n    font-weight: 800;\n}\n\n.wmn-config-quick-btn.is-selected,\n.wmn-config-quick-btn:hover {\n    border-color: var(--wmn-teal);\n    background: var(--wmn-teal);\n    color: #fff;\n}\n\n.wmn-config-total-card {\n    display: flex;\n    align-items: center;\n    justify-content: space-between;\n    gap: 12px;\n    min-height: 70px;\n    padding: 13px 16px;\n    border: 1px solid #d9eeee;\n    border-radius: 12px;\n    background: var(--wmn-teal-soft);\n}\n\n.wmn-config-total-card > span {\n    display: flex;\n    flex-direction: column;\n}\n\n.wmn-config-total-card small {\n    color: var(--wmn-muted);\n    font-size: 12px;\n}\n\n.wmn-config-total-card em {\n    color: var(--wmn-muted);\n    font-size: 11px;\n    font-style: normal;\n}\n\n.wmn-config-total-value {\n    color: var(--wmn-teal);\n    font-size: 22px;\n    font-weight: 900;\n}\n\n.wmn-config-actions {\n    display: grid;\n    grid-template-columns: 1fr 1.35fr;\n    gap: 10px;\n    padding-top: 4px;\n}\n\n.wmn-config-actions .btn {\n    min-height: 44px;\n    border-radius: 10px !important;\n    font-weight: 800 !important;\n}\n\n.wmn-config-cancel {\n    border: 1px solid var(--wmn-border) !important;\n    background: var(--wmn-soft) !important;\n    color: var(--wmn-ink) !important;\n}\n\n.wmn-config-add {\n    border: 1px solid var(--wmn-teal) !important;\n    background: var(--wmn-teal) !important;\n    color: #fff !important;\n}\n\n.wmn-config-add:hover {\n    border-color: var(--wmn-teal-bright) !important;\n    background: var(--wmn-teal-bright) !important;\n}\n\n@media (max-width: 640px) {\n    .wmn-pos-config-dialog .modal-dialog {\n        width: calc(100vw - 12px) !important;\n        margin: 6px auto !important;\n    }\n\n    .wmn-pos-config-dialog .modal-body {\n        padding: 14px !important;\n    }\n\n    .wmn-config-uom-grid,\n    .wmn-config-variant-grid,\n    .wmn-config-batch-list {\n        grid-template-columns: 1fr;\n    }\n}\n\n/* =========================================================\n   WMN POS DIALOG SYSTEM - V12 COMPACT THEME\n   ========================================================= */\n.wmn-pos-app-dialog .modal-dialog {\n    width: min(620px, calc(100vw - 24px)) !important;\n    max-width: 620px !important;\n    margin: 18px auto !important;\n}\n\n.wmn-pos-app-dialog .modal-content {\n    border: 1px solid var(--wmn-border, #d8e0e2) !important;\n    border-radius: 13px !important;\n    overflow: hidden !important;\n    background: #fff !important;\n    box-shadow: 0 14px 38px rgba(21, 51, 81, .14) !important;\n}\n\n.wmn-pos-app-dialog .modal-header {\n    min-height: 50px !important;\n    padding: 11px 14px !important;\n    border-bottom: 1px solid var(--wmn-border, #d8e0e2) !important;\n    background: #fff !important;\n}\n\n.wmn-pos-app-dialog .modal-title {\n    color: var(--wmn-ink, #153351) !important;\n    font-size: 16px !important;\n    line-height: 1.25 !important;\n    font-weight: 800 !important;\n}\n\n.wmn-pos-app-dialog .modal-body {\n    padding: 13px 14px 14px !important;\n    background: #fff !important;\n}\n\n.wmn-pos-app-dialog .modal-footer {\n    min-height: 52px !important;\n    padding: 8px 14px !important;\n    gap: 7px !important;\n    border-top: 1px solid var(--wmn-border, #d8e0e2) !important;\n    background: #fff !important;\n}\n\n.wmn-pos-app-dialog .modal-header .btn-modal-close,\n.wmn-pos-app-dialog .modal-header .btn-close {\n    width: 32px !important;\n    min-width: 32px !important;\n    height: 32px !important;\n    min-height: 32px !important;\n    padding: 0 !important;\n    border: 1px solid var(--wmn-border-strong, #cbd5d8) !important;\n    border-radius: 9px !important;\n    background: var(--wmn-soft, #f3f6f7) !important;\n    color: var(--wmn-ink, #153351) !important;\n}\n\n.wmn-pos-app-dialog .btn {\n    min-height: 34px;\n    padding: 5px 12px;\n    border-radius: 9px !important;\n    font-size: 13px !important;\n    font-weight: 750 !important;\n    line-height: 1.25 !important;\n}\n\n.wmn-pos-app-dialog .btn-primary,\n.wmn-pos-app-dialog .btn-modal-primary {\n    border-color: var(--wmn-teal, #0d8c8c) !important;\n    background: var(--wmn-teal, #0d8c8c) !important;\n    color: #fff !important;\n}\n\n.wmn-pos-app-dialog .btn-default,\n.wmn-pos-app-dialog .btn-secondary {\n    border-color: var(--wmn-border, #d8e0e2) !important;\n    background: var(--wmn-soft, #f3f6f7) !important;\n    color: var(--wmn-ink, #153351) !important;\n}\n\n.wmn-pos-app-dialog .form-control,\n.wmn-pos-app-dialog .control-input input,\n.wmn-pos-app-dialog .control-input select {\n    min-height: 36px !important;\n    border-color: var(--wmn-border-strong, #cbd5d8) !important;\n    border-radius: 8px !important;\n    background: #fff !important;\n    box-shadow: none !important;\n}\n\n.wmn-pos-app-dialog .form-control:focus,\n.wmn-pos-app-dialog .control-input input:focus,\n.wmn-pos-app-dialog .control-input select:focus {\n    border-color: var(--wmn-teal, #0d8c8c) !important;\n    box-shadow: 0 0 0 2px rgba(13, 140, 140, .10) !important;\n}\n\n/* Item option dialogs */\n.wmn-pos-config-dialog .modal-dialog {\n    width: min(540px, calc(100vw - 24px)) !important;\n    max-width: 540px !important;\n}\n\n.wmn-pos-config-dialog .modal-header {\n    min-height: 50px !important;\n    padding: 11px 14px !important;\n}\n\n.wmn-pos-config-dialog .modal-title {\n    font-size: 16px !important;\n}\n\n.wmn-pos-config-dialog .modal-body {\n    padding: 12px 14px 14px !important;\n}\n\n.wmn-config-shell {\n    gap: 11px !important;\n}\n\n.wmn-config-item-head {\n    gap: 9px !important;\n}\n\n.wmn-config-item-icon {\n    width: 42px !important;\n    height: 42px !important;\n    flex-basis: 42px !important;\n    border-radius: 9px !important;\n    font-size: 18px !important;\n}\n\n.wmn-config-item-head strong {\n    font-size: 13px !important;\n}\n\n.wmn-config-item-head small,\n.wmn-config-section-label,\n.wmn-config-embedded-title {\n    font-size: 11px !important;\n}\n\n.wmn-config-uom-grid,\n.wmn-config-variant-grid {\n    display: flex !important;\n    flex-wrap: wrap !important;\n    align-items: stretch !important;\n    gap: 7px !important;\n}\n\n.wmn-config-batch-list {\n    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;\n    gap: 6px !important;\n}\n\n.wmn-config-uom-card {\n    flex: 0 1 auto !important;\n    width: max-content !important;\n    min-width: 82px !important;\n    max-width: 100% !important;\n    min-height: 54px !important;\n    padding: 7px 11px !important;\n    gap: 2px !important;\n    border-radius: 9px !important;\n    align-items: flex-start !important;\n}\n\n.wmn-config-uom-name {\n    font-size: 16px !important;\n    line-height: 1.2 !important;\n    font-weight: 800 !important;\n    white-space: nowrap !important;\n}\n\n.wmn-config-uom-rate {\n    font-size: 11px !important;\n    line-height: 1.2 !important;\n    font-weight: 700 !important;\n    white-space: nowrap !important;\n}\n\n.wmn-config-variant-card {\n    flex: 0 1 auto !important;\n    width: max-content !important;\n    min-width: 92px !important;\n    max-width: 100% !important;\n    min-height: 58px !important;\n    padding: 7px 10px !important;\n    gap: 4px !important;\n    border-radius: 9px !important;\n    align-items: stretch !important;\n}\n\n.wmn-config-variant-card > .wmn-config-variant-title {\n    font-size: 15px !important;\n    line-height: 1.2 !important;\n    font-weight: 800 !important;\n    white-space: nowrap !important;\n}\n\n.wmn-config-variant-card > .wmn-config-variant-meta {\n    display: flex !important;\n    align-items: center !important;\n    justify-content: space-between !important;\n    gap: 10px !important;\n    margin-top: 1px !important;\n}\n\n.wmn-config-variant-card > .wmn-config-variant-meta b {\n    font-size: 11px !important;\n    line-height: 1.2 !important;\n    font-weight: 700 !important;\n    white-space: nowrap !important;\n}\n\n.wmn-config-variant-card > .wmn-config-variant-meta em {\n    font-size: 10px !important;\n    line-height: 1.2 !important;\n    font-weight: 600 !important;\n    white-space: nowrap !important;\n}\n\n.wmn-config-batch-card {\n    min-height: 48px !important;\n    padding: 7px 9px !important;\n    gap: 8px !important;\n    border-radius: 9px !important;\n}\n\n.wmn-config-batch-card strong {\n    font-size: 12px !important;\n}\n\n.wmn-config-batch-card small {\n    font-size: 9px !important;\n}\n\n.wmn-config-qty-row {\n    grid-template-columns: 40px minmax(0, 1fr) 40px !important;\n    min-height: 40px !important;\n    max-width: 360px !important;\n    border-radius: 9px !important;\n}\n\n.wmn-config-qty-btn {\n    min-height: 40px !important;\n    font-size: 17px !important;\n}\n\n.wmn-config-qty-input {\n    min-height: 40px !important;\n    font-size: 14px !important;\n}\n\n.wmn-config-quick-qty {\n    display: flex !important;\n    flex-wrap: wrap !important;\n    gap: 6px !important;\n}\n\n.wmn-config-quick-btn {\n    flex: 0 0 58px !important;\n    width: 58px !important;\n    min-width: 58px !important;\n    min-height: 34px !important;\n    padding: 4px 8px !important;\n    border-radius: 8px !important;\n    font-size: 12px !important;\n}\n\n.wmn-config-total-card {\n    min-height: 54px !important;\n    padding: 9px 12px !important;\n    border-radius: 10px !important;\n}\n\n.wmn-config-total-card small {\n    font-size: 10px !important;\n}\n\n.wmn-config-total-card em {\n    font-size: 10px !important;\n}\n\n.wmn-config-total-value {\n    font-size: 18px !important;\n}\n\n.wmn-config-actions {\n    display: flex !important;\n    justify-content: flex-end !important;\n    align-items: center !important;\n    gap: 7px !important;\n    padding-top: 2px !important;\n}\n\n.wmn-config-actions .btn {\n    width: auto !important;\n    min-width: 100px !important;\n    min-height: 36px !important;\n    padding: 5px 13px !important;\n    border-radius: 9px !important;\n    font-size: 12px !important;\n}\n\n.wmn-config-actions .wmn-config-add {\n    min-width: 122px !important;\n}\n\n/* Offline payment dialog */\n.wmn-offline-payment-modal .modal-dialog {\n    width: min(580px, calc(100vw - 24px)) !important;\n    max-width: 580px !important;\n}\n\n.wmn-offline-payment-dialog > div:first-child {\n    gap: 7px !important;\n    margin-bottom: 10px !important;\n}\n\n.wmn-offline-payment-dialog > div:first-child > div {\n    padding: 8px 9px !important;\n    border-color: var(--wmn-border, #d8e0e2) !important;\n    border-radius: 9px !important;\n    background: var(--wmn-soft, #f3f6f7) !important;\n}\n\n.wmn-offline-payment-row {\n    grid-template-columns: minmax(0, 1fr) 120px !important;\n    gap: 8px !important;\n    margin-bottom: 7px !important;\n    padding: 2px 0 !important;\n}\n\n.wmn-offline-payment-amount {\n    min-height: 34px !important;\n    height: 34px !important;\n    text-align: center !important;\n    font-weight: 750 !important;\n}\n\n.wmn-offline-payment-dialog .wmn-offline-sell-on-credit-btn {\n    display: inline-flex !important;\n    width: auto !important;\n    min-width: 118px !important;\n    margin-top: 9px !important;\n}\n\n/* Offline invoice manager */\n.wmn-offline-invoices-modal .modal-dialog {\n    width: min(940px, calc(100vw - 24px)) !important;\n    max-width: 940px !important;\n}\n\n.wmn-offline-invoices-modal .modal-body {\n    padding: 12px !important;\n}\n\n.wmn-offline-invoices-dialog .table {\n    font-size: 12px !important;\n}\n\n.wmn-offline-invoices-dialog .table th {\n    padding: 8px 9px !important;\n    border-color: var(--wmn-border, #d8e0e2) !important;\n    background: var(--wmn-soft, #f3f6f7) !important;\n    color: var(--wmn-ink, #153351) !important;\n    font-size: 11px !important;\n    font-weight: 800 !important;\n}\n\n.wmn-offline-invoices-dialog .table td {\n    padding: 7px 9px !important;\n    border-color: var(--wmn-border, #d8e0e2) !important;\n    vertical-align: middle !important;\n}\n\n.wmn-offline-invoices-dialog .btn-xs,\n.wmn-offline-invoices-dialog .btn-sm {\n    min-height: 30px !important;\n    padding: 4px 9px !important;\n    border-radius: 8px !important;\n    font-size: 11px !important;\n}\n\n/* Add payment dialog */\n.wmn-add-payment-modal .modal-dialog {\n    width: min(500px, calc(100vw - 24px)) !important;\n    max-width: 500px !important;\n}\n\n.wmn-add-payment-modal .form-group {\n    margin-bottom: 9px !important;\n}\n\n.wmn-add-payment-modal .control-label {\n    margin-bottom: 4px !important;\n    color: var(--wmn-ink, #153351) !important;\n    font-size: 11px !important;\n    font-weight: 750 !important;\n}\n\n/* Legacy batch selectors kept consistent with Mamsek */\n.wmn-pos-batch-legacy-dialog .modal-dialog {\n    width: min(760px, calc(100vw - 24px)) !important;\n    max-width: 760px !important;\n}\n\n.wmn-pos-batch-legacy-dialog .table {\n    margin: 0 !important;\n    font-size: 12px !important;\n}\n\n.wmn-pos-batch-legacy-dialog .table th {\n    padding: 8px !important;\n    background: var(--wmn-soft, #f3f6f7) !important;\n    color: var(--wmn-ink, #153351) !important;\n    font-size: 11px !important;\n    font-weight: 800 !important;\n}\n\n.wmn-pos-batch-legacy-dialog .table td {\n    padding: 7px 8px !important;\n    vertical-align: middle !important;\n}\n\n.wmn-pos-batch-legacy-dialog .form-control {\n    min-height: 32px !important;\n    height: 32px !important;\n}\n\n@media (max-width: 640px) {\n    .wmn-pos-app-dialog .modal-dialog,\n    .wmn-pos-config-dialog .modal-dialog,\n    .wmn-offline-payment-modal .modal-dialog,\n    .wmn-offline-invoices-modal .modal-dialog,\n    .wmn-add-payment-modal .modal-dialog,\n    .wmn-pos-batch-legacy-dialog .modal-dialog {\n        width: calc(100vw - 10px) !important;\n        max-width: calc(100vw - 10px) !important;\n        margin: 5px auto !important;\n    }\n\n    .wmn-pos-app-dialog .modal-body {\n        padding: 10px !important;\n    }\n\n    .wmn-config-uom-grid,\n    .wmn-config-variant-grid {\n        display: flex !important;\n        flex-wrap: wrap !important;\n    }\n\n    .wmn-config-batch-list {\n        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;\n    }\n\n    .wmn-config-actions {\n        justify-content: stretch !important;\n    }\n\n    .wmn-config-actions .btn {\n        flex: 1 1 0 !important;\n        min-width: 0 !important;\n    }\n\n    .wmn-offline-payment-dialog > div:first-child {\n        grid-template-columns: 1fr !important;\n    }\n\n    .wmn-offline-invoices-modal .modal-body {\n        overflow-x: auto !important;\n    }\n}\n\n/* =========================================================\n   WMN POS COUPON\n   ========================================================= */\n.wmn-order-sidebar .wmn-coupon-control {\n    display: flex;\n    align-items: center;\n    align-self: flex-start;\n    gap: 6px;\n    min-height: 30px;\n    margin: -2px 0 2px;\n}\n\n.wmn-order-sidebar .wmn-coupon-btn {\n    display: inline-flex;\n    align-items: center;\n    gap: 7px;\n    min-height: 30px;\n    padding: 5px 10px;\n    border: 1px dashed var(--wmn-border-strong, #cbd5d8);\n    border-radius: 7px;\n    background: #fff;\n    color: var(--wmn-ink, #153351);\n    font-size: 12px;\n    font-weight: 700;\n    line-height: 1.2;\n    cursor: pointer;\n}\n\n.wmn-order-sidebar .wmn-coupon-btn:hover {\n    border-color: var(--wmn-teal, #0d8c8c);\n    color: var(--wmn-teal, #0d8c8c);\n}\n\n.wmn-order-sidebar .wmn-coupon-control.is-active .wmn-coupon-btn {\n    border-style: solid;\n    border-color: #9be2e2;\n    background: var(--wmn-teal-soft, #e9f7f7);\n    color: var(--wmn-teal, #0d8c8c);\n}\n\n.wmn-order-sidebar .wmn-coupon-btn-value {\n    font-size: 11px;\n    font-weight: 800;\n    white-space: nowrap;\n}\n\n.wmn-order-sidebar .wmn-coupon-remove {\n    display: grid;\n    place-items: center;\n    width: 28px;\n    min-width: 28px;\n    height: 28px;\n    padding: 0;\n    border: 1px solid var(--wmn-border, #d8e0e2);\n    border-radius: 7px;\n    background: #fff;\n    color: #a33;\n    font-size: 18px;\n    line-height: 1;\n    cursor: pointer;\n}\n\n.wmn-order-sidebar .wmn-coupon-remove[hidden] {\n    display: none !important;\n}\n\n.wmn-coupon-dialog .modal-dialog {\n    width: min(430px, calc(100vw - 24px)) !important;\n    max-width: 430px !important;\n}\n\n.wmn-coupon-dialog-active {\n    display: flex;\n    align-items: center;\n    justify-content: space-between;\n    gap: 12px;\n    margin-top: 8px;\n    padding: 10px 11px;\n    border: 1px solid #9be2e2;\n    border-radius: 9px;\n    background: var(--wmn-teal-soft, #e9f7f7);\n}\n\n.wmn-coupon-dialog-copy {\n    display: flex;\n    flex-direction: column;\n    gap: 2px;\n    min-width: 0;\n}\n\n.wmn-coupon-dialog-copy strong {\n    color: var(--wmn-ink, #153351);\n    font-size: 14px;\n    font-weight: 800;\n}\n\n.wmn-coupon-dialog-copy span {\n    color: var(--wmn-teal, #0d8c8c);\n    font-size: 12px;\n    font-weight: 750;\n}\n\n.wmn-coupon-dialog-copy small {\n    color: var(--wmn-muted, #6d7a86);\n    font-size: 11px;\n}\n\n/* =========================================================\n   WMN POS PROMOTIONS\n   ========================================================= */\n.wmn-order-sidebar .wmn-promotion-control {\n    display: flex;\n    align-items: center;\n    justify-content: space-between;\n    gap: 10px;\n    min-height: 34px;\n    margin: 1px 0 3px;\n    padding: 7px 10px;\n    border: 1px solid #b7e4d2;\n    border-radius: 8px;\n    background: #effaf5;\n}\n\n.wmn-order-sidebar .wmn-promotion-control[hidden] {\n    display: none !important;\n}\n\n.wmn-order-sidebar .wmn-promotion-copy {\n    display: flex;\n    flex-direction: column;\n    gap: 1px;\n    min-width: 0;\n}\n\n.wmn-order-sidebar .wmn-promotion-label {\n    color: var(--wmn-ink, #153351);\n    font-size: 12px;\n    font-weight: 800;\n    line-height: 1.2;\n}\n\n.wmn-order-sidebar .wmn-promotion-names {\n    overflow: hidden;\n    color: var(--wmn-muted, #6d7a86);\n    font-size: 10px;\n    font-weight: 600;\n    line-height: 1.2;\n    text-overflow: ellipsis;\n    white-space: nowrap;\n}\n\n.wmn-order-sidebar .wmn-promotion-value {\n    flex: 0 0 auto;\n    color: #16815f;\n    font-size: 12px;\n    font-weight: 850;\n    white-space: nowrap;\n}\n";
 
     function escape_html(value) {
         if (frappe.utils && frappe.utils.escape_html) {
@@ -24603,17 +27549,13 @@ frappe.provide("wmn.MamsekPOS");
     }
 
     function ensure_stylesheet() {
-        const existing = document.getElementById(STYLE_ID);
-        if (existing) {
-            if (existing.getAttribute("href") !== STYLE_URL) existing.setAttribute("href", STYLE_URL);
-            return;
+        let style = document.getElementById(STYLE_ID);
+        if (!style) {
+            style = document.createElement("style");
+            style.id = STYLE_ID;
+            document.head.appendChild(style);
         }
-
-        const link = document.createElement("link");
-        link.id = STYLE_ID;
-        link.rel = "stylesheet";
-        link.href = STYLE_URL;
-        document.head.appendChild(link);
+        if (style.textContent !== STYLE_TEXT) style.textContent = STYLE_TEXT;
     }
 
     function ensure_extension_styles() {
@@ -25008,7 +27950,7 @@ frappe.provide("wmn.MamsekPOS");
     }
 
     window.WMN_POS.UI.Mamsek = {
-        PAGE_NAME, ACTIVE_BODY_CLASS, STYLE_ID, EXTENSION_STYLE_ID, STYLE_URL,
+        PAGE_NAME, ACTIVE_BODY_CLASS, STYLE_ID, EXTENSION_STYLE_ID,
         escape_html, current_route_is_pos, sync_route_class, ensure_stylesheet, ensure_extension_styles, icon,
         category_emoji, read_item_data, parse_quantity,
         setup() {
@@ -31194,7 +34136,7 @@ window.WMN_POS.Source.Controller = class {
             frappe.dom.freeze();
             try {
                 const response = await frappe.call({
-                    method: "wmn.api.get_past_order_list",
+                    method: "wmn.wmn.page.wmn_pos.wmn_pos.get_past_order_list",
                     freeze: false,
                     args: { search_term: searchTerm, status },
                 });
@@ -31468,7 +34410,7 @@ window.WMN_POS.Source.Controller = class {
 
                     try {
                         const response = await frappe.call({
-                            method: "wmn.api.get_sales_invoice_payment_context",
+                            method: "wmn.wmn.page.wmn_pos.wmn_pos.get_sales_invoice_payment_context",
                             args: { invoice_name: doc.name },
                             freeze: false,
                         });
@@ -31566,7 +34508,7 @@ window.WMN_POS.Source.Controller = class {
 
                             try {
                                 const response = await frappe.call({
-                                    method: "wmn.api.add_payment_to_sales_invoice",
+                                    method: "wmn.wmn.page.wmn_pos.wmn_pos.add_payment_to_sales_invoice",
                                     args: {
                                         invoice_name: context.name,
                                         amount,
@@ -32490,7 +35432,7 @@ window.WMN_POS.Source.Controller = class {
 
                         if (missing.length) {
                             const response = await frappe.call({
-                                method: "wmn.api.get_pos_item_variant_map",
+                                method: "wmn.wmn.page.wmn_pos.wmn_pos.get_pos_item_variant_map",
                                 args: {
                                     item_codes: missing,
                                     price_list: priceList,
@@ -33008,7 +35950,7 @@ window.WMN_POS.Source.Controller = class {
 
             if (shouldResolveBarcode) {
                 return frappe.call({
-                    method: "wmn.barcode_handler.custom_scan_barcode_pos",
+                    method: "wmn.wmn.page.wmn_pos.wmn_pos.custom_scan_barcode_pos",
                     args: {
                         search_value: search_term,
                         price_list: this.price_list || this.events.get_frm().doc.selling_price_list,
@@ -33075,7 +36017,7 @@ window.WMN_POS.Source.Controller = class {
 
                         if (!this.wmn_is_offline()) {
                             const response = await frappe.call({
-                                method: "wmn.api.get_pos_item_variants",
+                                method: "wmn.wmn.page.wmn_pos.wmn_pos.get_pos_item_variants",
                                 args: {
                                     template_code: templateCode,
                                     price_list: context.price_list,
@@ -33150,7 +36092,7 @@ window.WMN_POS.Source.Controller = class {
 
                         if (!this.wmn_is_offline()) {
                             const response = await frappe.call({
-                                method: "wmn.api.get_pos_item_batches",
+                                method: "wmn.wmn.page.wmn_pos.wmn_pos.get_pos_item_batches",
                                 args: {
                                     item_code: item.item_code,
                                     warehouse: context.warehouse,
@@ -33195,7 +36137,7 @@ window.WMN_POS.Source.Controller = class {
 
                         if (!this.wmn_is_offline()) {
                             const response = await frappe.call({
-                                method: "wmn.api.get_pos_item_uoms",
+                                method: "wmn.wmn.page.wmn_pos.wmn_pos.get_pos_item_uoms",
                                 args: {
                                     item_code: item.item_code,
                                     price_list: context.price_list,
@@ -36305,7 +39247,7 @@ window.WMN_POS.Source.Controller = class {
                 //if (!wmn_can_use_online_batch_dialog()) return null;
 
                 const r = await frappe.call({
-                    method: "wmn.api.get_pos_item_batches",
+                    method: "wmn.wmn.page.wmn_pos.wmn_pos.get_pos_item_batches",
                     args: {
                         item_code: item.item_code,
                         warehouse: warehouse || "",
@@ -38553,7 +41495,7 @@ window.WMN_POS.Source.Controller = class {
                                 submittedDoc.__wmn_coupon_code = couponCode;
                                 try {
                                     await frappe.call({
-                                        method: "wmn.api.register_pos_coupon_redemption",
+                                        method: "wmn.wmn.page.wmn_pos.wmn_pos.register_pos_coupon_redemption",
                                         args: {
                                             coupon_code: couponCode,
                                             invoice_doctype: submittedDoctype,
@@ -38576,7 +41518,7 @@ window.WMN_POS.Source.Controller = class {
                                 submittedDoc.__wmn_pos_promotions = promotionResults;
                                 try {
                                     await frappe.call({
-                                        method: "wmn.api.register_pos_promotion_redemptions",
+                                        method: "wmn.wmn.page.wmn_pos.wmn_pos.register_pos_promotion_redemptions",
                                         args: {
                                             promotion_results: promotionResults,
                                             invoice_doctype: submittedDoctype,
