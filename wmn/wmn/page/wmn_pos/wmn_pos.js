@@ -2997,18 +2997,18 @@ var qz = (function() {
 
         /**
          * WMN POS PWA Bridge
-         * Registers manifest + Service Worker for opening POS shell offline.
+         * Registers the page-owned manifest and Service Worker for /app/wmn-pos.
          * Notes:
-         * - The service worker file must be served from root: /pos-offline-sw.js
-         * - The manifest file should be served from root: /pos-offline-manifest.webmanifest
+         * - The service worker file must be served from root: /wmn-pos-sw.js
+         * - The manifest file should be served from root: /wmn-pos-manifest.json
          */
 
          function registerWMNPOSServiceWorker() {
             try {
-                if (!document.querySelector('link[rel="manifest"][href="/pos-offline-manifest.json"]')) {
+                if (!document.querySelector('link[rel="manifest"][href="/wmn-pos-manifest.json"]')) {
                     const manifest = document.createElement("link");
                     manifest.rel = "manifest";
-                    manifest.href = "/pos-offline-manifest.json";
+                    manifest.href = "/wmn-pos-manifest.json";
                     document.head.appendChild(manifest);
                 }
 
@@ -3073,8 +3073,8 @@ var qz = (function() {
                 window.__wmn_pos_sw_register_started = true;
 
                 const doRegister = function () {
-                    navigator.serviceWorker.register("/pos-offline-sw.js", {
-                         scope: "/desk/point-of-sale",
+                    navigator.serviceWorker.register("/wmn-pos-sw.js", {
+                        scope: "/app/wmn-pos",
                         updateViaCache: "none"
                     })
                         .then(function (reg) {
@@ -3090,7 +3090,7 @@ var qz = (function() {
 
                             if (window.frappe && frappe.show_alert) {
                                 frappe.show_alert({
-                                    message: __("Service Worker registration failed: /pos-offline-sw.js"),
+                                    message: __("Service Worker registration failed: /wmn-pos-sw.js"),
                                     indicator: "orange"
                                 });
                             }
