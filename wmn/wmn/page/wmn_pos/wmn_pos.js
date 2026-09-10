@@ -1,4 +1,5 @@
 /* WMN POS page source. Copied from ERPNext v16 and modified directly for WMN. */
+import onScan from "onscan.js";
 frappe.provide("wmn.PointOfSale");
 window.WMN_POS = window.WMN_POS || {};
 Object.assign(window.WMN_POS, {
@@ -29420,7 +29421,6 @@ window.WMN_POS.Source.ItemCart = class {
 
 /* BEGIN pos_item_selector.js */
 /* Copied from ERPNext version-16 point_of_sale source; WMN-owned namespace. */
-import onScan from "onscan.js";
 
 window.WMN_POS.Source.ItemSelector = class {
     // eslint-disable-next-line no-unused-vars

@@ -33,3 +33,11 @@ run:
 ```bash
 python3 wmn/wmn/page/wmn_pos/build_wmn_pos_bundle.py
 ```
+
+To compare or copy fresh ERPNext v16 POS component files into `upstream_v16/`,
+use:
+
+```bash
+python3 wmn/wmn/page/wmn_pos/import_upstream_v16.py --erpnext-path ../erpnext
+python3 wmn/wmn/page/wmn_pos/import_upstream_v16.py --erpnext-path ../erpnext --write
+```

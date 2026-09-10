@@ -46,18 +46,48 @@ Run from the app repository root:
 
 ```bash
 python3 wmn/wmn/page/wmn_pos/build_wmn_pos_bundle.py
-node --check wmn/wmn/page/wmn_pos/wmn_pos.js
+node --input-type=module --check < wmn/wmn/page/wmn_pos/wmn_pos.js
 ```
 
 ## Updating from ERPNext v16
 
-1. Copy the new ERPNext v16 POS component source into a temporary directory.
-2. Compare each upstream component with the matching file in `upstream_v16/`.
-3. Apply safe upstream changes to the matching `upstream_v16/*` file.
-4. Reapply or adjust WMN behavior in `wmn/components/*` only when the upstream
+Use the importer to compare or copy the ERPNext v16 POS component files:
+
+```bash
+# Compare only. This prints unified diffs and does not write files.
+python3 wmn/wmn/page/wmn_pos/import_upstream_v16.py --erpnext-path ../erpnext
+
+# Copy changed ERPNext files into upstream_v16/ and rebuild wmn_pos.js.
+python3 wmn/wmn/page/wmn_pos/import_upstream_v16.py --erpnext-path ../erpnext --write
+```
+
+`--erpnext-path` can point to:
+
+- the ERPNext app root, for example `../erpnext`,
+- a bench root containing `apps/erpnext`,
+- or the direct `erpnext/selling/page/point_of_sale` directory.
+
+The importer keeps ERPNext component code in a WMN-owned namespace by converting
+`erpnext.PointOfSale.*` references to `window.WMN_POS.Source.*`. It does not
+create runtime overrides, does not patch ERPNext files, and does not load the
+ERPNext POS page at runtime.
+
+After importing:
+
+1. Review the diff in each matching `upstream_v16/*` file.
+2. Check `DIFF_MAP.md` for the WMN files tied to that upstream component.
+3. Reapply or adjust WMN behavior in `wmn/components/*` only when the upstream
    method contract changed.
-5. Rebuild `wmn_pos.js`.
-6. Run syntax checks and manual online/offline POS smoke tests.
+4. Run syntax checks and manual online/offline POS smoke tests.
+
+To update one file only:
+
+```bash
+python3 wmn/wmn/page/wmn_pos/import_upstream_v16.py \
+  --erpnext-path ../erpnext \
+  --component pos_item_selector.js \
+  --write
+```
 
 This keeps the source split between:
 

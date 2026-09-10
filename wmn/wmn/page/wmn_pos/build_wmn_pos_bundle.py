@@ -20,14 +20,27 @@ def read_text(relative_path: str) -> str:
     return (ROOT / relative_path).read_text().rstrip()
 
 
+def split_imports(body: str) -> tuple[list[str], str]:
+    imports = []
+    lines = []
+    for line in body.splitlines():
+        if line.strip().startswith("import "):
+            imports.append(line)
+            continue
+        lines.append(line)
+    return imports, "\n".join(lines).rstrip()
+
+
 def section(marker: str, body: str) -> str:
     return f"/* BEGIN {marker} */\n{body}\n/* END {marker} */\n"
 
 
 def main() -> None:
     manifest = json.loads(MANIFEST.read_text())
+    module_imports = []
     output = []
     output.append("/* WMN POS page source. Copied from ERPNext v16 and modified directly for WMN. */")
+    output.append("__WMN_POS_MODULE_IMPORTS__")
     output.append('frappe.provide("wmn.PointOfSale");')
     output.append("window.WMN_POS = window.WMN_POS || {};")
     output.append(
@@ -43,13 +56,20 @@ def main() -> None:
     )
     output.append("")
 
+    def append_section(item: dict) -> None:
+        imports, body = split_imports(read_text(item["path"]))
+        for import_line in imports:
+            if import_line not in module_imports:
+                module_imports.append(import_line)
+        output.append(section(item["marker"], body))
+
     for item in manifest["vendor"]:
-        output.append(section(item["marker"], read_text(item["path"])))
+        append_section(item)
 
     output.append("/* BEGIN embedded WMN POS support scripts. */")
     output.append("/* These files are copied into the page so /app/wmn-pos does not load public POS assets at runtime. */")
     for item in manifest["support"]:
-        output.append(section(item["marker"], read_text(item["path"])))
+        append_section(item)
     output.append("/* END embedded WMN POS support scripts. */")
     output.append("")
 
@@ -58,13 +78,17 @@ def main() -> None:
     output.append("    window.__wmn_pos_owned_source_installed = true;")
     output.append("")
     for item in manifest["owned_source"]:
-        output.append(section(item["marker"], read_text(item["path"])))
+        append_section(item)
     output.append("};")
     output.append("")
     output.append(read_text(manifest["entry"]))
     output.append("")
 
-    (ROOT / manifest["generated_file"]).write_text("\n".join(output))
+    rendered = "\n".join(output).replace(
+        "__WMN_POS_MODULE_IMPORTS__",
+        "\n".join(module_imports).rstrip(),
+    )
+    (ROOT / manifest["generated_file"]).write_text(rendered)
 
 
 if __name__ == "__main__":
