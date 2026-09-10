@@ -8,10 +8,12 @@
          * ============================================================================ */
 
         function wmn_pos_is_page() {
-            return !!(
-                location.pathname.includes("point-of-sale") ||
-                location.hash.includes("point-of-sale")
-            );
+            const route = [
+                location.pathname || "",
+                location.hash || "",
+                location.search || "",
+            ].join(" ").toLowerCase();
+            return route.includes("wmn-pos") || route.includes("point-of-sale");
         }
 
         function wmn_emit_pos_connectivity_status(is_online, reason) {
@@ -81,50 +83,60 @@
             return false;
         }
 
+        let wmn_pos_health_check_flight = null;
+
         async function wmn_bootstrap_detect_effective_offline() {
-            if (!wmn_pos_is_page() || !window.wmnPOSOffline) return false;
+            if (wmn_pos_health_check_flight) return wmn_pos_health_check_flight;
 
-            if (navigator.onLine === false) {
-                wmn_set_pos_effective_offline("navigator.onLine false");
-                return true;
-            }
+            wmn_pos_health_check_flight = (async function () {
+                if (!wmn_pos_is_page() || !window.wmnPOSOffline) return false;
 
-            const controller = new AbortController();
-            const timer = setTimeout(function () {
-                try { controller.abort(); } catch (e) {}
-            }, 900);
-
-            try {
-                const response = await fetch("/api/method/wmn.wmn.page.wmn_pos.wmn_pos.pos_health_check?ts=" + Date.now(), {
-                    method: "POST",
-                    credentials: "same-origin",
-                    cache: "no-store",
-                    signal: controller.signal,
-                    headers: {
-                        "Accept": "application/json",
-                        "Content-Type": "application/json",
-                        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-                        "Pragma": "no-cache",
-                        "X-Frappe-CSRF-Token": (frappe.csrf_token || "")
-                    },
-                    body: JSON.stringify({ source: "pos_health" })
-                });
-
-                clearTimeout(timer);
-
-                const data = await response.json().catch(function () { return null; });
-                if (!response.ok || (data && data._wmn_offline === true)) {
-                    wmn_set_pos_effective_offline("health check failed HTTP " + response.status);
+                if (navigator.onLine === false) {
+                    wmn_set_pos_effective_offline("navigator.onLine false");
                     return true;
                 }
 
-                wmn_set_pos_effective_online("wmn.wmn.page.wmn_pos.wmn_pos.pos_health_check ok");
-                return false;
-            } catch (e) {
-                clearTimeout(timer);
-                wmn_set_pos_effective_offline((e && (e.name || e.message)) || "health check network failure");
-                return true;
-            }
+                const controller = new AbortController();
+                const timer = setTimeout(function () {
+                    try { controller.abort(); } catch (e) {}
+                }, 1500);
+
+                try {
+                    const response = await fetch("/api/method/wmn.wmn.page.wmn_pos.wmn_pos.pos_health_check?ts=" + Date.now(), {
+                        method: "POST",
+                        credentials: "same-origin",
+                        cache: "no-store",
+                        signal: controller.signal,
+                        headers: {
+                            "Accept": "application/json",
+                            "Content-Type": "application/json",
+                            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                            "Pragma": "no-cache",
+                            "X-Frappe-CSRF-Token": (frappe.csrf_token || "")
+                        },
+                        body: JSON.stringify({ source: "pos_health" })
+                    });
+
+                    clearTimeout(timer);
+
+                    const data = await response.json().catch(function () { return null; });
+                    if (!response.ok || (data && data._wmn_offline === true)) {
+                        wmn_set_pos_effective_offline("health check failed HTTP " + response.status);
+                        return true;
+                    }
+
+                    wmn_set_pos_effective_online("wmn.wmn.page.wmn_pos.wmn_pos.pos_health_check ok");
+                    return false;
+                } catch (e) {
+                    clearTimeout(timer);
+                    wmn_set_pos_effective_offline((e && (e.name || e.message)) || "health check network failure");
+                    return true;
+                }
+            })().finally(function () {
+                wmn_pos_health_check_flight = null;
+            });
+
+            return wmn_pos_health_check_flight;
         }
 
         window.wmn_check_pos_server_connection = wmn_bootstrap_detect_effective_offline;

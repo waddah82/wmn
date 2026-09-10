@@ -256,6 +256,7 @@ wmn_install_pos_pwa_app_css();
             }
 
             function online() {
+                if (window.__wmn_pos_server_online === false) return false;
                 return !wmn_is_pos_offline();
             }
 
@@ -1150,7 +1151,21 @@ wmn_install_pos_pwa_app_css();
                     freeze: false,
                 });
 
-                return r.message || {};
+                const message = r.message || {};
+                if (message.offline === true || message._wmn_offline === true) {
+                    try {
+                        if (typeof wmn_set_pos_effective_offline === "function") {
+                            wmn_set_pos_effective_offline("offline preload source is unavailable");
+                        } else {
+                            window.__wmn_pos_effective_offline = true;
+                        }
+                    } catch (e) {
+                        window.__wmn_pos_effective_offline = true;
+                    }
+                    throw new Error("POS offline data source is unavailable while disconnected.");
+                }
+
+                return message;
             }
 
             async function preload(ctrl, force = false) {
@@ -1170,6 +1185,11 @@ wmn_install_pos_pwa_app_css();
 
                 preloadRunning = true;
                 try {
+                    if (typeof window.wmn_check_pos_server_connection === "function") {
+                        const isOffline = await window.wmn_check_pos_server_connection();
+                        if (isOffline || !online()) return false;
+                    }
+
                     await autoSyncOfflineInvoicesBeforePreload(ctrl);
                     const data = await fetchMasterData(ctrl);
                     const barcodeStructures = (data.barcode_structures || [])

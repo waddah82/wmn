@@ -7,15 +7,20 @@
    - Avoids `exc: "Offline..."` strings because Frappe may try JSON.parse(exc).
 */
 
-const WMN_POS_SW_VERSION = "wmn-pos-page-20260910-v1";
-const WMN_POS_CACHE = "wmn-pos-page-runtime-20260910-v1";
-const WMN_POS_API_CACHE = "wmn-pos-page-api-20260910-v1";
+const WMN_POS_SW_VERSION = "wmn-pos-page-20260910-v2";
+const WMN_POS_CACHE = "wmn-pos-page-runtime-20260910-v2";
+const WMN_POS_API_CACHE = "wmn-pos-page-api-20260910-v2";
 
 const SHELL_URLS = [
   "/desk/wmn-pos",
   "/wmn-pos-manifest.json",
   "/wmn-pos-manifest.webmanifest"
 ];
+
+const NETWORK_ONLY_API_PATHS = new Set([
+  "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.pos_health_check",
+  "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_pos_offline_data"
+]);
 
 function sameOrigin(url) {
   return url.origin === self.location.origin;
@@ -309,12 +314,16 @@ async function networkFirstApi(event) {
   try {
     const response = await fetch(request.clone());
 
-    if (response && response.ok) {
+    if (response && response.ok && !NETWORK_ONLY_API_PATHS.has(url.pathname)) {
       await cache.put(key, response.clone());
     }
 
     return response;
   } catch (e) {
+    if (NETWORK_ONLY_API_PATHS.has(url.pathname)) {
+      return fallbackApi(url, request);
+    }
+
     const cached = await cache.match(key);
     if (cached) return cached;
 

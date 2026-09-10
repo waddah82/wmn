@@ -209,7 +209,9 @@
                     this.$customer_section.html(`<div class="customer-field"></div>`);
                     const me = this;
                     const frm = this.events && this.events.get_frm ? this.events.get_frm() : null;
-                    const currentCustomer = frm && frm.doc ? (frm.doc.customer || "") : "";
+                    const currentCustomer = frm && frm.doc
+                        ? (frm.doc.customer || frm.doc.customer_name || window.cur_pos?.settings?.customer || "")
+                        : (window.cur_pos?.settings?.customer || "");
 
                     this.customer_field = frappe.ui.form.make_control({
                         df: {
@@ -241,7 +243,13 @@
                         "aria-label": __("Customer"),
                     });
                     this.$component.find(".wmn-customer-area").removeClass("has-customer");
-                    if (currentCustomer) this.customer_field.set_value(currentCustomer);
+                    if (currentCustomer) {
+                        this.customer_field.set_value(currentCustomer);
+                        if (frm && frm.doc && !frm.doc.customer) {
+                            frm.doc.customer = currentCustomer;
+                            frm.doc.customer_name = currentCustomer;
+                        }
+                    }
                     return this.customer_field;
                 },
 

@@ -3401,6 +3401,7 @@ wmn_install_pos_pwa_app_css();
             }
 
             function online() {
+                if (window.__wmn_pos_server_online === false) return false;
                 return !wmn_is_pos_offline();
             }
 
@@ -4295,7 +4296,21 @@ wmn_install_pos_pwa_app_css();
                     freeze: false,
                 });
 
-                return r.message || {};
+                const message = r.message || {};
+                if (message.offline === true || message._wmn_offline === true) {
+                    try {
+                        if (typeof wmn_set_pos_effective_offline === "function") {
+                            wmn_set_pos_effective_offline("offline preload source is unavailable");
+                        } else {
+                            window.__wmn_pos_effective_offline = true;
+                        }
+                    } catch (e) {
+                        window.__wmn_pos_effective_offline = true;
+                    }
+                    throw new Error("POS offline data source is unavailable while disconnected.");
+                }
+
+                return message;
             }
 
             async function preload(ctrl, force = false) {
@@ -4315,6 +4330,11 @@ wmn_install_pos_pwa_app_css();
 
                 preloadRunning = true;
                 try {
+                    if (typeof window.wmn_check_pos_server_connection === "function") {
+                        const isOffline = await window.wmn_check_pos_server_connection();
+                        if (isOffline || !online()) return false;
+                    }
+
                     await autoSyncOfflineInvoicesBeforePreload(ctrl);
                     const data = await fetchMasterData(ctrl);
                     const barcodeStructures = (data.barcode_structures || [])
@@ -8312,10 +8332,12 @@ wmn_install_pos_pwa_app_css();
          * ============================================================================ */
 
         function wmn_pos_is_page() {
-            return !!(
-                location.pathname.includes("point-of-sale") ||
-                location.hash.includes("point-of-sale")
-            );
+            const route = [
+                location.pathname || "",
+                location.hash || "",
+                location.search || "",
+            ].join(" ").toLowerCase();
+            return route.includes("wmn-pos") || route.includes("point-of-sale");
         }
 
         function wmn_emit_pos_connectivity_status(is_online, reason) {
@@ -8385,50 +8407,60 @@ wmn_install_pos_pwa_app_css();
             return false;
         }
 
+        let wmn_pos_health_check_flight = null;
+
         async function wmn_bootstrap_detect_effective_offline() {
-            if (!wmn_pos_is_page() || !window.wmnPOSOffline) return false;
+            if (wmn_pos_health_check_flight) return wmn_pos_health_check_flight;
 
-            if (navigator.onLine === false) {
-                wmn_set_pos_effective_offline("navigator.onLine false");
-                return true;
-            }
+            wmn_pos_health_check_flight = (async function () {
+                if (!wmn_pos_is_page() || !window.wmnPOSOffline) return false;
 
-            const controller = new AbortController();
-            const timer = setTimeout(function () {
-                try { controller.abort(); } catch (e) {}
-            }, 900);
-
-            try {
-                const response = await fetch("/api/method/wmn.wmn.page.wmn_pos.wmn_pos.pos_health_check?ts=" + Date.now(), {
-                    method: "POST",
-                    credentials: "same-origin",
-                    cache: "no-store",
-                    signal: controller.signal,
-                    headers: {
-                        "Accept": "application/json",
-                        "Content-Type": "application/json",
-                        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-                        "Pragma": "no-cache",
-                        "X-Frappe-CSRF-Token": (frappe.csrf_token || "")
-                    },
-                    body: JSON.stringify({ source: "pos_health" })
-                });
-
-                clearTimeout(timer);
-
-                const data = await response.json().catch(function () { return null; });
-                if (!response.ok || (data && data._wmn_offline === true)) {
-                    wmn_set_pos_effective_offline("health check failed HTTP " + response.status);
+                if (navigator.onLine === false) {
+                    wmn_set_pos_effective_offline("navigator.onLine false");
                     return true;
                 }
 
-                wmn_set_pos_effective_online("wmn.wmn.page.wmn_pos.wmn_pos.pos_health_check ok");
-                return false;
-            } catch (e) {
-                clearTimeout(timer);
-                wmn_set_pos_effective_offline((e && (e.name || e.message)) || "health check network failure");
-                return true;
-            }
+                const controller = new AbortController();
+                const timer = setTimeout(function () {
+                    try { controller.abort(); } catch (e) {}
+                }, 1500);
+
+                try {
+                    const response = await fetch("/api/method/wmn.wmn.page.wmn_pos.wmn_pos.pos_health_check?ts=" + Date.now(), {
+                        method: "POST",
+                        credentials: "same-origin",
+                        cache: "no-store",
+                        signal: controller.signal,
+                        headers: {
+                            "Accept": "application/json",
+                            "Content-Type": "application/json",
+                            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                            "Pragma": "no-cache",
+                            "X-Frappe-CSRF-Token": (frappe.csrf_token || "")
+                        },
+                        body: JSON.stringify({ source: "pos_health" })
+                    });
+
+                    clearTimeout(timer);
+
+                    const data = await response.json().catch(function () { return null; });
+                    if (!response.ok || (data && data._wmn_offline === true)) {
+                        wmn_set_pos_effective_offline("health check failed HTTP " + response.status);
+                        return true;
+                    }
+
+                    wmn_set_pos_effective_online("wmn.wmn.page.wmn_pos.wmn_pos.pos_health_check ok");
+                    return false;
+                } catch (e) {
+                    clearTimeout(timer);
+                    wmn_set_pos_effective_offline((e && (e.name || e.message)) || "health check network failure");
+                    return true;
+                }
+            })().finally(function () {
+                wmn_pos_health_check_flight = null;
+            });
+
+            return wmn_pos_health_check_flight;
         }
 
         window.wmn_check_pos_server_connection = wmn_bootstrap_detect_effective_offline;
@@ -37741,7 +37773,9 @@ window.WMN_POS.Source.Controller = class {
                     this.$customer_section.html(`<div class="customer-field"></div>`);
                     const me = this;
                     const frm = this.events && this.events.get_frm ? this.events.get_frm() : null;
-                    const currentCustomer = frm && frm.doc ? (frm.doc.customer || "") : "";
+                    const currentCustomer = frm && frm.doc
+                        ? (frm.doc.customer || frm.doc.customer_name || window.cur_pos?.settings?.customer || "")
+                        : (window.cur_pos?.settings?.customer || "");
 
                     this.customer_field = frappe.ui.form.make_control({
                         df: {
@@ -37773,7 +37807,13 @@ window.WMN_POS.Source.Controller = class {
                         "aria-label": __("Customer"),
                     });
                     this.$component.find(".wmn-customer-area").removeClass("has-customer");
-                    if (currentCustomer) this.customer_field.set_value(currentCustomer);
+                    if (currentCustomer) {
+                        this.customer_field.set_value(currentCustomer);
+                        if (frm && frm.doc && !frm.doc.customer) {
+                            frm.doc.customer = currentCustomer;
+                            frm.doc.customer_name = currentCustomer;
+                        }
+                    }
                     return this.customer_field;
                 },
 
