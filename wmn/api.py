@@ -4549,7 +4549,7 @@ def get_past_order_list(search_term, status, limit=20):
     if not status:
         return []
 
-    fields = [
+    base_fields = [
         "name",
         "grand_total",
         "currency",
@@ -4566,14 +4566,28 @@ def get_past_order_list(search_term, status, limit=20):
         "wmn_invoice_uid",
     ]
 
+    def doctype_fields(doctype):
+        return {field.fieldname for field in frappe.get_meta(doctype).fields}
+
+    def existing_fields(doctype):
+        available = doctype_fields(doctype)
+        return [fieldname for fieldname in base_fields if fieldname == "name" or fieldname in available]
+
     def filters_for(doctype):
         filters = {}
+        available = doctype_fields(doctype)
         if doctype == "Sales Invoice":
             # Match ERPNext v16 native POS Sales Invoice ownership.
-            filters["is_created_using_pos"] = 1
-            filters["is_consolidated"] = 0
+            if "is_created_using_pos" in available:
+                filters["is_created_using_pos"] = 1
+            elif "is_pos" in available:
+                filters["is_pos"] = 1
+            if "is_consolidated" in available:
+                filters["is_consolidated"] = 0
 
         if status == "Awaiting Cashier":
+            if "wmn_pos_stage" not in available:
+                return {"name": ["is", "not set"]}
             filters["docstatus"] = 0
             filters["wmn_pos_stage"] = "AWAITING_CASHIER"
             return filters
@@ -4585,17 +4599,18 @@ def get_past_order_list(search_term, status, limit=20):
         if status == "Returnable":
             filters["docstatus"] = 1
             filters["is_return"] = 0
-            if doctype == "Sales Invoice":
+            if doctype == "Sales Invoice" and "pos_closing_entry" in available:
                 filters["pos_closing_entry"] = ["is", "not set"]
             return filters
 
         if doctype == "Sales Invoice":
             filters["docstatus"] = 1
-            if status == "Consolidated":
+            if status == "Consolidated" and "pos_closing_entry" in available:
                 filters["pos_closing_entry"] = ["is", "set"]
                 return filters
 
-            filters["pos_closing_entry"] = ["is", "not set"]
+            if "pos_closing_entry" in available:
+                filters["pos_closing_entry"] = ["is", "not set"]
             if status == "Return":
                 filters["is_return"] = 1
             elif status == "Paid":
@@ -4627,7 +4642,7 @@ def get_past_order_list(search_term, status, limit=20):
             doctype,
             filters=filters,
             or_filters=or_filters,
-            fields=fields,
+            fields=existing_fields(doctype),
             page_length=limit,
             order_by="posting_date desc, posting_time desc",
         )
@@ -4645,6 +4660,51 @@ def get_past_order_list(search_term, status, limit=20):
         reverse=True,
     )
     return rows[:limit]
+
+
+@frappe.whitelist()
+def get_customer_recent_transactions(customer=None):
+    """Return recent POS customer transactions for ERPNext v15/v16 compatibility."""
+    customer = str(customer or "").strip()
+    if not customer:
+        return []
+
+    fields = ["name", "grand_total", "status", "posting_date", "posting_time", "currency"]
+    rows = []
+
+    def has_field(doctype, fieldname):
+        return frappe.get_meta(doctype).has_field(fieldname)
+
+    sales_filters = {
+        "customer": customer,
+        "docstatus": 1,
+    }
+    if has_field("Sales Invoice", "is_created_using_pos"):
+        sales_filters["is_created_using_pos"] = 1
+    elif has_field("Sales Invoice", "is_pos"):
+        sales_filters["is_pos"] = 1
+    if has_field("Sales Invoice", "is_consolidated"):
+        sales_filters["is_consolidated"] = 0
+
+    for doctype, filters in (
+        ("Sales Invoice", sales_filters),
+        ("POS Invoice", {"customer": customer, "docstatus": 1}),
+    ):
+        for row in frappe.db.get_list(
+            doctype,
+            filters=filters,
+            fields=fields,
+            page_length=20,
+            order_by="posting_date desc, posting_time desc",
+        ):
+            row["doctype"] = doctype
+            rows.append(row)
+
+    rows.sort(
+        key=lambda row: get_datetime(f"{row.get('posting_date')} {row.get('posting_time') or '00:00:00'}"),
+        reverse=True,
+    )
+    return rows[:20]
 
 
 

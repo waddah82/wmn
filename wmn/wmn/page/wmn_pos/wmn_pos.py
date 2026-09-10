@@ -110,6 +110,11 @@ def get_past_order_list(search_term=None, status=None, limit=20):
 
 
 @frappe.whitelist()
+def get_customer_recent_transactions(customer=None):
+    return _wmn_api("get_customer_recent_transactions", customer=customer)
+
+
+@frappe.whitelist()
 def get_sales_invoice_payment_context(invoice_name=None):
     return _wmn_api("get_sales_invoice_payment_context", invoice_name=invoice_name)
 

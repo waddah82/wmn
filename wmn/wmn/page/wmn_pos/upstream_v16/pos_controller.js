@@ -131,7 +131,7 @@ window.WMN_POS.Source.Controller = class {
             this.allow_negative_stock = flt(message.allow_negative_stock) || false;
         });
 
-        const invoice_doctype = await frappe.db.get_single_value("POS Settings", "invoice_type");
+        const invoice_doctype = await this.get_invoice_doctype_from_settings();
 
         frappe.call({
             method: "erpnext.selling.page.point_of_sale.point_of_sale.get_pos_profile_data",
@@ -150,26 +150,42 @@ window.WMN_POS.Source.Controller = class {
         this.check_outdated_pos_opening_entry();
     }
 
+    async get_invoice_doctype_from_settings() {
+        try {
+            const invoice_doctype = await frappe.db.get_single_value("POS Settings", "invoice_type");
+            if (["Sales Invoice", "POS Invoice"].includes(invoice_doctype)) {
+                return invoice_doctype;
+            }
+        } catch (error) {
+            console.warn("WMN POS v15 compatibility: POS Settings.invoice_type is not available", error);
+        }
+        return "POS Invoice";
+    }
+
     async fetch_invoice_fields() {
         this.settings.invoice_fields = new Array();
-        const pos_settings = await frappe.db.get_doc("POS Settings", undefined);
-        pos_settings.invoice_fields.forEach((field) => {
-            this.settings.invoice_fields.push({
-                fieldname: field.fieldname,
-                label: field.label,
-                fieldtype: field.fieldtype,
-                reqd: field.reqd,
-                options: field.options,
-                default_value: field.default_value,
-                read_only: field.read_only,
+        try {
+            const pos_settings = await frappe.db.get_doc("POS Settings", undefined);
+            (pos_settings.invoice_fields || []).forEach((field) => {
+                this.settings.invoice_fields.push({
+                    fieldname: field.fieldname,
+                    label: field.label,
+                    fieldtype: field.fieldtype,
+                    reqd: field.reqd,
+                    options: field.options,
+                    default_value: field.default_value,
+                    read_only: field.read_only,
+                });
             });
-        });
+        } catch (error) {
+            console.warn("WMN POS v15 compatibility: POS Settings invoice fields could not be loaded", error);
+        }
     }
 
     setup_listener_for_pos_closing() {
         frappe.realtime.on(`poe_${this.pos_opening}`, (data) => {
             const route = frappe.get_route_str();
-            if (data && route == "point-of-sale") {
+            if (data && ["point-of-sale", "wmn-pos"].includes(route)) {
                 frappe.dom.freeze();
                 const title =
                     data.operation === "Closed" ? __("POS Closed") : __("POS Opening Entry Cancelled");

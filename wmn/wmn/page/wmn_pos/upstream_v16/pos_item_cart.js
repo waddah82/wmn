@@ -1016,11 +1016,21 @@ window.WMN_POS.Source.ItemCart = class {
     }
 
     fetch_customer_transactions() {
-        frappe
-            .call({
+        const fetch_recent_transactions = () => {
+            const args = { customer: this.customer_info.customer };
+            return frappe.call({
                 method: "erpnext.selling.page.point_of_sale.point_of_sale.get_customer_recent_transactions",
-                args: { customer: this.customer_info.customer },
-            })
+                args,
+            }).catch((error) => {
+                console.warn("WMN POS v15 compatibility: using WMN customer transactions endpoint", error);
+                return frappe.call({
+                    method: "wmn.wmn.page.wmn_pos.wmn_pos.get_customer_recent_transactions",
+                    args,
+                });
+            });
+        };
+
+        fetch_recent_transactions()
             .then((res) => {
                 res = res.message;
                 const transaction_container = this.$customer_section.find(".customer-transactions");

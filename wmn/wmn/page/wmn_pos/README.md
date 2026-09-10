@@ -94,3 +94,16 @@ This keeps the source split between:
 - upstream ERPNext v16 behavior,
 - WMN runtime/offline/data-source behavior,
 - WMN component-level business/UI changes.
+
+## ERPNext v15 compatibility branch
+
+This branch still keeps ERPNext v16 component files in `upstream_v16/`, but adds
+small compatibility edits where v15 is missing v16 POS concepts:
+
+- `POS Settings.invoice_type` is read with a fallback to `POS Invoice`.
+- `POS Settings.invoice_fields` loading tolerates older v15 metadata.
+- Customer recent transactions fall back to the WMN page endpoint when the v16
+  ERPNext API is missing.
+- Setup creates v15 custom fields matching v16 POS behavior:
+  - `POS Settings.invoice_type`
+  - `Sales Invoice.is_created_using_pos`
