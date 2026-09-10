@@ -57,15 +57,17 @@ app_include_js = [
 #}
 
 
-page_js = {
+#page_js = {
     #"point-of-sale": "public/js/mamsek.js"
-    "point-of-sale": "public/js/pos_offline/wmn_pos_loader.js"
+    #"point-of-sale": "public/js/pos_offline/wmn_pos_loader.js"
+#}
+
+override_doctype_class = {
+    "POS Closing Entry": "wmn.overrides.pos_closing_entry.pos_closing_entry_override.WMNPOSClosingEntry",
 }
 
-
 doctype_js = {
-
-    "POS Closing Entry": "public/js/pos_offline/features/cash_movement/pos_closing.js",
+    "POS Closing Entry": "public/js/overrides/pos_closing_entry/pos_closing_entry.override.js",
     "POS Profile": "public/js/pos_offline/features/pricing_rule/pos_profile.js",
     "Item": "public/js/features/item_barcode_capture/item_barcode_capture.common.js",
 }
