@@ -3141,11 +3141,11 @@ var qz = (function() {
 /* END embedded vendor:qz-tray.js */
 
 /* BEGIN embedded WMN POS support scripts. */
-/* These files are copied into the page so /desk/wmn-pos does not load public POS assets at runtime. */
+/* These files are copied into the page so /app/wmn-pos does not load public POS assets at runtime. */
 /* BEGIN support:services/storage/offline_storage.js */
         /**
          * WMN POS PWA Bridge
-         * Registers the page-owned manifest and Service Worker for /desk/wmn-pos.
+         * Registers the page-owned manifest and Service Worker for /app/wmn-pos.
          * Notes:
          * - The service worker file must be served from root: /wmn-pos-sw.js
          * - The manifest file should be served from root: /wmn-pos-manifest.json
@@ -3222,7 +3222,7 @@ var qz = (function() {
 
                 const doRegister = function () {
                     navigator.serviceWorker.register("/wmn-pos-sw.js", {
-                        scope: "/desk/wmn-pos",
+                        scope: "/app/wmn-pos",
                         updateViaCache: "none"
                     })
                         .then(function (reg) {
