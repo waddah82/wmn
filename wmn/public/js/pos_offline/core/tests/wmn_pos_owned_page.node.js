@@ -8,7 +8,6 @@ const pageJsonPath = path.join(root, "wmn/page/wmn_pos/wmn_pos.json");
 const loader = fs.readFileSync(path.join(root, "public/js/pos_offline/wmn_pos_page_loader.js"), "utf8");
 const legacyLoader = fs.readFileSync(path.join(root, "public/js/pos_offline/wmn_pos_loader.js"), "utf8");
 const boot = fs.readFileSync(path.join(root, "public/js/pos_offline/core/wmn_page_boot.js"), "utf8");
-const controller = fs.readFileSync(path.join(root, "public/js/pos_offline/overrides/controller/controller.methods.js"), "utf8");
 const cleanController = fs.readFileSync(path.join(root, "public/js/pos_offline/classes/controller/controller.methods.js"), "utf8");
 const cleanControllerClass = fs.readFileSync(path.join(root, "public/js/pos_offline/classes/controller/controller.class.js"), "utf8");
 const cleanClassFiles = [
@@ -58,9 +57,9 @@ assert.doesNotMatch(cleanClassFiles, /\bextends\s+Base/, "Clean WMN classes must
 assert.doesNotMatch(cleanClassFiles, /\bsuper\s*\(/, "Clean WMN classes must not call super constructors");
 assert.ok(!cleanControllerClass.includes("ns.Overrides"), "Clean Controller class must not register overrides");
 assert.ok(!cleanController.includes("OverrideMethods"), "Clean Controller methods must not use OverrideMethods");
-assert.ok(controller.includes("this.wmn_data_source = ns.Services?.Data?.createForController"), "Controller must own a POS data source");
-assert.ok(controller.includes("this.wmn_data_source?.controllerCache?.()"), "Controller cache access must go through the data source");
-assert.ok(controller.includes('createPOSComponent("Payment"'), "Controller must create Payment through the WMN class registry");
-assert.ok(controller.includes('createPOSComponent("ItemSelector"'), "Controller must create ItemSelector through the WMN class registry");
-assert.ok(!controller.includes("new erpnext.PointOfSale.Payment"), "Controller must not instantiate ERPNext Payment directly");
-assert.ok(!controller.includes("new erpnext.PointOfSale.ItemSelector"), "Controller must not instantiate ERPNext ItemSelector directly");
+assert.ok(cleanController.includes("this.wmn_data_source = ns.Services?.Data?.createForController"), "Controller must own a POS data source");
+assert.ok(cleanController.includes("this.wmn_data_source?.controllerCache?.()"), "Controller cache access must go through the data source");
+assert.ok(cleanController.includes('createPOSComponent("Payment"'), "Controller must create Payment through the WMN class registry");
+assert.ok(cleanController.includes('createPOSComponent("ItemSelector"'), "Controller must create ItemSelector through the WMN class registry");
+assert.ok(!cleanController.includes("new erpnext.PointOfSale.Payment"), "Controller must not instantiate ERPNext Payment directly");
+assert.ok(!cleanController.includes("new erpnext.PointOfSale.ItemSelector"), "Controller must not instantiate ERPNext ItemSelector directly");

@@ -1,4 +1,4 @@
-/* Single production WMN POS ItemCart class. */
+/* Single production override for ERPNext PointOfSale.ItemCart. */
 (function () {
     "use strict";
     const ns = window.WMN_POS;
@@ -164,6 +164,5 @@
         }
     }
 
-    ns.Classes.ItemCart = WMNItemCartOverride;
     ns.Overrides.ItemCart = WMNItemCartOverride;
 })();

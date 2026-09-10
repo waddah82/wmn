@@ -10,12 +10,6 @@
     const category_emoji = MamsekUI.category_emoji;
     const read_item_data = MamsekUI.read_item_data;
     const parse_quantity = MamsekUI.parse_quantity;
-    const createPOSComponent = (name, options) => {
-        if (typeof window.wmn_pos_create_component !== "function") {
-            throw new Error("WMN POS class registry is not available");
-        }
-        return window.wmn_pos_create_component(name, options);
-    };
 
     /*
      * WMN POS Controller for ERPNext v16.
@@ -279,7 +273,7 @@
         },
 
         init_item_details() {
-                    this.item_details = createPOSComponent("ItemDetails", {
+                    this.item_details = new erpnext.PointOfSale.ItemDetails({
                         wrapper: this.$components_wrapper,
                         settings: this.settings,
                         events: {
@@ -358,7 +352,7 @@
                 },
 
         init_item_cart() {
-                    this.cart = createPOSComponent("ItemCart", {
+                    this.cart = new erpnext.PointOfSale.ItemCart({
                         wrapper: this.$components_wrapper,
                         settings: this.settings,
                         events: {
@@ -397,12 +391,6 @@
                 },
 
         wmn_cache() {
-                        if (!this.wmn_data_source && ns.Services?.Data?.createForController) {
-                            this.wmn_data_source = ns.Services.Data.createForController(this);
-                        }
-                        const cacheFromDataSource = this.wmn_data_source?.controllerCache?.();
-                        if (cacheFromDataSource) return cacheFromDataSource;
-
                         if (!this.__wmn_controller_cache) {
                             this.__wmn_controller_cache = new window.WMNPOSControllerCache(this, this.__wmn_pos_version || "");
                         }
@@ -2503,7 +2491,7 @@
                 },
 
         init_payments() {
-                        this.payment = createPOSComponent("Payment", {
+                        this.payment = new erpnext.PointOfSale.Payment({
                             wrapper: this.$components_wrapper,
                             settings: this.settings,
                             events: {
@@ -2689,7 +2677,7 @@
                             : wmn_pos_invoice_doctype(this);
                     };
 
-                    this.recent_order_list = createPOSComponent("PastOrderList", {
+                    this.recent_order_list = new erpnext.PointOfSale.PastOrderList({
                         wrapper: this.$components_wrapper,
                         events: {
                             open_invoice_data: (doctype, name) => {
@@ -2771,7 +2759,7 @@
                     };
 
                     this.settings = wmn_safe_settings(this.settings || {});
-                    this.order_summary = createPOSComponent("PastOrderSummary", {
+                    this.order_summary = new erpnext.PointOfSale.PastOrderSummary({
                         wrapper: this.$components_wrapper,
                         settings: wmn_safe_settings(this.settings || {}),
                         events: {
@@ -2921,7 +2909,7 @@
         			},
 
         init_item_selector() {
-				this.item_selector = createPOSComponent("ItemSelector", {
+        				this.item_selector = new erpnext.PointOfSale.ItemSelector({
         					wrapper: this.$components_wrapper,
         					pos_profile: this.pos_profile,
         					settings: this.settings,
@@ -3343,9 +3331,6 @@
                 
                         this.__wmn_pos_version = "v16";
                         this.settings = wmn_safe_settings(this.settings || {});
-                        this.wmn_data_source = ns.Services?.Data?.createForController
-                            ? ns.Services.Data.createForController(this)
-                            : null;
                         this.wmn_start_offline_preload();
             
     };

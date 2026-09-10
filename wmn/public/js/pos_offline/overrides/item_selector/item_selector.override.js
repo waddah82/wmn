@@ -1,4 +1,4 @@
-/* Single production WMN POS ItemSelector class. */
+/* Single production override for ERPNext PointOfSale.ItemSelector. */
 (function () {
     "use strict";
     const ns = window.WMN_POS;
@@ -248,6 +248,5 @@
         }
     }
 
-    ns.Classes.ItemSelector = WMNItemSelectorOverride;
     ns.Overrides.ItemSelector = WMNItemSelectorOverride;
 })();

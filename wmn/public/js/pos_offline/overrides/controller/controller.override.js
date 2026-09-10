@@ -1,4 +1,4 @@
-/* Single production WMN POS Controller class. */
+/* Single production override for ERPNext PointOfSale.Controller. */
 (function () {
     "use strict";
     const ns = window.WMN_POS;
@@ -444,6 +444,5 @@
         }
     }
 
-    ns.Classes.Controller = WMNControllerOverride;
     ns.Overrides.Controller = WMNControllerOverride;
 })();

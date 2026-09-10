@@ -1,4 +1,4 @@
-/* Single production WMN POS ItemDetails class. */
+/* Single production override for ERPNext PointOfSale.ItemDetails. */
 (function () {
     "use strict";
     const ns = window.WMN_POS;
@@ -56,6 +56,5 @@
         }
     }
 
-    ns.Classes.ItemDetails = WMNItemDetailsOverride;
     ns.Overrides.ItemDetails = WMNItemDetailsOverride;
 })();
