@@ -40,6 +40,12 @@ files and rebuild the bundle.
 - `build_wmn_pos_bundle.py`
   - Rebuilds the runtime bundle from the organized source tree.
 
+## Workspace
+
+`wmn.setup.workspace.ensure_wmn_workspace` creates a public `WMN` Workspace with
+a WMN POS shortcut. On Frappe v16 the shortcut route is `/desk/wmn-pos`, so the
+workspace appears in the Desk sidebar and opens the v16 page route.
+
 ## Rebuilding
 
 Run from the app repository root:
