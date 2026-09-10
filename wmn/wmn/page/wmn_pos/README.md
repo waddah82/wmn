@@ -8,6 +8,10 @@ Frappe loads `wmn_pos.js` for the `/app/wmn-pos` page. That file is the runtime
 bundle. Do not edit it directly for feature work; edit the organized source
 files and rebuild the bundle.
 
+The WMN desk entry is a standard Frappe Workspace document at
+`wmn/wmn/workspace/wmn/wmn.json`. On this ERPNext v15 compatibility branch it
+links to `/app/wmn-pos`.
+
 ## Directories
 
 - `upstream_v16/`
@@ -35,6 +39,8 @@ files and rebuild the bundle.
   - Page-owned Python endpoint boundary used by the browser page.
 - `wmn_pos.json`
   - Frappe Page definition.
+- `../../workspace/wmn/wmn.json`
+  - Standard Frappe Workspace document for the WMN sidebar/workspace entry.
 - `bundle_manifest.json`
   - Ordered source manifest used to build `wmn_pos.js`.
 - `build_wmn_pos_bundle.py`
@@ -107,3 +113,5 @@ small compatibility edits where v15 is missing v16 POS concepts:
 - Setup creates v15 custom fields matching v16 POS behavior:
   - `POS Settings.invoice_type`
   - `Sales Invoice.is_created_using_pos`
+- The WMN Workspace is installed from `wmn/wmn/workspace/wmn/wmn.json` and
+  opens the v15 route `/app/wmn-pos`.
