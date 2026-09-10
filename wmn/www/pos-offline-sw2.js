@@ -13,7 +13,6 @@ const WMN_POS_API_CACHE = "wmn-pos-api-v15";
 const SHELL_URLS = [
   "/app",
   "/app/point-of-sale",
-  "/app/wmn-pos",
   "/pos-offline-manifest.webmanifest"
 ];
 
@@ -55,8 +54,7 @@ function isAppNavigation(url, request) {
   return request.mode === "navigate" && (
     url.pathname === "/app" ||
     url.pathname === "/app/" ||
-    url.pathname === "/app/point-of-sale" ||
-    url.pathname === "/app/wmn-pos"
+    url.pathname === "/app/point-of-sale"
   );
 }
 
@@ -375,7 +373,6 @@ self.addEventListener("fetch", (event) => {
             const cache = await caches.open(WMN_POS_CACHE);
             return (
               await cache.match(request) ||
-              await cache.match("/app/wmn-pos") ||
               await cache.match("/app/point-of-sale") ||
               await cache.match("/app") ||
               new Response("<!doctype html><html><body><h3>POS offline shell is not cached yet. Open POS online once first.</h3></body></html>", {

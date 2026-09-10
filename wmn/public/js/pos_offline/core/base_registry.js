@@ -5,6 +5,6 @@
     const pos = erpnext.PointOfSale;
     ["Controller", "ItemSelector", "ItemCart", "ItemDetails", "Payment", "PastOrderList", "PastOrderSummary"].forEach((name) => {
         if (typeof pos[name] !== "function") throw new Error(`ERPNext POS ${name} class is not available`);
-        if (!ns.Base[name]) ns.Base[name] = pos[name];
+        ns.Base[name] = pos[name];
     });
 })();

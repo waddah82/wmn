@@ -78,7 +78,7 @@
 
                 const doRegister = function () {
                     navigator.serviceWorker.register("/pos-offline-sw.js", {
-                        scope: "/app/",
+                         scope: "/desk/point-of-sale",
                         updateViaCache: "none"
                     })
                         .then(function (reg) {
@@ -141,11 +141,8 @@ function wmn_install_pos_pwa_app_css() {
             }
 
             #page-point-of-sale .page-body,
-            #page-wmn-pos .page-body,
             #page-point-of-sale .layout-main-section,
-            #page-wmn-pos .layout-main-section,
-            #page-point-of-sale .point-of-sale-app,
-            #page-wmn-pos .point-of-sale-app {
+            #page-point-of-sale .point-of-sale-app {
                 padding-top: 0 !important;
                 margin-top: 0 !important;
             }

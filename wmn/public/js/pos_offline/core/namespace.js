@@ -1,12 +1,9 @@
-/* WMN POS namespace shared by the owned page and legacy page adapter. */
+/* WMN POS namespace. No runtime patching is allowed outside patches/patch_registry.js. */
 (function () {
     "use strict";
     window.WMN_POS = window.WMN_POS || {};
     const ns = window.WMN_POS;
-    ns.Source = ns.Source || {};
     ns.Base = ns.Base || {};
-    ns.Classes = ns.Classes || {};
-    ns.ClassMethods = ns.ClassMethods || {};
     ns.Overrides = ns.Overrides || {};
     ns.OverrideMethods = ns.OverrideMethods || {};
     ns.Features = ns.Features || {};
