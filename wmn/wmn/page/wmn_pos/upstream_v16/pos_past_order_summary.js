@@ -133,7 +133,7 @@ window.WMN_POS.Source.PastOrderSummary = class {
                 item_row_name: item_data.name,
             };
             const r = await frappe.call({
-                method: "erpnext.controllers.sales_and_purchase_return.get_invoice_item_returned_qty",
+                method: "wmn.wmn.page.wmn_pos.wmn_pos.get_invoice_item_returned_qty",
                 args,
             }).catch((error) => {
                 console.warn("WMN POS v15 compatibility: using WMN returned quantity endpoint", error);
