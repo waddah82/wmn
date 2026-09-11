@@ -6,7 +6,6 @@ from wmn.setup.pos_menu import ensure_default_pos_menu_settings
 from wmn.setup.pos_profile_settings import migrate_legacy_pos_profile_settings, validate_settings_schema
 from wmn.setup.cashier_completion import ensure_cashier_completion_fields
 from wmn.setup.v15_pos_compat import ensure_v15_pos_invoice_type_fields
-from wmn.setup.v16_cleanup import remove_v15_pos_invoice_compatibility
 from wmn.features.pricing_rule.pricing_rule import enforce_all_pos_profiles_native_pricing_disabled
 from wmn.offline_sync.tax_integrity import repair_invalid_sales_tax_row_references
 
@@ -23,4 +22,3 @@ def after_migrate():
     migrate_legacy_pos_profile_settings()
     enforce_all_pos_profiles_native_pricing_disabled()
     repair_invalid_sales_tax_row_references()
-    remove_v15_pos_invoice_compatibility()
