@@ -9495,6 +9495,18 @@ function wmn_is_mobile_pos_device() {
                 box-shadow: 0 18px 50px rgba(15, 23, 42, .18);
                 overflow: hidden;
             }
+            body.wmn-mamsek-pos-route .wmn-pos-app-dialog {
+                z-index: 2000 !important;
+                pointer-events: auto !important;
+            }
+            body.wmn-mamsek-pos-route .modal-backdrop.show,
+            body.wmn-mamsek-pos-route .modal-backdrop.in {
+                z-index: 1990 !important;
+            }
+            body.wmn-mamsek-pos-route .wmn-pos-app-dialog .modal-dialog,
+            body.wmn-mamsek-pos-route .wmn-pos-app-dialog .modal-content {
+                pointer-events: auto !important;
+            }
             body.wmn-mamsek-pos-route .wmn-pos-app-dialog .modal-header {
                 min-height: 52px;
                 padding: 12px 16px;
@@ -24554,6 +24566,9 @@ function wmn_render_offline_print_template(template, doc) {
             }
 
             dialog.$wrapper.on("hidden.bs.modal", () => finish({ approved: false, required: true, action }));
+            try {
+                frappe.dom.unfreeze();
+            } catch (e) {}
             dialog.show();
             setTimeout(() => dialog.fields_dict.pin?.set_focus?.(), 50);
         });

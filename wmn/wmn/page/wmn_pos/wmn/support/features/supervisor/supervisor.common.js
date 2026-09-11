@@ -727,6 +727,9 @@
             }
 
             dialog.$wrapper.on("hidden.bs.modal", () => finish({ approved: false, required: true, action }));
+            try {
+                frappe.dom.unfreeze();
+            } catch (e) {}
             dialog.show();
             setTimeout(() => dialog.fields_dict.pin?.set_focus?.(), 50);
         });
