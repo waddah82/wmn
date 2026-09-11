@@ -31509,14 +31509,8 @@ window.WMN_POS.Source.PastOrderSummary = class {
             invoice: invoice,
         };
         const r = await frappe.call({
-            method: "erpnext.controllers.sales_and_purchase_return.is_invoice_returnable",
+            method: "wmn.wmn.page.wmn_pos.wmn_pos.is_invoice_returnable",
             args,
-        }).catch((error) => {
-            console.warn("WMN POS v15 compatibility: using WMN invoice returnable endpoint", error);
-            return frappe.call({
-                method: "wmn.wmn.page.wmn_pos.wmn_pos.is_invoice_returnable",
-                args,
-            });
         });
         return r.message;
     }
@@ -34522,7 +34516,11 @@ window.WMN_POS.Source.Controller = class {
 
         async is_invoice_returnable(doctype, invoice) {
                     if (!wmn_summary_is_offline()) {
-                        return super.is_invoice_returnable(doctype, invoice);
+                        const r = await frappe.call({
+                            method: "wmn.wmn.page.wmn_pos.wmn_pos.is_invoice_returnable",
+                            args: { doctype, invoice },
+                        });
+                        return r.message;
                     }
 
                     const returnOffline = window.WMN_POS?.Features?.Return?.Offline;
