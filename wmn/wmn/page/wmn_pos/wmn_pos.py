@@ -51,8 +51,6 @@ def get_pos_shift_receipt_counter(pos_opening_entry=None, company=None, pos_prof
         pos_opening_entry=pos_opening_entry,
         company=company,
         pos_profile=pos_profile,
-        user=user,
-        posting_date=posting_date,
     )
 
 
@@ -64,8 +62,6 @@ def update_pos_shift_receipt_counter(pos_opening_entry=None, counter=None, compa
         counter=counter,
         company=company,
         pos_profile=pos_profile,
-        user=user,
-        posting_date=posting_date,
     )
 
 
