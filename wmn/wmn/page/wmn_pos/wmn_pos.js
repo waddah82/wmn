@@ -11684,6 +11684,7 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
     ns.Services.Payment = ns.Services.Payment || {};
 
     const cache = new Map();
+    const loyaltyCache = new Map();
 
     function clean(value) {
         return String(value || "").trim();
@@ -11746,6 +11747,30 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
         }
     }
 
+    function hasDocField(doc, fieldname) {
+        try {
+            if (!doc?.doctype || !frappe?.meta?.has_field) return true;
+            return !!frappe.meta.has_field(doc.doctype, fieldname);
+        } catch (error) {
+            return true;
+        }
+    }
+
+    async function setDocField(doc, fieldname, value) {
+        value = clean(value);
+        if (!doc || !fieldname || !value || clean(doc[fieldname]) === value || !hasDocField(doc, fieldname)) return;
+        doc[fieldname] = value;
+
+        if (doc.doctype && doc.name && frappe?.model?.get_doc?.(doc.doctype, doc.name)) {
+            try {
+                await frappe.model.set_value(doc.doctype, doc.name, fieldname, value);
+            } catch (error) {
+                doc[fieldname] = value;
+                console.warn(`WMN POS could not set ${fieldname} through frappe.model`, error);
+            }
+        }
+    }
+
     function cacheKey(posProfile, company, modes) {
         return [clean(posProfile), clean(company), modes.map(clean).sort().join("|")].join("::");
     }
@@ -11773,6 +11798,33 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
         }
     }
 
+    function loyaltyKey(loyaltyProgram, company, posProfile) {
+        return [clean(loyaltyProgram), clean(company), clean(posProfile)].join("::");
+    }
+
+    async function fetchLoyaltyDefaults(loyaltyProgram, company, posProfile) {
+        const key = loyaltyKey(loyaltyProgram, company, posProfile);
+        if (loyaltyCache.has(key)) return loyaltyCache.get(key);
+
+        const request = frappe.call({
+            method: "wmn.wmn.page.wmn_pos.wmn_pos.get_pos_loyalty_redemption_defaults",
+            args: {
+                loyalty_program: loyaltyProgram || "",
+                company: company || "",
+                pos_profile: posProfile || "",
+            },
+            freeze: false,
+        }).then((response) => response.message || {});
+
+        loyaltyCache.set(key, request);
+        try {
+            return await request;
+        } catch (error) {
+            loyaltyCache.delete(key);
+            throw error;
+        }
+    }
+
     function missingActivePaymentRows(doc) {
         return (doc?.payments || []).filter((row) => (
             row &&
@@ -11794,7 +11846,55 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
         });
     }
 
+    function showMissingLoyaltyMessage(loyaltyProgram) {
+        frappe.msgprint({
+            title: __("Loyalty Redemption Account Missing"),
+            indicator: "red",
+            message: __(
+                "Please configure an Expense Account for Loyalty Program {0} before submitting this invoice.",
+                [loyaltyProgram || __("the selected loyalty program")]
+            ),
+        });
+    }
+
+    async function ensureOnlineInvoiceLoyaltyRedemption(doc, options = {}) {
+        const usesLoyalty = cint(doc?.redeem_loyalty_points || 0) ||
+            flt(doc?.loyalty_amount || 0) > 0 ||
+            flt(doc?.loyalty_points || 0) > 0;
+        if (!doc || !usesLoyalty) return { ok: true, missing: [] };
+
+        const ctrl = options.controller || window.cur_pos || null;
+        const customerDetails = ctrl?.customer_details || options.customer_details || {};
+        const posProfile = clean(doc.pos_profile || ctrl?.pos_profile || ctrl?.settings?.pos_profile);
+        const company = clean(doc.company || ctrl?.company || ctrl?.settings?.company);
+        const loyaltyProgram = clean(doc.loyalty_program || customerDetails.loyalty_program);
+
+        if (loyaltyProgram) await setDocField(doc, "loyalty_program", loyaltyProgram);
+        if (!clean(doc.loyalty_program)) {
+            showMissingLoyaltyMessage("");
+            return { ok: false, missing: ["loyalty_program"] };
+        }
+
+        if (clean(doc.loyalty_redemption_account) && clean(doc.loyalty_redemption_cost_center || doc.cost_center)) {
+            return { ok: true, missing: [] };
+        }
+
+        const defaults = await fetchLoyaltyDefaults(clean(doc.loyalty_program), company, posProfile);
+        await setDocField(doc, "loyalty_redemption_account", defaults.loyalty_redemption_account);
+        await setDocField(doc, "loyalty_redemption_cost_center", defaults.loyalty_redemption_cost_center);
+
+        if (!clean(doc.loyalty_redemption_account)) {
+            showMissingLoyaltyMessage(clean(doc.loyalty_program));
+            return { ok: false, missing: ["loyalty_redemption_account"] };
+        }
+
+        return { ok: true, missing: [] };
+    }
+
     async function ensureOnlineInvoicePaymentAccounts(doc, options = {}) {
+        const loyaltyResult = await ensureOnlineInvoiceLoyaltyRedemption(doc, options);
+        if (!loyaltyResult?.ok) return loyaltyResult;
+
         if (!doc || !Array.isArray(doc.payments) || !doc.payments.length) {
             return { ok: true, missing: [] };
         }
@@ -11841,6 +11941,7 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
 
     ns.Services.Payment.OnlineAccounts = {
         ensureOnlineInvoicePaymentAccounts,
+        ensureOnlineInvoiceLoyaltyRedemption,
     };
 })();
 /* END support:services/payment/online_payment_accounts.js */

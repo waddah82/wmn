@@ -50,6 +50,16 @@ def get_pos_payment_method_accounts(pos_profile=None, company=None, modes=None):
 
 
 @frappe.whitelist()
+def get_pos_loyalty_redemption_defaults(loyalty_program=None, company=None, pos_profile=None):
+    return _wmn_api(
+        "get_pos_loyalty_redemption_defaults",
+        loyalty_program=loyalty_program,
+        company=company,
+        pos_profile=pos_profile,
+    )
+
+
+@frappe.whitelist()
 def save_pos_profile_settings(pos_profile=None, values=None):
     return _wmn_api("save_pos_profile_settings", pos_profile=pos_profile, values=values)
 
