@@ -25,9 +25,18 @@
                 z-index: 2000 !important;
                 pointer-events: auto !important;
             }
+            body.wmn-mamsek-pos-route .modal.show,
+            body.wmn-mamsek-pos-route .modal.in {
+                z-index: 2000 !important;
+                pointer-events: auto !important;
+            }
             body.wmn-mamsek-pos-route .modal-backdrop.show,
             body.wmn-mamsek-pos-route .modal-backdrop.in {
                 z-index: 1990 !important;
+            }
+            body.wmn-mamsek-pos-route .freeze,
+            body.wmn-mamsek-pos-route .freeze-message-container {
+                z-index: 1980 !important;
             }
             body.wmn-mamsek-pos-route .wmn-pos-app-dialog .modal-dialog,
             body.wmn-mamsek-pos-route .wmn-pos-app-dialog .modal-content {
