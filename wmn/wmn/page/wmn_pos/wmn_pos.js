@@ -27922,7 +27922,6 @@ frappe.provide("wmn.MamsekPOS");
         style.id = STYLE_ID;
         style.textContent = `
             body.${ACTIVE_BODY_CLASS} .payment-container {
-                display: flex !important;
                 flex-direction: column !important;
                 height: 100% !important;
                 min-height: 0 !important;
