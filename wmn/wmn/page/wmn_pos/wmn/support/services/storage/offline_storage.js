@@ -2179,6 +2179,25 @@ wmn_install_pos_pwa_app_css();
                 return synced;
             }
 
+            function recalculateInvoiceForPersistence(invoice) {
+                if (!invoice) return invoice;
+
+                const recalculate = window.wmnPOSOffline
+                    && typeof window.wmnPOSOffline.recalculateOfflineDoc === "function"
+                    ? window.wmnPOSOffline.recalculateOfflineDoc
+                    : (typeof wmn_recalculate_offline_doc === "function" ? wmn_recalculate_offline_doc : null);
+
+                if (!recalculate) return invoice;
+
+                try {
+                    return recalculate(invoice) || invoice;
+                } catch (e) {
+                    console.warn("WMN POS offline invoice recalculation failed", e);
+                    if (cint(invoice.is_return || 0) === 1) throw e;
+                    return invoice;
+                }
+            }
+
             async function saveInvoice(invoice, ctrl) {
                 const doc = clone(invoice);
                 const invoiceBarcode = window.WMN_POS?.Services?.Barcode?.InvoiceBarcode;
@@ -2190,7 +2209,6 @@ wmn_install_pos_pwa_app_css();
                 }
                 doc.wmn_receipt_no = doc.wmn_receipt_no || doc.__wmn_receipt_no || "";
                 doc.__wmn_receipt_no = doc.__wmn_receipt_no || doc.wmn_receipt_no || "";
-                await wmn_clean_doc_batch_serial_for_save(doc);
                 const offlineId = doc.wmn_offline_sync_id
                     || doc.custom_offline_id
                     || `POS-OFF-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -2198,6 +2216,8 @@ wmn_install_pos_pwa_app_css();
                 doc.custom_offline_id = offlineId;
                 doc.__islocal = 1;
                 doc.docstatus = 0;
+                recalculateInvoiceForPersistence(doc);
+                await wmn_clean_doc_batch_serial_for_save(doc);
 
                 const row = {
                     offline_id: offlineId,
@@ -2785,8 +2805,10 @@ wmn_install_pos_pwa_app_css();
 
                 const flight = (async () => {
                     try {
+                        recalculateInvoiceForPersistence(invoice);
                         await wmn_clean_doc_batch_serial_for_save(invoice);
                         await resolveReturnAgainstForSync(row, invoice);
+                        recalculateInvoiceForPersistence(invoice);
                         row.status = "syncing";
                         row.last_try_at = new Date().toISOString();
                         row.invoice = invoice;

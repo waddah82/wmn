@@ -756,6 +756,11 @@
             return doc;
         }
 
+        window.wmn_recalculate_offline_doc = wmn_recalculate_offline_doc;
+        if (window.wmnPOSOffline) {
+            window.wmnPOSOffline.recalculateOfflineDoc = wmn_recalculate_offline_doc;
+        }
+
 
         function wmn_get_invoice_child_doctypes(invoiceDoctype) {
             return {
