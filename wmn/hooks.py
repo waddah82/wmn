@@ -50,23 +50,10 @@ app_include_js = [
 # webform_include_js = {"doctype": "public/js/doctype.js"}
 # webform_include_css = {"doctype": "public/css/doctype.css"}
 
-# include js in page
-# page_js = {"page" : "public/js/file.js"}
-#page_js = {
- #   "point-of-sale": "public/js/custom_pos_offline.js"
-#}
-
-
-page_js = {
-    #"point-of-sale": "public/js/mamsek.js"
-    "point-of-sale": "public/js/pos_offline/wmn_pos_loader.js"
-}
-
-
 doctype_js = {
 
-    "POS Closing Entry": "public/js/pos_offline/features/cash_movement/pos_closing.js",
-    "POS Profile": "public/js/pos_offline/features/pricing_rule/pos_profile.js",
+    "POS Closing Entry": "public/js/features/cash_movement/pos_closing.js",
+    "POS Profile": "public/js/features/pricing_rule/pos_profile.js",
     "Item": "public/js/features/item_barcode_capture/item_barcode_capture.common.js",
 }
 
