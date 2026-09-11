@@ -40,6 +40,16 @@ def get_pos_profile_settings(pos_profile=None):
 
 
 @frappe.whitelist()
+def get_pos_payment_method_accounts(pos_profile=None, company=None, modes=None):
+    return _wmn_api(
+        "get_pos_payment_method_accounts",
+        pos_profile=pos_profile,
+        company=company,
+        modes=modes,
+    )
+
+
+@frappe.whitelist()
 def save_pos_profile_settings(pos_profile=None, values=None):
     return _wmn_api("save_pos_profile_settings", pos_profile=pos_profile, values=values)
 
