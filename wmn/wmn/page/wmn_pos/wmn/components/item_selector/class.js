@@ -112,8 +112,16 @@
             return methods.FinalMethods.wmn_is_exact_barcode_result.apply(this, args);
         }
 
+        wmn_submit_scanned_barcode(...args) {
+            return methods.FinalMethods.wmn_submit_scanned_barcode.apply(this, args);
+        }
+
         filter_items(...args) {
             return methods.FinalMethods.filter_items.apply(this, args);
+        }
+
+        wmn_bind_barcode_scanner_input(...args) {
+            return methods.FinalMethods.wmn_bind_barcode_scanner_input.apply(this, args);
         }
 
         wmn_get_variant_choices(...args) {
