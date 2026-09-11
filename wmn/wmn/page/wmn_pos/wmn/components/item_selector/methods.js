@@ -1061,14 +1061,42 @@
             return Boolean(actual && actual === expected);
         },
 
+        async wmn_submit_scanned_barcode(searchTerm, options = {}) {
+            searchTerm = String(searchTerm || "").trim();
+            if (!searchTerm || !this.search_field || !this.$component?.is?.(":visible")) return false;
+
+            if (options.focus !== false && !window.wmn_is_mobile_pos_device?.()) {
+                this.search_field.set_focus?.();
+            }
+
+            this.barcode_scanned = true;
+            this.__wmn_force_barcode_submit = true;
+            this.__wmn_typed_barcode_submit = false;
+            this.set_search_value(searchTerm);
+            clearTimeout(this.last_search);
+
+            try {
+                await Promise.resolve(this.filter_items({ search_term: searchTerm }));
+                return true;
+            } catch (error) {
+                this.barcode_scanned = false;
+                this.__wmn_force_barcode_submit = false;
+                console.error("WMN scanned barcode submit failed", error);
+                window.WMN_POS?.Features?.BarcodeScanQuantityUI?.sync?.(this);
+                return false;
+            }
+        },
+
         filter_items({ search_term = "" } = {}) {
             const qtyFeature = window.WMN_POS?.Features?.BarcodeScanQuantity;
             const qtyUI = window.WMN_POS?.Features?.BarcodeScanQuantityUI;
             const fromScan = Boolean(this.barcode_scanned);
             const fromTypedBarcode = Boolean(this.__wmn_typed_barcode_submit);
+            const forceBarcodeSubmit = Boolean(this.__wmn_force_barcode_submit);
             const fromBarcodeInput = Boolean(fromScan || fromTypedBarcode);
             const armedBarcodeInput = Boolean(fromBarcodeInput && qtyFeature?.isArmed?.(this));
             this.__wmn_typed_barcode_submit = false;
+            this.__wmn_force_barcode_submit = false;
 
             const syncScanState = () => {
                 this.barcode_scanned = false;
@@ -1077,7 +1105,7 @@
 
             if (this.wmn_is_offline() && window.wmnPOSOffline) {
                 return this.wmn_scan_barcode_structure_offline(search_term).then(async (structured_item) => {
-                    if (structured_item && structured_item.item_code && search_term && search_term.length >= 12) {
+                    if (structured_item && structured_item.item_code && search_term && (forceBarcodeSubmit || search_term.length >= 12)) {
                         await this.wmn_update_existing_cart_item_or_add(
                             structured_item,
                             structured_item.qty || 1
@@ -1098,7 +1126,7 @@
                         const exactTypedBarcode = !fromTypedBarcode ||
                             (items.length === 1 && this.wmn_is_exact_barcode_result(items[0], search_term));
 
-                        if (items.length === 1 && search_term && search_term.length >= 8 && exactTypedBarcode) {
+                        if (items.length === 1 && search_term && (forceBarcodeSubmit || search_term.length >= 8) && exactTypedBarcode) {
                             const item = items[0];
                             let qtyValue = item.qty || 1;
                             let prompted = false;
@@ -1138,7 +1166,7 @@
 
             const shouldResolveBarcode = Boolean(
                 search_term &&
-                ((armedBarcodeInput && fromBarcodeInput) || search_term.length >= 12)
+                (forceBarcodeSubmit || (armedBarcodeInput && fromBarcodeInput) || search_term.length >= 12)
             );
 
             if (shouldResolveBarcode) {
@@ -1184,7 +1212,7 @@
                         return;
                     }
 
-                    if (fromScan && armedBarcodeInput) {
+                    if (fromScan) {
                         syncScanState();
                     } else {
                         qtyUI?.sync?.(this);
@@ -1945,6 +1973,8 @@
         bind_events() {
             super.bind_events();
 
+            this.wmn_bind_barcode_scanner_input();
+
             const qtyFeature = window.WMN_POS?.Features?.BarcodeScanQuantity;
             this.search_field?.$input
                 ?.off?.("keydown.wmnQtyTypedBarcode")
@@ -2077,6 +2107,29 @@
                 } else if (action === "open-settings") {
                     this.wmn_open_ui_settings_dialog();
                 }
+            });
+        },
+
+        wmn_bind_barcode_scanner_input() {
+            const scanner = window.onScan;
+            if (!scanner?.attachTo) return;
+
+            try {
+                scanner.detachFrom?.(document);
+            } catch (error) {
+                console.warn("WMN POS scanner detach skipped", error);
+            }
+
+            scanner.attachTo(document, {
+                onScan: (scancode) => {
+                    if (!this.search_field || !this.$component?.is?.(":visible")) return;
+                    this.wmn_submit_scanned_barcode(scancode, {
+                        source: "scanner",
+                        focus: true,
+                    }).catch((error) => {
+                        console.error("WMN barcode scanner input failed", error);
+                    });
+                },
             });
         },
 
@@ -2512,7 +2565,9 @@
     FinalMethods.wmn_get_pos_profile_name = UIMethods.wmn_get_pos_profile_name || CoreMethods.wmn_get_pos_profile_name;
     FinalMethods.wmn_add_online_barcode_result = UIMethods.wmn_add_online_barcode_result || CoreMethods.wmn_add_online_barcode_result;
     FinalMethods.wmn_is_exact_barcode_result = UIMethods.wmn_is_exact_barcode_result || CoreMethods.wmn_is_exact_barcode_result;
+    FinalMethods.wmn_submit_scanned_barcode = UIMethods.wmn_submit_scanned_barcode || CoreMethods.wmn_submit_scanned_barcode;
     FinalMethods.filter_items = UIMethods.filter_items || CoreMethods.filter_items;
+    FinalMethods.wmn_bind_barcode_scanner_input = UIMethods.wmn_bind_barcode_scanner_input || CoreMethods.wmn_bind_barcode_scanner_input;
     FinalMethods.wmn_get_variant_choices = UIMethods.wmn_get_variant_choices || CoreMethods.wmn_get_variant_choices;
     FinalMethods.wmn_get_batch_choices = UIMethods.wmn_get_batch_choices || CoreMethods.wmn_get_batch_choices;
     FinalMethods.wmn_get_uom_choices = UIMethods.wmn_get_uom_choices || CoreMethods.wmn_get_uom_choices;

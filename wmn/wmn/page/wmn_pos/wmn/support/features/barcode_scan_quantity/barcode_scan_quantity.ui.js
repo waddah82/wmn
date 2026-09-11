@@ -128,7 +128,25 @@
                 event.preventDefault();
                 event.stopPropagation();
                 try {
-                    window.WMN?.Features?.MobileBarcodeScanner?.openForPOS?.(selector);
+                    const scanner = window.WMN?.Features?.MobileBarcodeScanner;
+                    if (scanner?.open) {
+                        scanner.open({
+                            multiple: false,
+                            onScan(text) {
+                                if (selector?.wmn_submit_scanned_barcode) {
+                                    selector.wmn_submit_scanned_barcode(text, {
+                                        source: "camera",
+                                        focus: false,
+                                    });
+                                } else {
+                                    selector.barcode_scanned = true;
+                                    selector.set_search_value?.(text);
+                                }
+                            },
+                        });
+                    } else {
+                        scanner?.openForPOS?.(selector);
+                    }
                 } catch (error) {
                     frappe.msgprint({
                         title: __("Camera Scanner"),
