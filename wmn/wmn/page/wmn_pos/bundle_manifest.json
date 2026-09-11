@@ -402,10 +402,6 @@
     {
       "marker": "support:ui/mamsek_ui.js",
       "path": "wmn/support/ui/mamsek_ui.js"
-    },
-    {
-      "marker": "support:ui/payment_layout.js",
-      "path": "wmn/support/ui/payment_layout.js"
     }
   ],
   "owned_source": [

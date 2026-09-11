@@ -35,6 +35,9 @@ links to `/app/wmn-pos`.
 
 - `wmn_pos.js`
   - Generated browser bundle loaded by Frappe.
+- `wmn_pos.css`
+  - Page-owned CSS loaded with the standard Frappe Page. Do not put WMN POS
+    layout CSS in shared public POS assets.
 - `wmn_pos.py`
   - Page-owned Python endpoint boundary used by the browser page.
 - `wmn_pos.json`
