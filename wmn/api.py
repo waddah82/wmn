@@ -1787,6 +1787,55 @@ def get_pos_payment_method_accounts(pos_profile=None, company=None, modes=None):
     }
 
 
+def _wmn_first_existing_doc_value(doc, fieldnames):
+    for fieldname in fieldnames:
+        if doc.meta.has_field(fieldname):
+            value = doc.get(fieldname)
+            if value:
+                return value
+    return None
+
+
+@frappe.whitelist()
+def get_pos_loyalty_redemption_defaults(loyalty_program=None, company=None, pos_profile=None):
+    """Return invoice fields needed for loyalty redemption GL entries."""
+    loyalty_program = str(loyalty_program or "").strip()
+    company = str(company or "").strip()
+    pos_profile = str(pos_profile or "").strip()
+
+    profile_cost_center = None
+    if pos_profile and frappe.db.exists("POS Profile", pos_profile):
+        profile = frappe.get_doc("POS Profile", pos_profile)
+        if not company:
+            company = str(profile.company or "").strip()
+        profile_cost_center = getattr(profile, "cost_center", None)
+
+    account = None
+    cost_center = None
+    if loyalty_program:
+        program = frappe.get_doc("Loyalty Program", loyalty_program)
+        account = _wmn_first_existing_doc_value(
+            program,
+            ("expense_account", "loyalty_redemption_account", "redemption_account", "account"),
+        )
+        cost_center = _wmn_first_existing_doc_value(
+            program,
+            ("cost_center", "loyalty_redemption_cost_center", "redemption_cost_center"),
+        )
+
+    if not cost_center:
+        cost_center = profile_cost_center
+    if not cost_center and company:
+        cost_center = frappe.db.get_value("Company", company, "cost_center")
+
+    return {
+        "loyalty_program": loyalty_program,
+        "company": company,
+        "loyalty_redemption_account": account or "",
+        "loyalty_redemption_cost_center": cost_center or "",
+    }
+
+
 def _wmn_get_pos_cash_modes(pos_profile):
     pos_profile = str(pos_profile or "").strip()
     if not pos_profile:
