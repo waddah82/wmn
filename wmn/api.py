@@ -1676,21 +1676,115 @@ def _wmn_get_mode_of_payment_company_account(mode_of_payment, company):
     if not mode_of_payment or not company:
         return frappe._dict()
 
-    # Use ERPNext's own Mode of Payment resolver so POS Cash Movement
-    # follows the same enabled/company/default-account rules as POS invoices.
-    from erpnext.accounts.doctype.sales_invoice.sales_invoice import get_mode_of_payment_info
+    row = frappe._dict()
+    try:
+        # Use ERPNext's own resolver when available so v16 follows the same
+        # enabled/company/default-account rules as POS invoices.
+        from erpnext.accounts.doctype.sales_invoice.sales_invoice import get_mode_of_payment_info
 
-    rows = get_mode_of_payment_info(mode_of_payment, company) or []
-    if not rows:
+        rows = get_mode_of_payment_info(mode_of_payment, company) or []
+        if rows:
+            row = frappe._dict(rows[0])
+    except Exception:
+        row = frappe._dict()
+
+    if not row.get("default_account"):
+        row.default_account = frappe.db.get_value(
+            "Mode of Payment Account",
+            {"parent": mode_of_payment, "company": company},
+            "default_account",
+        )
+    if not row.get("type"):
+        row.type = frappe.db.get_value("Mode of Payment", mode_of_payment, "type")
+
+    if not row.get("default_account") and not row.get("type"):
         return frappe._dict()
 
-    row = frappe._dict(rows[0])
     return frappe._dict({
         "mode_of_payment": mode_of_payment,
         "type": str(row.get("type") or "").strip(),
         "enabled": 1,
         "account": str(row.get("default_account") or "").strip(),
     })
+
+
+def _wmn_normalize_payment_modes_arg(modes):
+    if not modes:
+        return []
+    if isinstance(modes, str):
+        try:
+            modes = json.loads(modes)
+        except Exception:
+            modes = [part.strip() for part in modes.split(",")]
+    if not isinstance(modes, (list, tuple, set)):
+        return []
+    result = []
+    seen = set()
+    for mode in modes:
+        mode = str(mode or "").strip()
+        if not mode or mode in seen:
+            continue
+        seen.add(mode)
+        result.append(mode)
+    return result
+
+
+@frappe.whitelist()
+def get_pos_payment_method_accounts(pos_profile=None, company=None, modes=None):
+    """Return POS payment method accounts in a v15/v16-compatible shape."""
+    pos_profile = str(pos_profile or "").strip()
+    company = str(company or "").strip()
+    requested_modes = _wmn_normalize_payment_modes_arg(modes)
+
+    profile = None
+    if pos_profile:
+        profile = frappe.get_doc("POS Profile", pos_profile)
+        if not company:
+            company = str(profile.company or "").strip()
+
+    configured = {}
+    ordered_modes = []
+
+    def remember_mode(mode_of_payment):
+        mode_of_payment = str(mode_of_payment or "").strip()
+        if mode_of_payment and mode_of_payment not in ordered_modes:
+            ordered_modes.append(mode_of_payment)
+
+    if profile:
+        for row in getattr(profile, "payments", []) or []:
+            mode_of_payment = row.get("mode_of_payment") if hasattr(row, "get") else getattr(row, "mode_of_payment", None)
+            mode_of_payment = str(mode_of_payment or "").strip()
+            if not mode_of_payment:
+                continue
+            remember_mode(mode_of_payment)
+            configured[mode_of_payment] = frappe._dict({
+                "mode_of_payment": mode_of_payment,
+                "default": cint(row.get("default") if hasattr(row, "get") else getattr(row, "default", 0)),
+                "account": str((row.get("account") if hasattr(row, "get") else getattr(row, "account", "")) or "").strip(),
+                "type": str((row.get("type") if hasattr(row, "get") else getattr(row, "type", "")) or "").strip(),
+            })
+
+    for mode_of_payment in requested_modes:
+        remember_mode(mode_of_payment)
+
+    methods = []
+    for mode_of_payment in ordered_modes:
+        row = frappe._dict(configured.get(mode_of_payment) or {})
+        details = _wmn_get_mode_of_payment_company_account(mode_of_payment, company)
+        account = row.get("account") or details.get("account") or ""
+        methods.append({
+            "mode_of_payment": mode_of_payment,
+            "default": cint(row.get("default") or 0),
+            "account": account,
+            "type": row.get("type") or details.get("type") or "",
+            "enabled": cint(details.get("enabled") or 0) if details else 0,
+        })
+
+    return {
+        "pos_profile": pos_profile,
+        "company": company,
+        "payment_methods": methods,
+    }
 
 
 def _wmn_get_pos_cash_modes(pos_profile):

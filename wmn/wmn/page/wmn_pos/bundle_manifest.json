@@ -104,6 +104,10 @@
       "path": "wmn/support/services/payment/offline_payment.js"
     },
     {
+      "marker": "support:services/payment/online_payment_accounts.js",
+      "path": "wmn/support/services/payment/online_payment_accounts.js"
+    },
+    {
       "marker": "support:features/payment_gateway/payment_gateway.common.js",
       "path": "wmn/support/features/payment_gateway/payment_gateway.common.js"
     },

@@ -2341,6 +2341,26 @@
                             }
                         }
 
+                        const accountService = window.WMN_POS?.Services?.Payment?.OnlineAccounts;
+                        if (accountService?.ensureOnlineInvoicePaymentAccounts) {
+                            let accountResult;
+                            try {
+                                accountResult = await accountService.ensureOnlineInvoicePaymentAccounts(doc, {
+                                    controller: this,
+                                    payment: this.payment,
+                                });
+                            } catch (accountError) {
+                                console.error("WMN POS payment account resolution failed", accountError);
+                                frappe.msgprint({
+                                    title: __("Payment Account"),
+                                    indicator: "red",
+                                    message: __("Could not resolve payment accounts for this invoice. Please check Mode of Payment account setup and try again."),
+                                });
+                                return;
+                            }
+                            if (!accountResult?.ok) return;
+                        }
+
                         try {
                             // Payment is already finalized by the user. Submit must not run any
                             // pricing, discount, tax or outstanding recalculation at this stage.
