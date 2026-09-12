@@ -1,69 +1,4 @@
-import json
-from urllib.parse import quote
-
 import frappe
-from markupsafe import Markup
-
-
-class _WMNPrintObject:
-    def __init__(self, data, parent=None):
-        self._data = data or {}
-        self._parent = parent
-
-    def __getattr__(self, key):
-        if key in self._data:
-            return _wrap_print_value(self._data.get(key), self)
-        return None
-
-    def __getitem__(self, key):
-        return _wrap_print_value(self._data.get(key), self)
-
-    def get(self, key, default=None):
-        return _wrap_print_value(self._data.get(key, default), self)
-
-    def get_formatted(self, fieldname, parent=None):
-        value = self._data.get(fieldname)
-        currency = self._data.get("currency") or getattr(parent or self._parent, "currency", None) or ""
-        if value is None:
-            return ""
-        if isinstance(value, (int, float)) and currency:
-            try:
-                return frappe.utils.fmt_money(value, currency=currency)
-            except Exception:
-                return str(value)
-        return str(value)
-
-
-def _wrap_print_value(value, parent=None):
-    if isinstance(value, dict):
-        return _WMNPrintObject(value, parent=parent)
-    if isinstance(value, list):
-        return [_wrap_print_value(row, parent=parent) for row in value]
-    return value
-
-
-def _parse_print_doc(doc):
-    if isinstance(doc, str):
-        doc = json.loads(doc or "{}")
-    if doc is None:
-        doc = {}
-    if hasattr(doc, "as_dict"):
-        return doc
-    return _WMNPrintObject(doc)
-
-
-def _xpos_barcode(value, barcode_type="Code128", height=44):
-    value = str(value or "").strip()
-    if not value:
-        return Markup("")
-    src = (
-        "/api/method/frappe.utils.barcode.get_barcode"
-        f"?barcode_type={quote(str(barcode_type or 'Code128'), safe='')}&value={quote(value, safe='')}"
-    )
-    escaped_value = frappe.utils.escape_html(value)
-    return Markup(
-        f'<img class="xpos-barcode-img" src="{src}" alt="{escaped_value}" />'
-    )
 
 
 def _call(path, *args, **kwargs):
@@ -75,30 +10,14 @@ def _wmn_api(method, *args, **kwargs):
 
 
 @frappe.whitelist()
-def render_pos_print_template(doc=None, template=None, print_format=None, wmn_print_format=None):
-    doc_obj = _parse_print_doc(doc)
-    template = str(template or "")
-
-    if not template and wmn_print_format:
-        template = frappe.db.get_value("WMN Print Format", wmn_print_format, "raw_template_code") or ""
-
-    if not template and print_format and getattr(doc_obj, "doctype", None) and getattr(doc_obj, "name", None):
-        template = frappe.db.get_value("Print Format", print_format, "html") or ""
-
-    if not template:
-        return {"html": ""}
-
-    context = {
-        "doc": doc_obj,
-        "frappe": frappe,
-        "_": frappe._,
-        "xpos_barcode": _xpos_barcode,
-        "letter_head": "",
-        "no_letterhead": 1,
-        "print_format": print_format or "",
-        "wmn_print_format": wmn_print_format or "",
-    }
-    return {"html": frappe.render_template(template, context)}
+def get_pos_print_format_pdf(doctype=None, name=None, print_format=None, no_letterhead=1):
+    return _call(
+        "wmn.utils.print_format.create_pdf",
+        doctype=doctype,
+        name=name,
+        print_format=print_format,
+        no_letterhead=no_letterhead,
+    )
 
 
 @frappe.whitelist(allow_guest=False)

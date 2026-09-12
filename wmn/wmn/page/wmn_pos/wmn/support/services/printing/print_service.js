@@ -50,7 +50,6 @@
         invoice_barcode_module_width: 2,
         invoice_barcode_human_readable: 1,
         enable_auto_silent_print: 0,
-        wmn_silent_print_mode: "raw_text",
         print_after_cashier_completion: 0,
     };
 
@@ -161,7 +160,7 @@
                 payload,
                 settings,
                 context,
-                new Error(METHOD_LABELS[method] + " cannot print " + kind.toUpperCase() + ". Direct WebUSB/WebSerial require Silent Print Mode = raw_text.")
+                new Error(METHOD_LABELS[method] + " cannot print " + kind.toUpperCase() + ". Use Browser Print, WMN Windows Bridge, or QZ Tray for Print Format receipts.")
             );
         }
 
@@ -342,8 +341,6 @@
                 { fieldtype: "Section Break", label: __("Receipt Lifecycle") },
                 { fieldname: "enable_auto_silent_print", label: __("Enable Auto Silent Print"), fieldtype: "Check", default: cfg.enable_auto_silent_print, description: __("Automatically prints the final receipt after a normal Complete Order.") },
                 { fieldname: "print_after_cashier_completion", label: __("Print Again After Cashier Completion"), fieldtype: "Check", default: cfg.print_after_cashier_completion, description: __("Controls the second print after a cashier completes an Awaiting Cashier invoice. The handoff print remains unchanged.") },
-                { fieldtype: "Column Break" },
-                { fieldname: "wmn_silent_print_mode", label: __("Silent Print Mode"), fieldtype: "Select", options: "raw_text\nhtml2canvas\npdfmake", default: cfg.wmn_silent_print_mode || "raw_text" },
                 { fieldtype: "Section Break", label: __("ESC/POS Receipt") },
                 { fieldname: "cut_paper", label: __("Cut Paper"), fieldtype: "Check", default: cfg.cut_paper },
                 { fieldname: "feed_lines", label: __("Feed Lines"), fieldtype: "Int", default: cfg.feed_lines },

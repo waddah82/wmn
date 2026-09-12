@@ -6775,6 +6775,11 @@ body.wmn-pos-report-frame-body .container-fluid {
 	font-size: 12px;
 }
 
+@page {
+	size: 80mm auto;
+	margin: 0;
+}
+
 .wmn-pos-raw-receipt-print .receipt-container,
 .wmn-browser-print-body .receipt-container,
 .print-format .receipt-container {

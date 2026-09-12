@@ -9,16 +9,16 @@
             return undefined;
         }
 
-        async function wmn_get_cached_wmn_print_format(formatName) {
+        async function wmn_get_cached_print_format_doc(formatName) {
             try {
                 if (!window.wmnPOSOffline || !window.wmnPOSOffline.getSetting) return null;
 
                 let cached = null;
                 if (formatName) {
-                    cached = await window.wmnPOSOffline.getSetting("wmn_print_format::" + formatName);
+                    cached = await window.wmnPOSOffline.getSetting("print_format_doc::" + formatName);
                 }
                 if (!cached) {
-                    cached = await window.wmnPOSOffline.getSetting("wmn_print_format");
+                    cached = await window.wmnPOSOffline.getSetting("print_format_doc");
                 }
                 return cached || null;
             } catch (e) {
@@ -92,70 +92,41 @@
         async function wmn_get_raw_print_template(doc) {
             const settings = (window.cur_pos && window.cur_pos.settings) || {};
             const formatName = settings.print_format || (doc && doc.print_format) || "";
-            const printFormat = await wmn_get_cached_wmn_print_format(formatName) || {};
+            let printFormatDoc = await wmn_get_cached_print_format_doc(formatName) || {};
 
-            let printFormatDoc = null;
-            const printFormatName =
-                printFormat.print_format_name ||
-                printFormat.wmn_print_format ||
-                printFormat.print_format ||
-                formatName ||
-                "";
-
-            try {
-                if (window.wmnPOSOffline && window.wmnPOSOffline.getSetting) {
-                    if (printFormatName) {
-                        printFormatDoc = await window.wmnPOSOffline.getSetting("print_format_doc::" + printFormatName);
-                    }
-                    if (!printFormatDoc) {
-                        printFormatDoc = await window.wmnPOSOffline.getSetting("print_format_doc");
-                    }
+            if ((!printFormatDoc || !printFormatDoc.name) && formatName && window.frappe && frappe.call && navigator.onLine !== false) {
+                try {
+                    const res = await frappe.call({
+                        method: "frappe.client.get",
+                        args: {
+                            doctype: "Print Format",
+                            name: formatName
+                        },
+                        freeze: false,
+                    });
+                    printFormatDoc = res && res.message ? res.message : {};
+                } catch (e) {
+                    printFormatDoc = {};
                 }
-            } catch (e) {
-                printFormatDoc = null;
-            }
-
-            if (!printFormat.print_format_doc && printFormatDoc) {
-                printFormat.print_format_doc = printFormatDoc;
             }
 
 
             const template =
-                printFormat.raw_template_code ||
-                printFormat.raw_template ||
-                printFormat.raw_receipt_template ||
-                (printFormat.print_format_doc && printFormat.print_format_doc.raw_template_code) ||
-                (printFormatDoc && printFormatDoc.raw_template_code) ||
-                printFormat.print_format_html ||
-                printFormat.html ||
-                printFormat.custom_html ||
-                printFormat.html_template_code ||
-                printFormat.html_receipt_template ||
-                printFormat.offline_html_template ||
-                printFormat.receipt_html_template ||
-                (printFormat.print_format_doc && (
-                    printFormat.print_format_doc.html ||
-                    printFormat.print_format_doc.custom_html ||
-                    printFormat.print_format_doc.print_format ||
-                    printFormat.print_format_doc.format_data
-                )) ||
                 (printFormatDoc && (
                     printFormatDoc.html ||
                     printFormatDoc.custom_html ||
-                    printFormatDoc.print_format ||
+                    printFormatDoc.raw_commands ||
                     printFormatDoc.format_data
                 )) ||
                 "";
 
             return {
-                printFormat,
+                printFormat: printFormatDoc && printFormatDoc.name
+                    ? printFormatDoc
+                    : { name: formatName, print_format: formatName },
                 printFormatDoc,
                 template,
-                printType: (
-                    printFormat.default_print_type ||
-                    printFormat.print_type ||
-                    "RECEIPT"
-                )
+                printType: "RECEIPT"
             };
         }
 
@@ -172,66 +143,6 @@
             ).toLowerCase();
 
             return type === "js" || type === "javascript";
-        }
-
-        function wmn_print_template_looks_like_html(template) {
-            return /<\/?[a-z][\s\S]*>/i.test(String(template || ""));
-        }
-
-        function wmn_server_can_render_print_template(doc) {
-            if (!doc) return false;
-            if (navigator.onLine === false) return false;
-            try {
-                if (typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline()) return false;
-            } catch (e) {}
-            try {
-                if (window.__wmn_pos_effective_offline === true || window.__wmn_pos_server_online === false) return false;
-            } catch (e) {}
-            return !!(window.frappe && frappe.call);
-        }
-
-        async function wmn_render_print_template_on_server(template, doc, printFormat) {
-            template = String(template || "");
-            if (!template || !wmn_server_can_render_print_template(doc)) return "";
-
-            printFormat = printFormat || {};
-            const formatName =
-                printFormat.print_format_name ||
-                printFormat.wmn_print_format ||
-                printFormat.print_format ||
-                printFormat.name ||
-                (doc && doc.print_format) ||
-                "";
-
-            const response = await frappe.call({
-                method: "wmn.wmn.page.wmn_pos.wmn_pos.render_pos_print_template",
-                args: {
-                    doc: JSON.stringify(doc || {}),
-                    template,
-                    print_format: formatName,
-                    wmn_print_format: printFormat.name || formatName || "",
-                },
-                freeze: false,
-            });
-
-            return String((response && response.message && response.message.html) || "");
-        }
-
-        function wmn_print_html_to_text(html) {
-            html = String(html || "");
-            const div = document.createElement("div");
-            div.innerHTML = html;
-            const text = div.innerText || div.textContent || "";
-            const cleanedLines = [];
-            let lastWasEmpty = false;
-            text.replace(/\r/g, "").split("\n").forEach(function(line) {
-                line = line.replace(/[\t ]+$/g, "");
-                const isEmpty = line.trim() === "";
-                if (isEmpty && lastWasEmpty) return;
-                cleanedLines.push(line);
-                lastWasEmpty = isEmpty;
-            });
-            return cleanedLines.join("\n").trim();
         }
 
         function wmn_render_raw_print_template(template, doc, printFormat) {
