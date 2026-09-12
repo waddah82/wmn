@@ -3,13 +3,55 @@
     "use strict";
 
     const ns = window.WMN_POS;
+    ns.UI = ns.UI || {};
     ns.UI.Dialogs = ns.UI.Dialogs || {};
 
-    const STYLE_ID = "wmn-pos-dialog-style";
+    const PAGE_STYLE_ID = "wmn-pos-page-stylesheet";
+    let pageStylesheetPromise = null;
     let initialized = false;
 
+    function pageStylesheetIsLoaded() {
+        try {
+            return Boolean(
+                window.getComputedStyle(document.documentElement)
+                    .getPropertyValue("--wmn-teal")
+                    .trim()
+            );
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function injectPageStylesheet(css) {
+        if (!css || document.getElementById(PAGE_STYLE_ID)) return;
+        const style = document.createElement("style");
+        style.id = PAGE_STYLE_ID;
+        style.textContent = css;
+        document.head.appendChild(style);
+    }
+
+    function ensurePageStylesheet() {
+        if (pageStylesheetIsLoaded() || document.getElementById(PAGE_STYLE_ID)) {
+            return Promise.resolve();
+        }
+
+        if (pageStylesheetPromise) return pageStylesheetPromise;
+
+        pageStylesheetPromise = frappe.call({
+            method: "wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet",
+            freeze: false,
+        }).then((response) => {
+            injectPageStylesheet(response && response.message);
+        }).catch((error) => {
+            pageStylesheetPromise = null;
+            console.warn("WMN POS stylesheet load failed", error);
+        });
+
+        return pageStylesheetPromise;
+    }
+
     function ensureStyles() {
-        // Kept for callers; page-owned CSS lives in wmn_pos.css.
+        ensurePageStylesheet();
     }
 
     function decorate(dialog, className) {
@@ -112,5 +154,6 @@
         }, true);
     }
 
+    ns.UI.ensurePageStylesheet = ensurePageStylesheet;
     ns.UI.Dialogs = { setup, decorate, closeTopDialog };
 })();
