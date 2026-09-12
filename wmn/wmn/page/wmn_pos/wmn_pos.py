@@ -20,6 +20,16 @@ def get_pos_print_format_pdf(doctype=None, name=None, print_format=None, no_lett
     )
 
 
+@frappe.whitelist()
+def get_pos_wmn_raw_print(doctype=None, name=None, print_format=None):
+    return _call(
+        "wmn.utils.print_format.render_raw",
+        doctype=doctype,
+        name=name,
+        print_format=print_format,
+    )
+
+
 @frappe.whitelist(allow_guest=False)
 def pos_health_check(ts=None, source=None):
     return _wmn_api("pos_health_check", ts=ts, source=source or "wmn-pos")

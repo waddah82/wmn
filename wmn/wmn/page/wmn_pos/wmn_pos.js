@@ -4366,6 +4366,7 @@ wmn_install_pos_pwa_app_css();
                     window.__wmn_stock_settings = stockSettings;
                     window.__wmn_pos_stock_settings = stockSettings;
                     let printFormatDoc = data.print_format_doc || data.print_format || data.erpnext_print_format || {};
+                    const wmnPrintFormatDoc = data.wmn_print_format || data.wmn_print_format_doc || {};
                     const printFormatName =
                         (printFormatDoc && printFormatDoc.name) ||
                         posProfile.print_format ||
@@ -4441,6 +4442,10 @@ wmn_install_pos_pwa_app_css();
                     if (printFormatDoc && printFormatDoc.name) {
                         settingsRows.push({ key: "print_format_doc", value: printFormatDoc });
                         settingsRows.push({ key: "print_format_doc::" + printFormatDoc.name, value: printFormatDoc });
+                    }
+                    if (wmnPrintFormatDoc && wmnPrintFormatDoc.name) {
+                        settingsRows.push({ key: "wmn_print_format", value: wmnPrintFormatDoc });
+                        settingsRows.push({ key: "wmn_print_format::" + (wmnPrintFormatDoc.print_format || wmnPrintFormatDoc.name), value: wmnPrintFormatDoc });
                     }
 
                     await bulkPut(STORES.settings, settingsRows);
@@ -8990,6 +8995,7 @@ function wmn_is_mobile_pos_device() {
         show_item_cart_counter: 0,
         enable_auto_silent_print: 0,
         print_after_cashier_completion: 0,
+        receipt_print_format_source: "ERPNext Print Format",
         printing_method: "legacy_bridge",
         fallback_method: "none",
         copies: 1,
@@ -13484,6 +13490,23 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
             }
         }
 
+        async function wmn_get_cached_wmn_print_format(formatName) {
+            try {
+                if (!window.wmnPOSOffline || !window.wmnPOSOffline.getSetting) return null;
+
+                let cached = null;
+                if (formatName) {
+                    cached = await window.wmnPOSOffline.getSetting("wmn_print_format::" + formatName);
+                }
+                if (!cached) {
+                    cached = await window.wmnPOSOffline.getSetting("wmn_print_format");
+                }
+                return cached || null;
+            } catch (e) {
+                return null;
+            }
+        }
+
         function wmn_get_raw_value(scope, path) {
             path = String(path || "").trim();
             if (!path) return "";
@@ -13547,9 +13570,48 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
             return Array.from(String(value || "")).slice(0, Math.max(0, width)).join("");
         }
 
-        async function wmn_get_raw_print_template(doc) {
+        async function wmn_get_raw_print_template(doc, options = {}) {
             const settings = (window.cur_pos && window.cur_pos.settings) || {};
             const formatName = settings.print_format || (doc && doc.print_format) || "";
+            const source = String(options.source || "erpnext_print_format").trim().toLowerCase();
+
+            if (source === "wmn_raw") {
+                let wmnPrintFormat = await wmn_get_cached_wmn_print_format(formatName) || {};
+
+                if ((!wmnPrintFormat || !wmnPrintFormat.name) && formatName && window.frappe && frappe.call && navigator.onLine !== false) {
+                    try {
+                        const res = await frappe.call({
+                            method: "frappe.client.get",
+                            args: {
+                                doctype: "WMN Print Format",
+                                name: formatName
+                            },
+                            freeze: false,
+                        });
+                        wmnPrintFormat = res && res.message ? res.message : {};
+                    } catch (e) {
+                        wmnPrintFormat = {};
+                    }
+                }
+
+                const template =
+                    (wmnPrintFormat && (
+                        wmnPrintFormat.raw_template_code ||
+                        wmnPrintFormat.raw_template ||
+                        wmnPrintFormat.raw_receipt_template
+                    )) ||
+                    "";
+
+                return {
+                    printFormat: wmnPrintFormat && wmnPrintFormat.name
+                        ? wmnPrintFormat
+                        : { name: formatName, print_format: formatName },
+                    printFormatDoc: null,
+                    template,
+                    printType: (wmnPrintFormat && (wmnPrintFormat.default_print_type || wmnPrintFormat.print_type)) || "RECEIPT"
+                };
+            }
+
             let printFormatDoc = await wmn_get_cached_print_format_doc(formatName) || {};
 
             if ((!printFormatDoc || !printFormatDoc.name) && formatName && window.frappe && frappe.call && navigator.onLine !== false) {
@@ -13881,6 +13943,22 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
             );
         }
 
+        function wmn_get_receipt_print_format_source(printConfig, printFormat) {
+            const settings = (window.cur_pos && window.cur_pos.settings) || {};
+            const value = String(
+                (printConfig && printConfig.receipt_print_format_source) ||
+                settings.receipt_print_format_source ||
+                (printFormat && printFormat.receipt_print_format_source) ||
+                "ERPNext Print Format"
+            ).trim().toLowerCase();
+
+            return value.indexOf("raw") !== -1 ? "wmn_raw" : "erpnext_print_format";
+        }
+
+        function wmn_uses_wmn_raw_receipt(printConfig, printFormat) {
+            return wmn_get_receipt_print_format_source(printConfig, printFormat) === "wmn_raw";
+        }
+
 function wmn_get_printer_ws_url() {
     let savedUrl = String(localStorage.getItem("whb_websocket_url") || "").trim();
 
@@ -14131,6 +14209,64 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             return pdfBase64;
         }
 
+        async function wmn_get_server_wmn_raw_print_text(doc, printFormat) {
+            doc = doc || {};
+            printFormat = printFormat || {};
+
+            if (navigator.onLine === false || wmn_is_offline_invoice_doc(doc)) {
+                throw new Error("WMN Raw Print needs a synced invoice for server-side Jinja rendering.");
+            }
+
+            const formatName = wmn_get_print_format_name(doc, printFormat);
+            if (!formatName) {
+                throw new Error("POS Profile print_format is empty");
+            }
+
+            const response = await frappe.call({
+                method: "wmn.wmn.page.wmn_pos.wmn_pos.get_pos_wmn_raw_print",
+                args: {
+                    doctype: wmn_get_print_doctype(doc),
+                    name: doc.name,
+                    print_format: formatName,
+                },
+                freeze: false,
+            });
+
+            const message = response && response.message ? response.message : {};
+            const rawText = String(message.raw_text || "");
+            if (!rawText.trim()) {
+                throw new Error("WMN Raw Print template returned empty text.");
+            }
+            return {
+                rawText,
+                printType: message.print_type || wmn_get_print_type(printFormat) || "RECEIPT",
+            };
+        }
+
+        async function wmn_get_wmn_raw_print_text(doc, cfg) {
+            cfg = cfg || {};
+
+            if (!wmn_is_offline_invoice_doc(doc) && navigator.onLine !== false) {
+                try {
+                    return await wmn_get_server_wmn_raw_print_text(doc, cfg.printFormat);
+                } catch (e) {
+                    console.warn("WMN server RAW print render failed; trying cached template", e);
+                }
+            }
+
+            if (cfg.template && typeof wmn_render_raw_print_template === "function") {
+                const rawText = String(wmn_render_raw_print_template(cfg.template, doc, cfg.printFormat || "") || "");
+                if (rawText.trim()) {
+                    return {
+                        rawText,
+                        printType: wmn_get_print_type(cfg.printFormat) || cfg.printType || "RECEIPT",
+                    };
+                }
+            }
+
+            throw new Error("WMN Raw Print Format is unavailable.");
+        }
+
         async function wmn_get_print_format_browser_html(doc, cfg) {
             cfg = cfg || {};
             if (!wmn_is_offline_invoice_doc(doc) && navigator.onLine !== false) {
@@ -14156,13 +14292,21 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             doc.wmn_receipt_no = doc.wmn_receipt_no || doc.__wmn_receipt_no || doc.name || "";
             doc.__wmn_receipt_no = doc.__wmn_receipt_no || doc.wmn_receipt_no || doc.name || "";
 
-            const cfg = await wmn_get_raw_print_template(doc);
-            const printType = wmn_get_print_type(cfg.printFormat) || cfg.printType;
             const printService = window.WMN_POS?.Services?.Printing?.PrintService;
             const printConfig = printService?.getConfig?.() || {};
+            const usesWmnRaw = wmn_uses_wmn_raw_receipt(printConfig);
+            const cfg = await wmn_get_raw_print_template(doc, {
+                source: usesWmnRaw ? "wmn_raw" : "erpnext_print_format",
+            });
+            const printType = wmn_get_print_type(cfg.printFormat) || cfg.printType;
             const method = String(printConfig.method || "legacy_bridge").trim();
 
             try { console.info("WMN POS print method:", method); } catch(e) {}
+
+            if (usesWmnRaw) {
+                const raw = await wmn_get_wmn_raw_print_text(doc, cfg);
+                return await wmn_send_raw_text_to_printer(raw.rawText, raw.printType || printType);
+            }
 
             if (method === "browser") {
                 const html = await wmn_get_print_format_browser_html(doc, cfg);
@@ -14858,6 +15002,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         invoice_barcode_human_readable: 1,
         enable_auto_silent_print: 0,
         print_after_cashier_completion: 0,
+        receipt_print_format_source: "ERPNext Print Format",
     };
 
     function devicePreferences() {
@@ -15026,11 +15171,20 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         return Object.values(QZ_CONNECTOR_MODE_LABELS).join("\n");
     }
 
+    function receiptSourceId(value) {
+        const text = String(value || "").trim().toLowerCase();
+        if (text === "wmn_raw" || text === "raw" || text === "wmn raw print format" || text === "wmn raw") {
+            return "WMN Raw Print Format";
+        }
+        return "ERPNext Print Format";
+    }
+
     function normalizeDialogConfig(values) {
         return Object.assign({}, values || {}, {
             method: methodId(values?.method, false),
             fallback_method: methodId(values?.fallback_method, true),
             qz_connector_mode: qzConnectorModeId(values?.qz_connector_mode),
+            receipt_print_format_source: receiptSourceId(values?.receipt_print_format_source),
         });
     }
 
@@ -15148,6 +15302,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 { fieldtype: "Section Break", label: __("Receipt Lifecycle") },
                 { fieldname: "enable_auto_silent_print", label: __("Enable Auto Silent Print"), fieldtype: "Check", default: cfg.enable_auto_silent_print, description: __("Automatically prints the final receipt after a normal Complete Order.") },
                 { fieldname: "print_after_cashier_completion", label: __("Print Again After Cashier Completion"), fieldtype: "Check", default: cfg.print_after_cashier_completion, description: __("Controls the second print after a cashier completes an Awaiting Cashier invoice. The handoff print remains unchanged.") },
+                { fieldname: "receipt_print_format_source", label: __("Receipt Print Format Source"), fieldtype: "Select", reqd: 1, options: "ERPNext Print Format\nWMN Raw Print Format", default: cfg.receipt_print_format_source, description: __("ERPNext Print Format renders the selected Print Format. WMN Raw Print Format sends the linked WMN Print Format RAW template directly to the printer.") },
                 { fieldtype: "Section Break", label: __("ESC/POS Receipt") },
                 { fieldname: "cut_paper", label: __("Cut Paper"), fieldtype: "Check", default: cfg.cut_paper },
                 { fieldname: "feed_lines", label: __("Feed Lines"), fieldtype: "Int", default: cfg.feed_lines },
@@ -15534,6 +15689,10 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                     indicator: "orange"
                 });
                 return;
+            }
+
+            if (typeof wmn_uses_wmn_raw_receipt === "function" && wmn_uses_wmn_raw_receipt()) {
+                return await wmn_print_raw_receipt(doc);
             }
 
             const cfg = typeof wmn_get_raw_print_template === "function"

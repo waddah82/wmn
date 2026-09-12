@@ -95,6 +95,10 @@
                 return;
             }
 
+            if (typeof wmn_uses_wmn_raw_receipt === "function" && wmn_uses_wmn_raw_receipt()) {
+                return await wmn_print_raw_receipt(doc);
+            }
+
             const cfg = typeof wmn_get_raw_print_template === "function"
                 ? await wmn_get_raw_print_template(doc)
                 : null;

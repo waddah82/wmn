@@ -2955,6 +2955,7 @@ def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
         "Item Group", "Warehouse", "Item Barcode",
     ]
     print_format_doc = {}
+    wmn_print_format_doc = {}
 
     if getattr(profile, "print_format", None):
         try:
@@ -2964,6 +2965,13 @@ def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
             ).as_dict()
         except Exception:
             print_format_doc = {}
+        try:
+            wmn_print_format_doc = frappe.get_doc(
+                "WMN Print Format",
+                profile.print_format
+            ).as_dict()
+        except Exception:
+            wmn_print_format_doc = {}
     doctype_meta = {}
     for dt in doctype_names:
         try:
@@ -3036,6 +3044,7 @@ def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
         "doctype_meta": doctype_meta,
         "barcode_structures": get_barcode_structures(),
         "print_format_doc": print_format_doc,
+        "wmn_print_format": wmn_print_format_doc,
         "stock_settings": stock_settings,
         "stock_settings_doc": stock_settings,
         "allow_negative_stock": cint(stock_settings.get("allow_negative_stock") or 0),

@@ -1,0 +1,21 @@
+[
+ {
+  "canvas_scale": 1.0,
+  "custom_height": null,
+  "custom_width": "80",
+  "default_print_type": "RECEIPT",
+  "docstatus": 0,
+  "doctype": "WMN Print Format",
+  "margin_bot": "0",
+  "margin_left": "0",
+  "margin_right": "0",
+  "margin_top": "0",
+  "modified": "2026-05-29 19:36:27.367378",
+  "name": "pos raw",
+  "orientation": "Portrait",
+  "page_size": "Custom",
+  "print_format": "pos raw",
+  "raw_template_code": "{{ doc.company }}\n{{ doc.select_print_heading or \"Invoice\" }}\n\nReceipt No : {{ doc.name }}\nCashier    : {{ doc.owner }}\nCustomer   : {{ doc.customer_name or doc.customer }}\nDate       : {{ doc.posting_date }}\nTime       : {{ doc.posting_time }}\n\n------------------------------------------\nItem                          Qty    Amount\n------------------------------------------\n{% for item in doc.items %}\n{{ item.item_code }}\n{% if item.item_name and item.item_name != item.item_code %}{{ item.item_name }}\n{% endif %}{{ item.qty }} x {{ item.rate }}      {{ item.amount }}\n{% if item.serial_no %}SR.No: {{ item.serial_no }}\n{% endif %}\n{% endfor %}\n------------------------------------------\nTotal: {{ doc.total or doc.net_total }}\n{% for tax in doc.taxes %}{% if tax.tax_amount %}{{ tax.description or tax.account_head }}: {{ tax.tax_amount }}\n{% endif %}{% endfor %}{% if doc.discount_amount %}Discount: {{ doc.discount_amount }}\n{% endif %}Grand Total: {{ doc.grand_total }}\n{% if doc.rounded_total %}Rounded Total: {{ doc.rounded_total }}\n{% endif %}\n{% for p in doc.payments %}{{ p.mode_of_payment }}: {{ p.amount }}\n{% endfor %}Paid Amount: {{ doc.paid_amount }}\n{% if doc.change_amount %}Change Amount: {{ doc.change_amount }}\n{% endif %}------------------------------------------\n{{ doc.terms or \"\" }}\n\nThank you, please visit again.",
+  "use_default_margin": 0
+ }
+]

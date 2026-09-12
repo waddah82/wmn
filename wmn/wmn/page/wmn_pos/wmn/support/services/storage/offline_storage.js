@@ -1221,6 +1221,7 @@ wmn_install_pos_pwa_app_css();
                     window.__wmn_stock_settings = stockSettings;
                     window.__wmn_pos_stock_settings = stockSettings;
                     let printFormatDoc = data.print_format_doc || data.print_format || data.erpnext_print_format || {};
+                    const wmnPrintFormatDoc = data.wmn_print_format || data.wmn_print_format_doc || {};
                     const printFormatName =
                         (printFormatDoc && printFormatDoc.name) ||
                         posProfile.print_format ||
@@ -1296,6 +1297,10 @@ wmn_install_pos_pwa_app_css();
                     if (printFormatDoc && printFormatDoc.name) {
                         settingsRows.push({ key: "print_format_doc", value: printFormatDoc });
                         settingsRows.push({ key: "print_format_doc::" + printFormatDoc.name, value: printFormatDoc });
+                    }
+                    if (wmnPrintFormatDoc && wmnPrintFormatDoc.name) {
+                        settingsRows.push({ key: "wmn_print_format", value: wmnPrintFormatDoc });
+                        settingsRows.push({ key: "wmn_print_format::" + (wmnPrintFormatDoc.print_format || wmnPrintFormatDoc.name), value: wmnPrintFormatDoc });
                     }
 
                     await bulkPut(STORES.settings, settingsRows);

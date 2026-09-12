@@ -2,6 +2,7 @@ import base64
 import mimetypes
 import os
 import re
+from html import unescape as html_unescape
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -26,6 +27,20 @@ def _resolve_print_format(doctype, name, print_format=None):
                 return profile_format
 
     return ""
+
+
+def _resolve_wmn_print_format(print_format):
+    print_format = str(print_format or "").strip()
+    if not print_format:
+        return None
+
+    try:
+        return frappe.get_doc("WMN Print Format", print_format)
+    except Exception:
+        name = frappe.db.get_value("WMN Print Format", {"print_format": print_format}, "name")
+        if name:
+            return frappe.get_doc("WMN Print Format", name)
+    return None
 
 
 def xpos_barcode(value, barcode_type="Code128"):
@@ -158,6 +173,63 @@ def _local_site_file_path(src):
             frappe.get_site_path("private", "files", path.removeprefix("/private/files/").lstrip("/"))
         )
     return None
+
+
+def _raw_print_text(value):
+    value = str(value or "")
+    if not re.search(r"</?[a-z][\s\S]*>", value, flags=re.IGNORECASE):
+        return value.strip()
+
+    value = re.sub(r"<br\s*/?>", "\n", value, flags=re.IGNORECASE)
+    value = re.sub(r"</(p|div|tr|table|thead|tbody|section|h[1-6]|li)>", "\n", value, flags=re.IGNORECASE)
+    value = re.sub(r"<[^>]+>", "", value)
+    value = html_unescape(value).replace("\xa0", " ")
+
+    cleaned = []
+    last_blank = False
+    for line in value.replace("\r", "").split("\n"):
+        line = re.sub(r"[ \t]+$", "", line)
+        blank = not line.strip()
+        if blank and last_blank:
+            continue
+        cleaned.append(line)
+        last_blank = blank
+    return "\n".join(cleaned).strip()
+
+
+@frappe.whitelist()
+def render_raw(doctype=None, name=None, print_format=None, doc=None, print_type="RECEIPT"):
+    if not doctype or not name:
+        frappe.throw(_("Document type and name are required to print."))
+
+    selected_format = _resolve_print_format(doctype, name, print_format)
+    if not selected_format:
+        frappe.throw(_("POS Profile Print Format is not configured."))
+
+    wmn_format = _resolve_wmn_print_format(selected_format)
+    if not wmn_format:
+        frappe.throw(_("WMN Print Format is not configured for {0}.").format(selected_format))
+
+    template = str(wmn_format.get("raw_template_code") or "").strip()
+    if not template:
+        frappe.throw(_("WMN Print Format {0} has no RAW Template Code.").format(wmn_format.name))
+
+    document = frappe.get_doc(doctype, name)
+    rendered = frappe.render_template(
+        template,
+        {
+            "doc": document,
+            "frappe": frappe,
+            "_": _,
+            "xpos_barcode": xpos_barcode,
+        },
+    )
+    return {
+        "raw_text": _raw_print_text(rendered),
+        "print_format": selected_format,
+        "wmn_print_format": wmn_format.name,
+        "print_type": str(wmn_format.get("default_print_type") or print_type or "RECEIPT"),
+    }
 
 
 @frappe.whitelist()
