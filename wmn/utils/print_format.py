@@ -1,6 +1,5 @@
 import base64
 import os
-import re
 from urllib.parse import quote
 
 import frappe
@@ -42,23 +41,6 @@ def xpos_barcode(value, barcode_type="Code128"):
     )
 
 
-def _uses_wmn_pos_css(html):
-    return "/assets/wmn/css/wmn_pos.css" in str(html or "")
-
-
-def _strip_wmn_pos_stylesheet_link(html):
-    html = str(html or "")
-    if not _uses_wmn_pos_css(html):
-        return html
-
-    return re.sub(
-        r"<link\b[^>]*\bhref=[\"']/assets/wmn/css/wmn_pos\.css(?:\?[^\"']*)?[\"'][^>]*>",
-        "",
-        html,
-        flags=re.IGNORECASE,
-    )
-
-
 def _ensure_pdf_runtime_cache():
     cache_root = "/tmp/wmn-pdf-cache"
     font_cache = os.path.join(cache_root, "fontconfig")
@@ -67,17 +49,11 @@ def _ensure_pdf_runtime_cache():
     os.environ.setdefault("FONTCONFIG_CACHE", font_cache)
 
 
-def _get_pdf_options(print_format, html):
+def _get_pdf_options(print_format):
     options = {
         "load-error-handling": "ignore",
         "load-media-error-handling": "ignore",
     }
-
-    if _uses_wmn_pos_css(html):
-        options.update({
-            "user-style-sheet": frappe.get_app_path("wmn", "public", "css", "wmn_pos.css"),
-            "enable-local-file-access": None,
-        })
 
     try:
         format_doc = frappe.get_doc("Print Format", print_format)
@@ -114,8 +90,7 @@ def create_pdf(doctype=None, name=None, print_format=None, doc=None, no_letterhe
         doc=doc,
         no_letterhead=cint(no_letterhead),
     )
-    pdf_options = _get_pdf_options(selected_format, html)
-    html = _strip_wmn_pos_stylesheet_link(html)
+    pdf_options = _get_pdf_options(selected_format)
     _ensure_pdf_runtime_cache()
     pdf = get_pdf(html, options=pdf_options)
     return {

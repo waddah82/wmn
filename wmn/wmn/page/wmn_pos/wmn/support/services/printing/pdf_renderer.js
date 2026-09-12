@@ -293,10 +293,6 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 if (String(rendered || "").trim()) return wmn_normalize_rendered_print_html(rendered);
             }
 
-            if (typeof wmn_build_offline_receipt_html === "function") {
-                return wmn_build_offline_receipt_html(doc);
-            }
-
             throw new Error("Print Format is unavailable while offline.");
         }
 
@@ -322,9 +318,8 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 }
                 const win = window.open("", "_blank");
                 if (!win) throw new Error("Popup blocked. Allow popups to print the receipt.");
-                const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/assets/wmn/css/wmn_pos.css";
                 win.document.open();
-                win.document.write("<!doctype html><html><head><meta charset='utf-8'><title>WMN Receipt</title><link rel='stylesheet' href='" + stylesheet + "'></head><body class='wmn-browser-print-body'>" + String(html || "") + "</body></html>");
+                win.document.write("<!doctype html><html><head><meta charset='utf-8'><title>WMN Receipt</title></head><body>" + String(html || "") + "</body></html>");
                 win.document.close();
                 win.focus();
                 setTimeout(() => win.print(), 300);

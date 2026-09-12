@@ -13475,395 +13475,10 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                     <head>
                         <meta charset="utf-8">
                         <title>${frappe.utils.escape_html((doc && (doc.name || doc.custom_offline_id)) || "Offline Receipt")}</title>
-                        <link rel="stylesheet" href="${window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/assets/wmn/css/wmn_pos.css"}">
                     </head>
-                    <body class="wmn-pos-raw-receipt-print">${html || ""}</body>
+                    <body>${html || ""}</body>
                 </html>
             `;
-        }
-
-        function wmn_format_offline_raw_money(value, currency) {
-            const amount = flt(value || 0).toFixed(2);
-            return currency ? (amount + " " + currency) : amount;
-        }
-
-        function wmn_raw_receipt_pad_left(value, width) {
-            value = String(value == null ? "" : value);
-            if (value.length >= width) return value.slice(0, width);
-            return " ".repeat(width - value.length) + value;
-        }
-
-        function wmn_raw_receipt_pad_right(value, width) {
-            value = String(value == null ? "" : value);
-            if (value.length >= width) return value.slice(0, width);
-            return value + " ".repeat(width - value.length);
-        }
-
-        function wmn_raw_receipt_money(value, currency) {
-            const amount = flt(value || 0).toFixed(2);
-            return currency ? (amount + " " + currency) : amount;
-        }
-
-        function wmn_raw_receipt_label_amount(label, amount, currency) {
-            const width = 42;
-            const left = String(label || "");
-            const right = wmn_raw_receipt_money(amount || 0, currency || "");
-            const space = Math.max(1, width - left.length - right.length);
-            return left + " ".repeat(space) + right;
-        }
-
-        function wmn_raw_receipt_center(text) {
-            const width = 42;
-            text = String(text || "");
-            if (text.length >= width) return text;
-            const left = Math.floor((width - text.length) / 2);
-            return " ".repeat(left) + text;
-        }
-
-        function wmn_raw_receipt_line() {
-            return "------------------------------------------";
-        }
-
-function wmn_raw_template_get_value(source, path) {
-    source = source || {};
-    path = String(path || "").trim();
-    if (!path) return "";
-
-    const parts = path.split(".");
-    let cur = source;
-
-    for (const part of parts) {
-        const key = String(part || "").trim();
-        if (!key) continue;
-        if (cur === undefined || cur === null) return "";
-        cur = cur[key];
-    }
-
-    if (cur === undefined || cur === null) return "";
-    if (typeof cur === "number") return String(cur);
-    if (typeof cur === "boolean") return cur ? "1" : "";
-    if (typeof cur === "object") return JSON.stringify(cur);
-    return String(cur);
-}
-
-function wmn_prepare_raw_template_doc(doc) {
-    doc = doc || {};
-
-    const postingTime = String(doc.posting_time || "");
-    const postingDate = String(doc.posting_date || "");
-
-    doc._wmn_date = doc._wmn_date || postingDate;
-    doc._wmn_time_hm = doc._wmn_time_hm || postingTime.substring(0, 5);
-    doc._wmn_time_hms = doc._wmn_time_hms || postingTime.substring(0, 8);
-    doc._wmn_cashier = doc._wmn_cashier || doc.owner || (frappe.session && frappe.session.user) || "";
-    doc._wmn_customer = doc._wmn_customer || doc.customer_name || doc.customer || "";
-    doc._wmn_grand_total = doc._wmn_grand_total || doc.grand_total || doc.rounded_total || 0;
-    doc._wmn_paid_amount = doc._wmn_paid_amount || doc.paid_amount || 0;
-
-    return doc;
-}
-
-function wmn_replace_raw_object_fields(html, alias, row) {
-    const re = new RegExp("{{\\\\s*" + alias + "\\\\.([a-zA-Z0-9_]+(?:\\\\.[a-zA-Z0-9_]+)*)\\\\s*}}", "g");
-    return String(html || "").replace(re, function (_match, path) {
-        return wmn_raw_template_get_value(row, path);
-    });
-}
-
-function wmn_replace_raw_doc_fields(html, doc) {
-    return wmn_replace_raw_object_fields(html, "doc", doc || {});
-}
-
-function wmn_render_raw_print_temp(template, doc) {
-
-    doc = doc || {};
-    const currency = doc.currency || doc.company_currency || "YER";
-
-    function rawValue(value) {
-        if (value === undefined || value === null) return "";
-        if (typeof value === "number") return String(value);
-        if (typeof value === "boolean") return value ? "1" : "";
-        if (typeof value === "object") return JSON.stringify(value);
-        return String(value);
-    }
-
-    function moneyValue(value) {
-        return flt(value || 0).toFixed(2) + (currency ? " " + currency : "");
-    }
-
-    function numberValue(value, digits) {
-        return flt(value || 0).toFixed(digits == null ? 2 : cint(digits));
-    }
-
-    function padLeft(value, width) {
-        value = rawValue(value);
-        width = cint(width || 0);
-        if (!width || value.length >= width) return value;
-        return " ".repeat(width - value.length) + value;
-    }
-
-    function padRight(value, width) {
-        value = rawValue(value);
-        width = cint(width || 0);
-        if (!width || value.length >= width) return value;
-        return value + " ".repeat(width - value.length);
-    }
-
-    function padCenter(value, width) {
-        value = rawValue(value);
-        width = cint(width || 0);
-        if (!width || value.length >= width) return value;
-        const total = width - value.length;
-        const left = Math.floor(total / 2);
-        const right = total - left;
-        return " ".repeat(left) + value + " ".repeat(right);
-    }
-
-    function getPath(scope, path) {
-        path = String(path || "").trim();
-        if (!path) return "";
-
-        if ((path.startsWith('"') && path.endsWith('"')) || (path.startsWith("'") && path.endsWith("'"))) {
-            return path.slice(1, -1);
-        }
-
-        if (/^-?\d+(\.\d+)?$/.test(path)) return flt(path);
-
-        const parts = path.split(".").map(x => x.trim()).filter(Boolean);
-        let cur = scope;
-        for (const part of parts) {
-            if (cur == null) return "";
-            cur = cur[part];
-        }
-        return cur == null ? "" : cur;
-    }
-
-    function applyFilters(value, filters) {
-        let out = value;
-        (filters || []).forEach(function(filterRaw) {
-            const filter = String(filterRaw || "").trim();
-            if (!filter) return;
-
-            let m = filter.match(/^(l|left)(\d+)$/i);
-            if (m) { out = padRight(out, m[2]); return; }
-
-            m = filter.match(/^(r|right)(\d+)$/i);
-            if (m) { out = padLeft(out, m[2]); return; }
-
-            m = filter.match(/^(c|center)(\d+)$/i);
-            if (m) { out = padCenter(out, m[2]); return; }
-
-            if (/^(money|currency)$/i.test(filter)) { out = moneyValue(out); return; }
-            if (/^(number|f2)$/i.test(filter)) { out = numberValue(out, 2); return; }
-            if (/^(qty|f1)$/i.test(filter)) { out = numberValue(out, 1); return; }
-            if (/^int$/i.test(filter)) { out = String(cint(out || 0)); return; }
-            if (/^hm$/i.test(filter)) { out = rawValue(out).substring(0, 5); return; }
-            if (/^hms$/i.test(filter)) { out = rawValue(out).substring(0, 8); return; }
-            if (/^upper$/i.test(filter)) { out = rawValue(out).toUpperCase(); return; }
-            if (/^lower$/i.test(filter)) { out = rawValue(out).toLowerCase(); return; }
-        });
-        return rawValue(out);
-    }
-
-    function renderExpression(expr, scope) {
-        expr = String(expr || "").trim();
-        if (!expr) return "";
-
-        if (/^_\(['"]([^'"]+)['"]\)$/.test(expr)) {
-            return __(expr.match(/^_\(['"]([^'"]+)['"]\)$/)[1]);
-        }
-
-        const parts = expr.split("|").map(x => x.trim());
-        const base = parts.shift();
-        const value = getPath(scope, base);
-        return applyFilters(value, parts);
-    }
-
-    function evalCondition(condition, scope) {
-        condition = String(condition || "").trim();
-        if (!condition) return false;
-        if (condition.startsWith("not ")) return !evalCondition(condition.slice(4), scope);
-        if (condition.indexOf(" and ") !== -1) return condition.split(/\s+and\s+/).every(x => evalCondition(x, scope));
-        if (condition.indexOf(" or ") !== -1) return condition.split(/\s+or\s+/).some(x => evalCondition(x, scope));
-
-        let m = condition.match(/^(.*?)\s*!=\s*(.*?)$/);
-        if (m) return rawValue(getPath(scope, m[1])) !== rawValue(getPath(scope, m[2]));
-
-        m = condition.match(/^(.*?)\s*==\s*(.*?)$/);
-        if (m) return rawValue(getPath(scope, m[1])) === rawValue(getPath(scope, m[2]));
-
-        return !!getPath(scope, condition);
-    }
-
-    function renderBlock(text, scope) {
-        text = String(text || "");
-
-        text = text.replace(
-            /\{%-?\s*for\s+(\w+)\s+in\s+([^%]+?)\s*-?%\}([\s\S]*?)\{%-?\s*endfor\s*-?%\}/g,
-            function (_m, varName, collectionExpr, body) {
-                const rows = getPath(scope, collectionExpr.trim()) || [];
-                if (!Array.isArray(rows)) return "";
-                return rows.map(function(row) {
-                    const childScope = Object.assign({}, scope);
-                    childScope[varName] = row || {};
-                    return renderBlock(body, childScope);
-                }).join("");
-            }
-        );
-
-        text = text.replace(
-            /\{%-?\s*if\s+([^%]+?)\s*-?%\}([\s\S]*?)\{%-?\s*endif\s*-?%\}/g,
-            function (_m, condition, body) {
-                return evalCondition(condition, scope) ? renderBlock(body, scope) : "";
-            }
-        );
-
-        text = text.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, function (_m, expr) {
-            return renderExpression(expr, scope);
-        });
-
-        return text;
-    }
-
-    doc.__wmn_receipt_no = doc.__wmn_receipt_no || doc.wmn_receipt_no || doc.name || "";
-    doc.wmn_receipt_no = doc.wmn_receipt_no || doc.__wmn_receipt_no || "";
-    doc.posting_time_hm = String(doc.posting_time || "").substring(0, 5);
-    doc.posting_time_hms = String(doc.posting_time || "").substring(0, 8);
-
-    let html = renderBlock(template || "", { doc: doc });
-    html = html.replace(/\{%-?[\s\S]*?-?%\}/g, "");
-    html = html.replace(/<[^>]*>/g, "");
-
-    const cleanedLines = [];
-    let lastWasEmpty = false;
-    String(html || "").replace(/\r/g, "").split("\n").forEach(function(line) {
-        line = line.replace(/[\t ]+$/g, "");
-        const isEmpty = line.trim() === "";
-        if (isEmpty && lastWasEmpty) return;
-        cleanedLines.push(line);
-        lastWasEmpty = isEmpty;
-    });
-
-    return cleanedLines.join("\n").trim();
-
-}
-
-        function wmn_build_offline_raw_receipt_text(doc) {
-            doc = doc || {};
-            const settings = (window.cur_pos && window.cur_pos.settings) || {};
-            const currency = doc.currency || settings.currency || "";
-            const lines = [];
-
-            const company = doc.company || settings.company || "";
-            const heading = doc.select_print_heading || "Invoice";
-            const receiptNo = doc.name || doc.custom_offline_id || "";
-            const cashier = doc.owner || frappe.session.user || "";
-            const customer = doc.customer_name || doc.customer || "";
-            const postingDate = doc.posting_date || frappe.datetime.get_today();
-            const postingTime = doc.posting_time || "";
-
-            if (company) lines.push(wmn_raw_receipt_center(company));
-            lines.push(wmn_raw_receipt_center(heading));
-            lines.push("");
-
-            lines.push("Receipt No: " + receiptNo);
-            lines.push("Cashier: " + cashier);
-            lines.push("Customer: " + customer);
-            lines.push("Date: " + postingDate);
-            if (postingTime) lines.push("Time: " + postingTime);
-
-            lines.push(wmn_raw_receipt_line());
-            lines.push(
-                wmn_raw_receipt_pad_right("Item", 20) +
-                wmn_raw_receipt_pad_left("Qty", 7) +
-                wmn_raw_receipt_pad_left("Amount", 15)
-            );
-            lines.push(wmn_raw_receipt_line());
-
-            (doc.items || []).forEach(function (item) {
-                const code = item.item_code || "";
-                const name = item.item_name || "";
-                const label = code || name;
-                const qtyRate = flt(item.qty || 0) + " @ " + wmn_raw_receipt_money(item.rate || 0, currency);
-                const amount = wmn_raw_receipt_money(item.amount || item.net_amount || 0, currency);
-
-                lines.push(
-                    wmn_raw_receipt_pad_right(label, 20) +
-                    wmn_raw_receipt_pad_left(flt(item.qty || 0), 7) +
-                    wmn_raw_receipt_pad_left(amount, 15)
-                );
-
-                if (name && name !== code) {
-                    lines.push("  " + name);
-                }
-
-                lines.push("  @ " + wmn_raw_receipt_money(item.rate || 0, currency));
-
-                if (item.serial_no) {
-                    lines.push("  SR.No: " + String(item.serial_no || "").replace(/\n/g, ", "));
-                }
-            });
-
-            lines.push(wmn_raw_receipt_line());
-
-            if (doc.flags && doc.flags.show_inclusive_tax_in_print) {
-                lines.push(wmn_raw_receipt_label_amount("Total Excl. Tax", doc.net_total || 0, currency));
-            } else {
-                lines.push(wmn_raw_receipt_label_amount("Total", doc.total || doc.net_total || 0, currency));
-            }
-
-            (doc.taxes || []).forEach(function (row) {
-                if (row.included_in_print_rate && !(doc.flags && doc.flags.show_inclusive_tax_in_print)) {
-                    return;
-                }
-
-                const amount = flt(row.tax_amount_after_discount_amount || row.tax_amount || 0);
-                if (!amount) return;
-
-                let description = row.description || row.account_head || "Tax";
-                if (description.indexOf("%") === -1 && flt(row.rate || 0)) {
-                    description = description + "@" + flt(row.rate || 0) + "%";
-                }
-
-                lines.push(wmn_raw_receipt_label_amount(description, amount, currency));
-            });
-
-            if (flt(doc.discount_amount || 0)) {
-                const discountLabel = doc.__wmn_coupon_code
-                    ? `${__("Coupon")} ${doc.__wmn_coupon_code}`
-                    : __("Discount");
-                lines.push(wmn_raw_receipt_label_amount(discountLabel, doc.discount_amount || 0, currency));
-            }
-
-            lines.push(wmn_raw_receipt_label_amount("Grand Total", doc.grand_total || 0, currency));
-
-            if (flt(doc.rounded_total || 0)) {
-                lines.push(wmn_raw_receipt_label_amount("Rounded Total", doc.rounded_total || 0, currency));
-            }
-
-            (doc.payments || []).forEach(function (row) {
-                if (!row || !row.mode_of_payment) return;
-                lines.push(wmn_raw_receipt_label_amount(row.mode_of_payment, row.amount || 0, currency));
-            });
-
-            lines.push(wmn_raw_receipt_label_amount("Paid Amount", doc.paid_amount || 0, currency));
-
-            if (flt(doc.change_amount || 0)) {
-                lines.push(wmn_raw_receipt_label_amount("Change Amount", doc.change_amount || 0, currency));
-            }
-
-            lines.push(wmn_raw_receipt_line());
-
-            if (doc.terms) {
-                lines.push(String(doc.terms || ""));
-            }
-
-            lines.push(wmn_raw_receipt_center("Thank you, please visit again."));
-            lines.push("\n\n\n");
-
-            return lines.filter(function (line) {
-                return line !== null && line !== undefined;
-            }).join("\n");
         }
 /* END support:services/printing/raw_renderer.js */
 
@@ -13981,7 +13596,7 @@ function wmn_render_raw_print_temp(template, doc) {
             }
 
 
-            const template =
+            const printFormatHtml =
                 (printFormatDoc && (
                     printFormatDoc.html ||
                     printFormatDoc.custom_html ||
@@ -13989,6 +13604,10 @@ function wmn_render_raw_print_temp(template, doc) {
                     printFormatDoc.format_data
                 )) ||
                 "";
+            const printFormatCss = printFormatDoc && printFormatDoc.css
+                ? "<style>\n" + String(printFormatDoc.css || "") + "\n</style>\n"
+                : "";
+            const template = printFormatCss + printFormatHtml;
 
             return {
                 printFormat: printFormatDoc && printFormatDoc.name
@@ -14554,10 +14173,6 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 if (String(rendered || "").trim()) return wmn_normalize_rendered_print_html(rendered);
             }
 
-            if (typeof wmn_build_offline_receipt_html === "function") {
-                return wmn_build_offline_receipt_html(doc);
-            }
-
             throw new Error("Print Format is unavailable while offline.");
         }
 
@@ -14583,9 +14198,8 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 }
                 const win = window.open("", "_blank");
                 if (!win) throw new Error("Popup blocked. Allow popups to print the receipt.");
-                const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/assets/wmn/css/wmn_pos.css";
                 win.document.open();
-                win.document.write("<!doctype html><html><head><meta charset='utf-8'><title>WMN Receipt</title><link rel='stylesheet' href='" + stylesheet + "'></head><body class='wmn-browser-print-body'>" + String(html || "") + "</body></html>");
+                win.document.write("<!doctype html><html><head><meta charset='utf-8'><title>WMN Receipt</title></head><body>" + String(html || "") + "</body></html>");
                 win.document.close();
                 win.focus();
                 setTimeout(() => win.print(), 300);
@@ -14760,11 +14374,9 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
 
         try {
             const doc = iframe.contentDocument;
-            const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/assets/wmn/css/wmn_pos.css";
             doc.open();
             doc.write("<!doctype html><html><head><meta charset='utf-8'><title>WMN Receipt</title>" +
-                "<link rel='stylesheet' href='" + stylesheet + "'>" +
-                "</head><body class='wmn-browser-print-body'>" + String(html || "") + "</body></html>");
+                "</head><body>" + String(html || "") + "</body></html>");
             doc.close();
             await wait(120);
             iframe.contentWindow.focus();
@@ -14780,12 +14392,12 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         const escaped = window.frappe?.utils?.escape_html
             ? frappe.utils.escape_html(String(rawText || ""))
             : String(rawText || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-        return "<pre class='wmn-browser-print-raw'>" + escaped + "</pre>";
+        return "<pre>" + escaped + "</pre>";
     }
 
     async function printImage(base64) {
         const src = "data:image/png;base64," + String(base64 || "").replace(/^data:image\/[^;]+;base64,/, "");
-        return printHtml("<img class='wmn-browser-print-image' alt='Receipt' src='" + src + "'>");
+        return printHtml("<img alt='Receipt' src='" + src + "'>");
     }
 
     async function printPdf(base64) {
@@ -15898,13 +15510,6 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             }
         }
 
-        function wmn_try_silent_print_offline_html(fullHtml, doc) {
-            wmn_try_silent_print_offline_doc(doc).catch(function (e) {
-                console.warn("WMN silent print skipped", e);
-            });
-            return true;
-        }
-
         async function wmn_try_silent_print_online_doc(doc) {
             return await wmn_try_silent_print_offline_doc(doc);
         }
@@ -15940,355 +15545,13 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 }
 
                 win.document.open();
-                const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/assets/wmn/css/wmn_pos.css";
-                win.document.write("<!doctype html><html><head><meta charset='utf-8'><title>WMN Print Debug</title><link rel='stylesheet' href='" + stylesheet + "'></head><body>" + (html || "<h3 class='wmn-print-debug-empty'>HTML IS EMPTY</h3>") + "</body></html>");
+                win.document.write("<!doctype html><html><head><meta charset='utf-8'><title>WMN Print Debug</title></head><body>" + (html || "<h3 class='wmn-print-debug-empty'>HTML IS EMPTY</h3>") + "</body></html>");
                 win.document.close();
             } catch (e) {
                 console.error("WMN DEBUG ERROR:", e);
                 if (window.frappe && frappe.msgprint) frappe.msgprint("WMN DEBUG ERROR: " + (e.message || e));
             }
         };
-
-async function wmn_get_offline_print_template_from_pos_profile() {
-    if (!window.wmnPOSOffline || !window.wmnPOSOffline.getFullSettings) {
-        return "";
-    }
-
-    const settings = await window.wmnPOSOffline.getFullSettings();
-
-    return (
-        settings.custom_offline_print_template ||
-        settings.offline_print_template ||
-        ""
-    );
-}
-
-
-
-async function wmn_print_offline_receipt_with_pos_profile_template(template, doc) {
-    const html = wmn_render_offline_print_template(template, doc);
-    const fullHtml = wmn_wrap_offline_receipt_html(html, doc);
-
-    if (wmn_try_silent_print_offline_html(fullHtml, doc)) {
-        return;
-    }
-
-    const win = window.open("", "_blank");
-
-    if (!win) {
-        frappe.msgprint({
-            title: __("Popup Blocked"),
-            indicator: "orange",
-            message: __("Please allow popups to print the offline receipt.")
-        });
-        return;
-    }
-
-    win.document.open();
-    win.document.write(fullHtml);
-    win.document.close();
-    win.focus();
-
-    setTimeout(() => {
-        win.print();
-    }, 300);
-}
-
-
-
-
-
-
-
-function wmn_render_offline_print_template(template, doc) {
-    const currency = doc.currency || "YER";
-
-    function get_formatted(doc, fieldname) {
-        const value = doc[fieldname];
-        if (value === undefined || value === null) return "";
-
-        const field = frappe.meta.get_field(doc.doctype, fieldname);
-        if (field && field.fieldtype === "Currency") {
-            return format_currency(flt(value), currency);
-        }
-        if (field && field.fieldtype === "Date") {
-            return frappe.datetime.str_to_user(value);
-        }
-        if (field && field.fieldtype === "Time") {
-            return value;
-        }
-        return value;
-    }
-
-    function process_item(item, doc) {
-        let html = `
-            <tr>
-                <td>
-                    ${frappe.utils.escape_html(item.item_code || "")}
-                    ${(item.item_name && item.item_name !== item.item_code) ? `<br>${frappe.utils.escape_html(item.item_name)}` : ""}
-                    ${item.serial_no ? `<br><b>SR.No:</b><br>${frappe.utils.escape_html(item.serial_no.replace(/\n/g, ", "))}` : ""}
-                </td>
-                <td class="text-right">${flt(item.qty || 0)}<br>@ ${format_currency(flt(item.rate || 0), currency)}</td>
-                <td class="text-right">${format_currency(flt(item.amount || 0), currency)}</td>
-            </tr>
-        `;
-        return html;
-    }
-
-    function process_taxes(doc) {
-        let taxesHtml = "";
-        (doc.taxes || []).forEach(row => {
-            if (!row.included_in_print_rate || doc.flags?.show_inclusive_tax_in_print) {
-                let description = row.description || "";
-                if (!description.includes('%') && row.rate) {
-                    description = `${description}@${row.rate}%`;
-                }
-                taxesHtml += `
-                    <tr>
-                        <td class="text-right wmn-col-wide-text">${frappe.utils.escape_html(description)}</td>
-                        <td class="text-right">${format_currency(flt(row.tax_amount || 0), currency)}</td>
-                    </tr>
-                `;
-            }
-        });
-        return taxesHtml;
-    }
-
-    function process_payments(doc) {
-        let paymentsHtml = "";
-        (doc.payments || []).forEach(row => {
-            paymentsHtml += `
-                <tr>
-                    <td class="text-right wmn-col-wide-text">${frappe.utils.escape_html(row.mode_of_payment || "")}</td>
-                    <td class="text-right">${format_currency(flt(row.amount || 0), currency)}</td>
-                </tr>
-            `;
-        });
-        return paymentsHtml;
-    }
-
-    const itemsHtml = (doc.items || []).map(item => process_item(item, doc)).join("");
-    const taxesHtml = process_taxes(doc);
-    const paymentsHtml = process_payments(doc);
-
-    let html = template || "";
-
-    html = html.replace(/\{\%-?\s*for\s+item\s+in\s+doc\.items\s*-?\%\}([\s\S]*?)\{\%-?\s*endfor\s*-?\%\}/g, itemsHtml);
-    html = html.replace(/\{\%-?\s*for\s+row\s+in\s+doc\.taxes\s*-?\%\}([\s\S]*?)\{\%-?\s*endfor\s*-?\%\}/g, taxesHtml);
-    html = html.replace(/\{\%-?\s*for\s+row\s+in\s+doc\.payments\s*-?\%\}([\s\S]*?)\{\%-?\s*endfor\s*-?\%\}/g, paymentsHtml);
-
-    html = html.replace(/\{\%\s*if\s+letter_head\s*\%\}([\s\S]*?)\{\%\s*endif\s*\%\}/g, "");
-
-    html = html.replace(/\{\{\s*doc\.get_formatted\("([^"]+)"\)\s*\}\}/g, (match, fieldname) => {
-        return get_formatted(doc, fieldname);
-    });
-
-    html = html.replace(/\{\{\s*doc\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g, (match, fieldname) => {
-        const value = doc[fieldname];
-        if (value === undefined || value === null) return "";
-        if (typeof value === "object") return JSON.stringify(value);
-        return frappe.utils.escape_html(String(value));
-    });
-
-    html = html.replace(/\{\{\s*item\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g, (match, fieldname) => {
-        return `{{ item.${fieldname} }}`;
-    });
-
-    html = html.replace(/\{\{\s*row\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g, (match, fieldname) => {
-        return `{{ row.${fieldname} }}`;
-    });
-
-    html = html.replace(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\.get_formatted\("([^"]+)"\)\s*\}\}/g, (match, obj, fieldname) => {
-        return `{{ ${obj}.${fieldname} }}`;
-    });
-
-    html = html.replace(/\{\{\s*([^|]+)\s*\|\s*replace\("([^"]+)",\s*"([^"]+)"\)\s*\}\}/g, (match, value, search, replace) => {
-        return String(value || "").split(search).join(replace);
-    });
-
-    const simpleReplacements = {
-        "doc.name": doc.name || doc.custom_offline_id || "",
-        "doc.company": doc.company || "",
-        "doc.customer_name": doc.customer_name || doc.customer || "",
-        "doc.owner": doc.owner || frappe.session?.user || "",
-        "doc.posting_date": doc.posting_date || "",
-        "doc.posting_time": doc.posting_time || "",
-        "doc.total": format_currency(flt(doc.total || 0), currency),
-        "doc.net_total": format_currency(flt(doc.net_total || 0), currency),
-        "doc.grand_total": format_currency(flt(doc.grand_total || 0), currency),
-        "doc.rounded_total": format_currency(flt(doc.rounded_total || 0), currency),
-        "doc.paid_amount": format_currency(flt(doc.paid_amount || 0), currency),
-        "doc.change_amount": format_currency(flt(doc.change_amount || 0), currency),
-        "doc.discount_amount": format_currency(flt(doc.discount_amount || 0), currency),
-        "doc.__wmn_coupon_code": doc.__wmn_coupon_code || "",
-        "doc.terms": doc.terms || "",
-        "doc.select_print_heading": doc.select_print_heading || __("Invoice"),
-    };
-
-    Object.keys(simpleReplacements).forEach(key => {
-        const re = new RegExp("\\{\\{\\s*" + key.replace(".", "\\.") + "\\s*\\}\\}", "g");
-        html = html.replace(re, simpleReplacements[key]);
-    });
-
-    html = html.replace(/\{\{\s*_\(\"([^\"]+)\"\)\s*\}\}/g, (match, text) => __(text));
-
-    html = html.replace(/\{\{[^{}]+\}\}/g, (match) => {
-        if (match.includes("item.") || match.includes("row.")) return match;
-        return "";
-    });
-
-    return html;
-}
-
-
-
-
-
-
-
-
-
-        function wmn_build_offline_receipt_html(doc) {
-            doc = doc || {};
-            const currency = doc.currency || "";
-            const company = doc.company || "";
-            const customer = doc.customer_name || doc.customer || "";
-            const invoiceNo = doc.name || doc.offline_id || "";
-            const date = doc.posting_date || frappe.datetime.get_today();
-            const time = doc.posting_time || "";
-            const posProfile = doc.pos_profile || "";
-            const cashier = (frappe.session && frappe.session.user_fullname) || (frappe.session && frappe.session.user) || "";
-
-            const items = (doc.items || []).map((row, idx) => {
-                const name = row.item_name || row.item_code || "";
-                const qty = flt(row.qty || 0);
-                const uom = row.uom || row.stock_uom || "";
-                const rate = flt(row.rate || row.price_list_rate || 0);
-                const amount = flt(row.amount || (qty * rate));
-                const batch = row.batch_no ? `<div class="muted">${__("Batch No")}: ${wmn_escape_html(row.batch_no)}</div>` : "";
-                const serial = row.serial_no ? `<div class="muted">${__("Serial No")}: ${wmn_escape_html(row.serial_no)}</div>` : "";
-
-                return `
-                    <tr>
-                        <td class="num">${idx + 1}</td>
-                        <td>
-                            <div class="item-name">${wmn_escape_html(name)}</div>
-                            ${batch}
-                            ${serial}
-                        </td>
-                        <td class="center">${qty} ${wmn_escape_html(uom)}</td>
-                        <td class="money">${wmn_money(rate, currency)}</td>
-                        <td class="money">${wmn_money(amount, currency)}</td>
-                    </tr>
-                `;
-            }).join("");
-
-            const payments = (doc.payments || [])
-                .filter(p => flt(p.amount || 0) > 0)
-                .map(p => `
-                    <tr>
-                        <td>${wmn_escape_html(p.mode_of_payment || "")}</td>
-                        <td class="money">${wmn_money(p.amount || 0, currency)}</td>
-                    </tr>
-                `).join("");
-
-            const taxes = (doc.taxes || [])
-                .filter(t => flt(t.tax_amount || t.base_tax_amount || 0) !== 0)
-                .map(t => `
-                    <tr>
-                        <td>${wmn_escape_html(t.description || t.account_head || "")}</td>
-                        <td class="money">${wmn_money(t.tax_amount || t.base_tax_amount || 0, currency)}</td>
-                    </tr>
-                `).join("");
-
-            return `<!doctype html>
-<html dir="${document.documentElement.dir || "auto"}">
-<head>
-<meta charset="utf-8">
-<title>${wmn_escape_html(invoiceNo)}</title>
-<link rel="stylesheet" href="${window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/assets/wmn/css/wmn_pos.css"}">
-</head>
-<body class="wmn-pos-offline-receipt-print">
-<div class="receipt">
-    <div class="header">
-        <div class="company">${wmn_escape_html(company)}</div>
-        <div class="title">${__("Offline POS Receipt")}</div>
-    </div>
-
-    <div class="meta">
-        <div><span class="label">${__("Invoice")}</span><span>${wmn_escape_html(invoiceNo)}</span></div>
-        <div><span class="label">${__("Date")}</span><span>${wmn_escape_html(date)} ${wmn_escape_html(time)}</span></div>
-        <div><span class="label">${__("Customer")}</span><span>${wmn_escape_html(customer)}</span></div>
-        <div><span class="label">${__("Cashier")}</span><span>${wmn_escape_html(cashier)}</span></div>
-        <div><span class="label">${__("POS Profile")}</span><span>${wmn_escape_html(posProfile)}</span></div>
-        <div><span class="label">${__("Status")}</span><span>${__("Saved Offline")}</span></div>
-    </div>
-
-    <table>
-        <thead>
-            <tr>
-                <th class="num">#</th>
-                <th>${__("Item")}</th>
-                <th class="center">${__("Qty")}</th>
-                <th class="money">${__("Rate")}</th>
-                <th class="money">${__("Amount")}</th>
-            </tr>
-        </thead>
-        <tbody>
-            ${items || `<tr><td colspan="5" class="center">${__("No items")}</td></tr>`}
-        </tbody>
-    </table>
-
-    ${taxes ? `
-    <table class="totals">
-        <tbody>
-            ${taxes}
-        </tbody>
-    </table>` : ""}
-
-    <table class="totals">
-        <tbody>
-            <tr>
-                <td>${__("Net Total")}</td>
-                <td class="money">${wmn_money(doc.net_total || doc.total || 0, currency)}</td>
-            </tr>
-            <tr class="grand">
-                <td>${__("Grand Total")}</td>
-                <td class="money">${wmn_money(doc.grand_total || doc.rounded_total || 0, currency)}</td>
-            </tr>
-            <tr>
-                <td>${__("Paid Amount")}</td>
-                <td class="money">${wmn_money(doc.paid_amount || 0, currency)}</td>
-            </tr>
-        </tbody>
-    </table>
-
-    ${payments ? `
-    <table>
-        <thead>
-            <tr>
-                <th>${__("Mode of Payment")}</th>
-                <th class="money">${__("Amount")}</th>
-            </tr>
-        </thead>
-        <tbody>${payments}</tbody>
-    </table>` : ""}
-
-    <div class="footer">
-        ${__("This receipt was generated offline and will be synced when connection is available.")}
-    </div>
-</div>
-<script>
-    window.onload = function() {
-        setTimeout(function() {
-            window.focus();
-            window.print();
-        }, 250);
-    };
-</script>
-</body>
-</html>`;
-        }
 
         async function wmn_print_offline_receipt(doc) {
             doc = doc || (window.cur_pos && window.cur_pos.frm && window.cur_pos.frm.doc);
@@ -16299,18 +15562,24 @@ function wmn_render_offline_print_template(template, doc) {
                 });
                 return;
             }
-            const template = await wmn_get_offline_print_template_from_pos_profile();
 
-            if (template) {
-                return window.wmn_print_offline_receipt_with_pos_profile_template(template, doc);
-            }
-
-            const html = wmn_build_offline_receipt_html(doc);
-            const fullHtml = wmn_wrap_offline_receipt_html(html, doc);
-
-            if (wmn_try_silent_print_offline_html(fullHtml, doc)) {
+            const cfg = typeof wmn_get_raw_print_template === "function"
+                ? await wmn_get_raw_print_template(doc)
+                : null;
+            const template = cfg && cfg.template ? String(cfg.template || "") : "";
+            if (!template.trim()) {
+                frappe.msgprint({
+                    title: __("Print Format Unavailable"),
+                    indicator: "orange",
+                    message: __("The POS Print Format is not available in offline storage yet. Sync the POS data, then try again.")
+                });
                 return;
             }
+
+            const html = wmn_normalize_rendered_print_html(
+                wmn_render_raw_print_template(template, doc, cfg.printFormat || {})
+            );
+            const fullHtml = wmn_wrap_offline_receipt_html(html, doc);
 
             const win = window.open("", "_blank", "width=900,height=700");
 
@@ -16329,7 +15598,6 @@ function wmn_render_offline_print_template(template, doc) {
         }
 
         window.wmn_print_offline_receipt = wmn_print_offline_receipt;
-        window.wmn_print_offline_receipt_with_pos_profile_template = wmn_print_offline_receipt_with_pos_profile_template;
 /* END support:services/printing/auto_print.js */
 
 /* BEGIN support:features/printing/printing.common.js */

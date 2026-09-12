@@ -18,11 +18,9 @@
 
         try {
             const doc = iframe.contentDocument;
-            const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/assets/wmn/css/wmn_pos.css";
             doc.open();
             doc.write("<!doctype html><html><head><meta charset='utf-8'><title>WMN Receipt</title>" +
-                "<link rel='stylesheet' href='" + stylesheet + "'>" +
-                "</head><body class='wmn-browser-print-body'>" + String(html || "") + "</body></html>");
+                "</head><body>" + String(html || "") + "</body></html>");
             doc.close();
             await wait(120);
             iframe.contentWindow.focus();
@@ -38,12 +36,12 @@
         const escaped = window.frappe?.utils?.escape_html
             ? frappe.utils.escape_html(String(rawText || ""))
             : String(rawText || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-        return "<pre class='wmn-browser-print-raw'>" + escaped + "</pre>";
+        return "<pre>" + escaped + "</pre>";
     }
 
     async function printImage(base64) {
         const src = "data:image/png;base64," + String(base64 || "").replace(/^data:image\/[^;]+;base64,/, "");
-        return printHtml("<img class='wmn-browser-print-image' alt='Receipt' src='" + src + "'>");
+        return printHtml("<img alt='Receipt' src='" + src + "'>");
     }
 
     async function printPdf(base64) {
