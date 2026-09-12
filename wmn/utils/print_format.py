@@ -1,4 +1,5 @@
 import base64
+import os
 import re
 from urllib.parse import quote
 
@@ -51,6 +52,28 @@ def _read_linked_wmn_pos_css(html):
         return ""
 
 
+def _inline_local_stylesheets(html):
+    html = str(html or "")
+    css = _read_linked_wmn_pos_css(html)
+    if not css:
+        return html
+
+    return re.sub(
+        r"<link\b[^>]*\bhref=[\"']/assets/wmn/css/wmn_pos\.css(?:\?[^\"']*)?[\"'][^>]*>",
+        "<style>\n" + css + "\n</style>",
+        html,
+        flags=re.IGNORECASE,
+    )
+
+
+def _ensure_pdf_runtime_cache():
+    cache_root = "/tmp/wmn-pdf-cache"
+    font_cache = os.path.join(cache_root, "fontconfig")
+    os.makedirs(font_cache, mode=0o700, exist_ok=True)
+    os.environ.setdefault("XDG_CACHE_HOME", cache_root)
+    os.environ.setdefault("FONTCONFIG_CACHE", font_cache)
+
+
 def _extract_pdf_options_from_css(css):
     css = str(css or "")
     options = {}
@@ -72,6 +95,8 @@ def _extract_pdf_options_from_css(css):
             "margin-left": "0mm",
         })
 
+    options.setdefault("load-error-handling", "ignore")
+    options.setdefault("load-media-error-handling", "ignore")
     return options
 
 
@@ -114,6 +139,8 @@ def create_pdf(doctype=None, name=None, print_format=None, doc=None, no_letterhe
         doc=doc,
         no_letterhead=cint(no_letterhead),
     )
+    html = _inline_local_stylesheets(html)
+    _ensure_pdf_runtime_cache()
     pdf = get_pdf(html, options=_get_pdf_options(selected_format, html))
     return {
         "pdf_base64": base64.b64encode(pdf).decode(),
