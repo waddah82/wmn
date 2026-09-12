@@ -594,7 +594,7 @@
         link.id = "wmn-pos-page-stylesheet";
         link.rel = "stylesheet";
         link.href = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF
-            || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet";
+            || "/assets/wmn/css/wmn_pos.css";
         frameDocument.head.appendChild(link);
     }
 

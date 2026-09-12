@@ -6,7 +6,7 @@
                     <head>
                         <meta charset="utf-8">
                         <title>${frappe.utils.escape_html((doc && (doc.name || doc.custom_offline_id)) || "Offline Receipt")}</title>
-                        <link rel="stylesheet" href="${window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet"}">
+                        <link rel="stylesheet" href="${window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/assets/wmn/css/wmn_pos.css"}">
                     </head>
                     <body class="wmn-pos-raw-receipt-print">${html || ""}</body>
                 </html>
