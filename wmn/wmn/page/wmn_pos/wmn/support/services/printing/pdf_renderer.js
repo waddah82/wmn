@@ -3,6 +3,15 @@
             return flt(mm || 0) * 72 / 25.4;
         }
 
+        function wmn_get_pdf_paper_width_mm(printFormat) {
+            const page = wmn_get_page_size_mm(
+                wmn_get_wmn_print_page_size(printFormat),
+                wmn_get_wmn_print_orientation(printFormat),
+                printFormat || {}
+            );
+            return page.width_mm || 80;
+        }
+
         function wmn_pdf_money(value) {
             const n = parseFloat(value);
             return isNaN(n) ? "0.00" : n.toFixed(2);
@@ -491,7 +500,8 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             const directMm =
                 printFormat.paper_width_mm ||
                 printFormat.width_mm ||
-                printFormat.print_width_mm;
+                printFormat.print_width_mm ||
+                printFormat.custom_width;
 
             if (directMm) return flt(directMm) + "mm";
 
@@ -604,13 +614,15 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 printFormat.page_width_mm ||
                 printFormat.paper_width_mm ||
                 printFormat.width_mm ||
-                printFormat.print_width_mm;
+                printFormat.print_width_mm ||
+                printFormat.custom_width;
 
             const explicitHeight =
                 printFormat.page_height_mm ||
                 printFormat.paper_height_mm ||
                 printFormat.height_mm ||
-                printFormat.print_height_mm;
+                printFormat.print_height_mm ||
+                printFormat.custom_height;
 
             if (explicitWidth) {
                 return {
@@ -885,14 +897,34 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             doc.__wmn_receipt_no = doc.__wmn_receipt_no || doc.wmn_receipt_no || doc.name || "";
 
             const cfg = await wmn_get_raw_print_template(doc);
-            const mode = wmn_get_silent_print_mode(cfg.printFormat);
+            let mode = wmn_get_silent_print_mode(cfg.printFormat);
             const printType = wmn_get_print_type(cfg.printFormat) || cfg.printType;
             const isOfflineDoc = wmn_is_offline_invoice_doc(doc);
+            const templateLooksHtml = typeof wmn_print_template_looks_like_html === "function"
+                && wmn_print_template_looks_like_html(cfg.template);
+
+            if (mode === "raw_text" && templateLooksHtml) {
+                mode = "html2canvas";
+            }
 
             try { console.info("WMN silent print mode:", mode, "offline:", isOfflineDoc); } catch(e) {}
 
             if (mode === "raw_text") {
-                const rawText = wmn_render_raw_print_temp(cfg.template, doc);
+                let rawText = "";
+                try {
+                    const rendered = typeof wmn_render_print_template_on_server === "function"
+                        ? await wmn_render_print_template_on_server(cfg.template, doc, cfg.printFormat)
+                        : "";
+                    rawText = typeof wmn_print_template_looks_like_html === "function" && wmn_print_template_looks_like_html(rendered)
+                        ? wmn_print_html_to_text(rendered)
+                        : rendered;
+                } catch (e) {
+                    console.warn("WMN server raw print render skipped", e);
+                }
+
+                if (!String(rawText || "").trim()) {
+                    rawText = wmn_render_raw_print_temp(cfg.template, doc);
+                }
                 const barcode = window.WMN_POS?.Services?.Barcode?.InvoiceBarcode;
                 const printService = window.WMN_POS?.Services?.Printing?.PrintService;
                 const printConfig = printService?.getConfig?.() || {};
@@ -924,11 +956,22 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
              */
             if (cfg.template && String(cfg.template || "").trim()) {
                 try {
-                    let rendered = wmn_render_raw_print_template(
-                        cfg.template,
-                        doc,
-                        cfg.printFormat
-                    );
+                    let rendered = "";
+                    try {
+                        if (typeof wmn_render_print_template_on_server === "function") {
+                            rendered = await wmn_render_print_template_on_server(cfg.template, doc, cfg.printFormat);
+                        }
+                    } catch (e) {
+                        console.warn("WMN server print template render skipped", e);
+                    }
+
+                    if (!String(rendered || "").trim()) {
+                        rendered = wmn_render_raw_print_template(
+                            cfg.template,
+                            doc,
+                            cfg.printFormat
+                        );
+                    }
 
                     if (rendered && typeof rendered === "object") {
                         const barcode = window.WMN_POS?.Services?.Barcode?.InvoiceBarcode;
