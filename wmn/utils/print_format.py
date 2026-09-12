@@ -1,235 +1,202 @@
-import frappe, base64
-# from frappe.utils.pdf import get_pdf,cleanup
+import base64
+import mimetypes
+import os
+import re
+from io import BytesIO
+from pathlib import Path
+from urllib.parse import unquote, urlparse
+
+import frappe
 from frappe import _
+from frappe.utils import cint
+from frappe.utils.pdf import get_pdf
+from markupsafe import Markup
 
-# Won't be using this WMN Print Remote function
-# @frappe.whitelist()
-# def print_silently(doctype, name, print_format, print_type):
-# 	user = frappe.db.get_single_value("WMN Print Settings", "print_user")
-# 	tab_id = frappe.db.get_single_value("WMN Print Settings", "tab_id")
-# 	pdf = create_pdf(doctype, name, print_format)
-# 	data = {"doctype": doctype, "name": name, "print_format": print_format, "print_type": pdf["print_type"], "tab_id": tab_id, "pdf": pdf["pdf_base64"]}
-# 	frappe.publish_realtime("print-silently", data, user=user)
+
+def _resolve_print_format(doctype, name, print_format=None):
+    print_format = str(print_format or "").strip()
+    if print_format:
+        return print_format
+
+    if doctype and name:
+        doc = frappe.get_doc(doctype, name)
+        if doc.get("pos_profile"):
+            profile_format = frappe.db.get_value("POS Profile", doc.pos_profile, "print_format")
+            if profile_format:
+                return profile_format
+
+    return ""
+
+
+def xpos_barcode(value, barcode_type="Code128"):
+    value = str(value or "").strip()
+    if not value:
+        return Markup("")
+
+    src = _make_barcode_data_uri(value, barcode_type)
+    if not src:
+        return Markup('<span class="xpos-barcode-text">{0}</span>'.format(frappe.utils.escape_html(value)))
+
+    return Markup(
+        '<img class="xpos-barcode-img" src="{0}" alt="{1}" />'.format(
+            src,
+            frappe.utils.escape_html(value),
+        )
+    )
+
+
+def _make_barcode_data_uri(value, barcode_type="Code128"):
+    try:
+        from barcode import get_barcode_class
+        from barcode.writer import SVGWriter
+    except Exception:
+        return ""
+
+    try:
+        barcode_class = get_barcode_class(str(barcode_type or "Code128").lower())
+        stream = BytesIO()
+        barcode_class(value, writer=SVGWriter()).write(
+            stream,
+            options={
+                "module_width": 0.28,
+                "module_height": 9,
+                "quiet_zone": 1,
+                "write_text": False,
+            },
+        )
+        encoded = base64.b64encode(stream.getvalue()).decode()
+        return "data:image/svg+xml;base64," + encoded
+    except Exception:
+        return ""
+
+
+def _ensure_pdf_runtime_cache():
+    cache_root = "/tmp/wmn-pdf-cache"
+    font_cache = os.path.join(cache_root, "fontconfig")
+    os.makedirs(font_cache, mode=0o700, exist_ok=True)
+    os.environ.setdefault("XDG_CACHE_HOME", cache_root)
+    os.environ.setdefault("FONTCONFIG_CACHE", font_cache)
+
+
+def _get_pdf_options(print_format):
+    options = {
+        "load-error-handling": "ignore",
+        "load-media-error-handling": "ignore",
+    }
+
+    try:
+        format_doc = frappe.get_doc("Print Format", print_format)
+    except Exception:
+        format_doc = None
+
+    if format_doc:
+        for fieldname, option_name in (
+            ("margin_top", "margin-top"),
+            ("margin_right", "margin-right"),
+            ("margin_bottom", "margin-bottom"),
+            ("margin_left", "margin-left"),
+        ):
+            value = format_doc.get(fieldname)
+            if value is not None:
+                options[option_name] = f"{value}mm"
+
+    return options
+
+
+def _strip_pdf_network_dependencies(html):
+    html = str(html or "")
+    html = re.sub(r"<base\b[^>]*>", "", html, flags=re.IGNORECASE)
+    html = re.sub(
+        r"<link\b(?=[^>]*\brel=[\"'][^\"']*stylesheet[^\"']*[\"'])[^>]*>",
+        "",
+        html,
+        flags=re.IGNORECASE,
+    )
+    return _inline_local_image_sources(html)
+
+
+def _inline_local_image_sources(html):
+    def replace_src(match):
+        prefix, quote, src = match.group(1), match.group(2), match.group(3)
+        data_uri = _local_file_data_uri(src)
+        if not data_uri:
+            return match.group(0)
+        return f"{prefix}{quote}{data_uri}{quote}"
+
+    return re.sub(
+        r"(<img\b[^>]*?\bsrc\s*=\s*)([\"'])([^\"']+)\2",
+        replace_src,
+        html,
+        flags=re.IGNORECASE,
+    )
+
+
+def _local_file_data_uri(src):
+    path = _local_site_file_path(src)
+    if not path or not path.is_file():
+        return ""
+
+    mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    return "data:{0};base64,{1}".format(
+        mime_type,
+        base64.b64encode(path.read_bytes()).decode(),
+    )
+
+
+def _local_site_file_path(src):
+    src = str(src or "").strip()
+    if not src or src.startswith(("data:", "blob:")):
+        return None
+
+    parsed = urlparse(src)
+    path = unquote(parsed.path or src)
+
+    if path.startswith("/files/"):
+        return Path(frappe.get_site_path("public", "files", path.removeprefix("/files/").lstrip("/")))
+    if path.startswith("/private/files/"):
+        return Path(
+            frappe.get_site_path("private", "files", path.removeprefix("/private/files/").lstrip("/"))
+        )
+    return None
+
 
 @frappe.whitelist()
-def set_master_tab(tab_id):
-	query = 'update tabSingles set value={} where doctype="WMN Print Settings" and field="tab_id";'.format(tab_id)
-	frappe.db.sql(query)
-	frappe.publish_realtime("update_master_tab", {"tab_id": tab_id})
+def create_pdf(doctype=None, name=None, print_format=None, doc=None, no_letterhead=1, print_type="RECEIPT"):
+    if not doctype or not name:
+        frappe.throw(_("Document type and name are required to print."))
 
-@frappe.whitelist()
-def create_pdf(doctype, name, wmn_print_format, doc=None, no_letterhead=0):
-	html = frappe.get_print(doctype, name, wmn_print_format, doc=doc, no_letterhead=no_letterhead)
-	if not frappe.db.exists("WMN Print Format", wmn_print_format):
-		return
-	wmn_print_format = frappe.get_doc("WMN Print Format", wmn_print_format)
-	options = get_pdf_options(wmn_print_format)
-	pdf = get_pdf(html, options=options)
-	pdf_base64 = base64.b64encode(pdf)
-	return {
-		"pdf_base64": pdf_base64.decode(),
-		"print_type": wmn_print_format.default_print_type
-	}
-@frappe.whitelist()
-def create_pdf11(doctype, name, wmn_print_format, no_letterhead=0, item_group=None):
-    if not frappe.db.exists("WMN Print Format", wmn_print_format):
-        return
-
-    doc = frappe.get_doc(doctype, name)
-
-    # ����� item_group ��� ���� ���� ������� ���� ���� doc
-    context = {"item_group": item_group}
+    selected_format = _resolve_print_format(doctype, name, print_format)
+    if not selected_format:
+        frappe.throw(_("POS Profile Print Format is not configured."))
 
     html = frappe.get_print(
         doctype,
         name,
-        wmn_print_format,
+        selected_format,
         doc=doc,
-        no_letterhead=no_letterhead,
-        context=context
+        no_letterhead=cint(no_letterhead),
     )
-
-    wmn_print_format = frappe.get_doc("WMN Print Format", wmn_print_format)
-    options = get_pdf_options(wmn_print_format)
-    pdf = get_pdf(html, options=options)
-    pdf_base64 = base64.b64encode(pdf)
-
+    html = _strip_pdf_network_dependencies(html)
+    pdf_options = _get_pdf_options(selected_format)
+    _ensure_pdf_runtime_cache()
+    pdf = get_pdf(html, options=pdf_options)
     return {
-        "pdf_base64": pdf_base64.decode(),
-        "print_type": wmn_print_format.default_print_type
+        "pdf_base64": base64.b64encode(pdf).decode(),
+        "print_format": selected_format,
+        "print_type": str(print_type or "RECEIPT"),
     }
 
 
 @frappe.whitelist()
-def create_pdf1(doctype, name, wmn_print_format, doc=None, no_letterhead=0, item_group=None):
-    if not frappe.db.exists("WMN Print Format", wmn_print_format):
-        return
+def create_pdf1(doctype=None, name=None, print_format=None, doc=None, no_letterhead=1, item_group=None):
+    return create_pdf(doctype, name, print_format, doc, no_letterhead)
 
-    # ����� ��� item_group ��� ���� �������
-    doc = frappe.get_doc(doctype, name)
-    if item_group:
-    
-        doc.item_group = item_group
-        
-
-    html = frappe.get_print(
-        doctype, 
-        name, 
-        wmn_print_format, 
-        doc=doc, 
-        no_letterhead=no_letterhead
-    )
-
-    wmn_print_format = frappe.get_doc("WMN Print Format", wmn_print_format)
-    options = get_pdf_options(wmn_print_format)
-    pdf = get_pdf(html, options=options)
-    pdf_base64 = base64.b64encode(pdf)
-
-    return {
-        "pdf_base64": pdf_base64.decode(),
-        "print_type": wmn_print_format.default_print_type
-    }
 
 @frappe.whitelist()
-def create_pdf2(doctype, name, wmn_print_format, doc=None, no_letterhead=0):
-  #doc = frappe.get_doc(doctype, name)
-	html = frappe.get_print(doctype, name, wmn_print_format, doc=doc, no_letterhead=no_letterhead)
-	if not frappe.db.exists("WMN Print Format", wmn_print_format):
-		return
-	wmn_print_format = frappe.get_doc("WMN Print Format", wmn_print_format)
-	options = get_pdf_options(wmn_print_format)
-	pdf = get_pdf(html, options=options)
-	pdf_base64 = base64.b64encode(pdf)
-	return {
-		"pdf_base64": pdf_base64.decode(),
-		"print_type": wmn_print_format.default_print_type
-	}
- 
- 
-def get_pdf_options(wmn_print_format):	
-	options = {
-		"page-size": wmn_print_format.get("page_size") or "A4",
-	}
-	if wmn_print_format.get("page_size") == "Custom":
-		options = {
-			"page-width": wmn_print_format.get("custom_width"),
-			"page-height": wmn_print_format.get("custom_height")
-		}
-	options.update({"orientation": wmn_print_format.orientation})
-	
-	if not wmn_print_format.use_default_margin or not options.get("page-size") == "A4":
-		options.update({
-			"margin-left": f'{wmn_print_format.get("margin_left")}mm' or "15mm",
-			"margin-right": f'{wmn_print_format.get("margin_right")}mm' or "15mm",
-		})
-		if wmn_print_format.get("margin_top") != "" and wmn_print_format.get("margin_top") != None:
-			options.update({
-				"margin-top": f'{wmn_print_format.get("margin_top")}mm'
-			})
-		if wmn_print_format.get("margin_bot") != "" and wmn_print_format.get("margin_bot") != None:
-			options.update({
-				"margin-bottom": f'{wmn_print_format.get("margin_bot")}mm'
-			})
-
-	return options
+def create_pdf2(doctype=None, name=None, print_format=None, doc=None, no_letterhead=1):
+    return create_pdf(doctype, name, print_format, doc, no_letterhead)
 
 
-from distutils.version import LooseVersion
-import pdfkit
-import six
-import io
-from bs4 import BeautifulSoup
-from PyPDF2 import PdfReader, PdfWriter
-from frappe.utils import scrub_urls
-from frappe.utils.pdf import get_file_data_from_writer, read_options_from_html, get_wkhtmltopdf_version
-
-PDF_CONTENT_ERRORS = ["ContentNotFoundError", "ContentOperationNotPermittedError",
-	"UnknownContentError", "RemoteHostClosedError"]
-
-
-
-
-def get_pdf(html, options=None, output=None):
-	html = scrub_urls(html)
-	html, options = prepare_options(html, options)
-
-	options.update({
-		"disable-javascript": "",
-		"disable-local-file-access": ""
-	})
-
-	filedata = ''
-	if LooseVersion(get_wkhtmltopdf_version()) > LooseVersion('0.12.3'):
-		options.update({"disable-smart-shrinking": ""})
-
-	try:
-		# Set filename property to false, so no file is actually created
-		filedata = pdfkit.from_string(html, False, options=options or {})
-
-		# https://pythonhosted.org/PyPDF2/PdfFileReader.html
-		# create in-memory binary streams from filedata and create a PdfFileReader object
-		reader = PdfReader(io.BytesIO(filedata))
-	except OSError as e:
-		if any([error in str(e) for error in PDF_CONTENT_ERRORS]):
-			if not filedata:
-				frappe.throw(_("PDF generation failed because of broken image links"))
-
-			# allow pdfs with missing images if file got created
-			if output:  # output is a PdfFileWriter object
-				output.append_pages_from_reader(reader)
-		else:
-			raise
-
-	if "password" in options:
-		password = options["password"]
-		if six.PY2:
-			password = frappe.safe_encode(password)
-
-	if output:
-		output.append_pages_from_reader(reader)
-		return output
-
-	writer = PdfWriter()
-	writer.append_pages_from_reader(reader)
-
-	if "password" in options:
-		writer.encrypt(password)
-
-	filedata = get_file_data_from_writer(writer)
-
-	return filedata
-
-
-def prepare_options(html, options):
-	if not options:
-		options = {}
-
-	options.update({
-		'print-media-type': None,
-		'background': None,
-		'images': None,
-		'quiet': None,
-		# 'no-outline': None,
-		'encoding': "UTF-8",
-		#'load-error-handling': 'ignore'
-	})
-
-	if not options.get("margin-right"):
-		options['margin-right'] = '15mm'
-
-	if not options.get("margin-left"):
-		options['margin-left'] = '15mm'
-
-	html, html_options = read_options_from_html(html)
-	options.update(html_options or {})
-
-	# cookies
-	if frappe.session and frappe.session.sid:
-		options['cookie'] = [('sid', '{0}'.format(frappe.session.sid))]
-
-	# page size
-	if not options.get("page-size"):
-		options['page-size'] = frappe.db.get_single_value("Print Settings", "pdf_page_size") or "A4"
-
-	return html, options
-
+@frappe.whitelist()
+def create_pdf11(doctype=None, name=None, print_format=None, no_letterhead=1, item_group=None):
+    return create_pdf(doctype, name, print_format, no_letterhead=no_letterhead)

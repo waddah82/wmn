@@ -1676,21 +1676,164 @@ def _wmn_get_mode_of_payment_company_account(mode_of_payment, company):
     if not mode_of_payment or not company:
         return frappe._dict()
 
-    # Use ERPNext's own Mode of Payment resolver so POS Cash Movement
-    # follows the same enabled/company/default-account rules as POS invoices.
-    from erpnext.accounts.doctype.sales_invoice.sales_invoice import get_mode_of_payment_info
+    row = frappe._dict()
+    try:
+        # Use ERPNext's own resolver when available so v16 follows the same
+        # enabled/company/default-account rules as POS invoices.
+        from erpnext.accounts.doctype.sales_invoice.sales_invoice import get_mode_of_payment_info
 
-    rows = get_mode_of_payment_info(mode_of_payment, company) or []
-    if not rows:
+        rows = get_mode_of_payment_info(mode_of_payment, company) or []
+        if rows:
+            row = frappe._dict(rows[0])
+    except Exception:
+        row = frappe._dict()
+
+    if not row.get("default_account"):
+        row.default_account = frappe.db.get_value(
+            "Mode of Payment Account",
+            {"parent": mode_of_payment, "company": company},
+            "default_account",
+        )
+    if not row.get("type"):
+        row.type = frappe.db.get_value("Mode of Payment", mode_of_payment, "type")
+
+    if not row.get("default_account") and not row.get("type"):
         return frappe._dict()
 
-    row = frappe._dict(rows[0])
     return frappe._dict({
         "mode_of_payment": mode_of_payment,
         "type": str(row.get("type") or "").strip(),
         "enabled": 1,
         "account": str(row.get("default_account") or "").strip(),
     })
+
+
+def _wmn_normalize_payment_modes_arg(modes):
+    if not modes:
+        return []
+    if isinstance(modes, str):
+        try:
+            modes = json.loads(modes)
+        except Exception:
+            modes = [part.strip() for part in modes.split(",")]
+    if not isinstance(modes, (list, tuple, set)):
+        return []
+    result = []
+    seen = set()
+    for mode in modes:
+        mode = str(mode or "").strip()
+        if not mode or mode in seen:
+            continue
+        seen.add(mode)
+        result.append(mode)
+    return result
+
+
+@frappe.whitelist()
+def get_pos_payment_method_accounts(pos_profile=None, company=None, modes=None):
+    """Return POS payment method accounts in a v15/v16-compatible shape."""
+    pos_profile = str(pos_profile or "").strip()
+    company = str(company or "").strip()
+    requested_modes = _wmn_normalize_payment_modes_arg(modes)
+
+    profile = None
+    if pos_profile:
+        profile = frappe.get_doc("POS Profile", pos_profile)
+        if not company:
+            company = str(profile.company or "").strip()
+
+    configured = {}
+    ordered_modes = []
+
+    def remember_mode(mode_of_payment):
+        mode_of_payment = str(mode_of_payment or "").strip()
+        if mode_of_payment and mode_of_payment not in ordered_modes:
+            ordered_modes.append(mode_of_payment)
+
+    if profile:
+        for row in getattr(profile, "payments", []) or []:
+            mode_of_payment = row.get("mode_of_payment") if hasattr(row, "get") else getattr(row, "mode_of_payment", None)
+            mode_of_payment = str(mode_of_payment or "").strip()
+            if not mode_of_payment:
+                continue
+            remember_mode(mode_of_payment)
+            configured[mode_of_payment] = frappe._dict({
+                "mode_of_payment": mode_of_payment,
+                "default": cint(row.get("default") if hasattr(row, "get") else getattr(row, "default", 0)),
+                "account": str((row.get("account") if hasattr(row, "get") else getattr(row, "account", "")) or "").strip(),
+                "type": str((row.get("type") if hasattr(row, "get") else getattr(row, "type", "")) or "").strip(),
+            })
+
+    for mode_of_payment in requested_modes:
+        remember_mode(mode_of_payment)
+
+    methods = []
+    for mode_of_payment in ordered_modes:
+        row = frappe._dict(configured.get(mode_of_payment) or {})
+        details = _wmn_get_mode_of_payment_company_account(mode_of_payment, company)
+        account = row.get("account") or details.get("account") or ""
+        methods.append({
+            "mode_of_payment": mode_of_payment,
+            "default": cint(row.get("default") or 0),
+            "account": account,
+            "type": row.get("type") or details.get("type") or "",
+            "enabled": cint(details.get("enabled") or 0) if details else 0,
+        })
+
+    return {
+        "pos_profile": pos_profile,
+        "company": company,
+        "payment_methods": methods,
+    }
+
+
+def _wmn_first_existing_doc_value(doc, fieldnames):
+    for fieldname in fieldnames:
+        if doc.meta.has_field(fieldname):
+            value = doc.get(fieldname)
+            if value:
+                return value
+    return None
+
+
+@frappe.whitelist()
+def get_pos_loyalty_redemption_defaults(loyalty_program=None, company=None, pos_profile=None):
+    """Return invoice fields needed for loyalty redemption GL entries."""
+    loyalty_program = str(loyalty_program or "").strip()
+    company = str(company or "").strip()
+    pos_profile = str(pos_profile or "").strip()
+
+    profile_cost_center = None
+    if pos_profile and frappe.db.exists("POS Profile", pos_profile):
+        profile = frappe.get_doc("POS Profile", pos_profile)
+        if not company:
+            company = str(profile.company or "").strip()
+        profile_cost_center = getattr(profile, "cost_center", None)
+
+    account = None
+    cost_center = None
+    if loyalty_program:
+        program = frappe.get_doc("Loyalty Program", loyalty_program)
+        account = _wmn_first_existing_doc_value(
+            program,
+            ("expense_account", "loyalty_redemption_account", "redemption_account", "account"),
+        )
+        cost_center = _wmn_first_existing_doc_value(
+            program,
+            ("cost_center", "loyalty_redemption_cost_center", "redemption_cost_center"),
+        )
+
+    if not cost_center:
+        cost_center = profile_cost_center
+    if not cost_center and company:
+        cost_center = frappe.db.get_value("Company", company, "cost_center")
+
+    return {
+        "loyalty_program": loyalty_program,
+        "company": company,
+        "loyalty_redemption_account": account or "",
+        "loyalty_redemption_cost_center": cost_center or "",
+    }
 
 
 def _wmn_get_pos_cash_modes(pos_profile):
@@ -2811,16 +2954,16 @@ def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
         "Customer", "Item", "Mode of Payment", "Batch", "Serial No",
         "Item Group", "Warehouse", "Item Barcode",
     ]
-    wmn_print_format_doc = {}
+    print_format_doc = {}
 
     if getattr(profile, "print_format", None):
         try:
-            wmn_print_format_doc = frappe.get_doc(
-                "WMN Print Format",
+            print_format_doc = frappe.get_doc(
+                "Print Format",
                 profile.print_format
             ).as_dict()
         except Exception:
-            wmn_print_format_doc = {}
+            print_format_doc = {}
     doctype_meta = {}
     for dt in doctype_names:
         try:
@@ -2892,7 +3035,7 @@ def get_pos_offline_data(pos_profile=None, price_list=None, warehouse=None):
         "pos_opening_entry": opening_entries[0] if opening_entries else None,
         "doctype_meta": doctype_meta,
         "barcode_structures": get_barcode_structures(),
-        "wmn_print_format": wmn_print_format_doc,
+        "print_format_doc": print_format_doc,
         "stock_settings": stock_settings,
         "stock_settings_doc": stock_settings,
         "allow_negative_stock": cint(stock_settings.get("allow_negative_stock") or 0),
@@ -4549,7 +4692,7 @@ def get_past_order_list(search_term, status, limit=20):
     if not status:
         return []
 
-    fields = [
+    base_fields = [
         "name",
         "grand_total",
         "currency",
@@ -4566,14 +4709,28 @@ def get_past_order_list(search_term, status, limit=20):
         "wmn_invoice_uid",
     ]
 
+    def doctype_fields(doctype):
+        return {field.fieldname for field in frappe.get_meta(doctype).fields}
+
+    def existing_fields(doctype):
+        available = doctype_fields(doctype)
+        return [fieldname for fieldname in base_fields if fieldname == "name" or fieldname in available]
+
     def filters_for(doctype):
         filters = {}
+        available = doctype_fields(doctype)
         if doctype == "Sales Invoice":
             # Match ERPNext v16 native POS Sales Invoice ownership.
-            filters["is_created_using_pos"] = 1
-            filters["is_consolidated"] = 0
+            if "is_created_using_pos" in available:
+                filters["is_created_using_pos"] = 1
+            elif "is_pos" in available:
+                filters["is_pos"] = 1
+            if "is_consolidated" in available:
+                filters["is_consolidated"] = 0
 
         if status == "Awaiting Cashier":
+            if "wmn_pos_stage" not in available:
+                return {"name": ["is", "not set"]}
             filters["docstatus"] = 0
             filters["wmn_pos_stage"] = "AWAITING_CASHIER"
             return filters
@@ -4585,17 +4742,18 @@ def get_past_order_list(search_term, status, limit=20):
         if status == "Returnable":
             filters["docstatus"] = 1
             filters["is_return"] = 0
-            if doctype == "Sales Invoice":
+            if doctype == "Sales Invoice" and "pos_closing_entry" in available:
                 filters["pos_closing_entry"] = ["is", "not set"]
             return filters
 
         if doctype == "Sales Invoice":
             filters["docstatus"] = 1
-            if status == "Consolidated":
+            if status == "Consolidated" and "pos_closing_entry" in available:
                 filters["pos_closing_entry"] = ["is", "set"]
                 return filters
 
-            filters["pos_closing_entry"] = ["is", "not set"]
+            if "pos_closing_entry" in available:
+                filters["pos_closing_entry"] = ["is", "not set"]
             if status == "Return":
                 filters["is_return"] = 1
             elif status == "Paid":
@@ -4627,7 +4785,7 @@ def get_past_order_list(search_term, status, limit=20):
             doctype,
             filters=filters,
             or_filters=or_filters,
-            fields=fields,
+            fields=existing_fields(doctype),
             page_length=limit,
             order_by="posting_date desc, posting_time desc",
         )
@@ -4645,6 +4803,118 @@ def get_past_order_list(search_term, status, limit=20):
         reverse=True,
     )
     return rows[:limit]
+
+
+@frappe.whitelist()
+def get_customer_recent_transactions(customer=None):
+    """Return recent POS customer transactions for ERPNext v15/v16 compatibility."""
+    customer = str(customer or "").strip()
+    if not customer:
+        return []
+
+    fields = ["name", "grand_total", "status", "posting_date", "posting_time", "currency"]
+    rows = []
+
+    def has_field(doctype, fieldname):
+        return frappe.get_meta(doctype).has_field(fieldname)
+
+    sales_filters = {
+        "customer": customer,
+        "docstatus": 1,
+    }
+    if has_field("Sales Invoice", "is_created_using_pos"):
+        sales_filters["is_created_using_pos"] = 1
+    elif has_field("Sales Invoice", "is_pos"):
+        sales_filters["is_pos"] = 1
+    if has_field("Sales Invoice", "is_consolidated"):
+        sales_filters["is_consolidated"] = 0
+
+    for doctype, filters in (
+        ("Sales Invoice", sales_filters),
+        ("POS Invoice", {"customer": customer, "docstatus": 1}),
+    ):
+        for row in frappe.db.get_list(
+            doctype,
+            filters=filters,
+            fields=fields,
+            page_length=20,
+            order_by="posting_date desc, posting_time desc",
+        ):
+            row["doctype"] = doctype
+            rows.append(row)
+
+    rows.sort(
+        key=lambda row: get_datetime(f"{row.get('posting_date')} {row.get('posting_time') or '00:00:00'}"),
+        reverse=True,
+    )
+    return rows[:20]
+
+
+def _get_returned_qty_for_invoice_item(doctype, invoice, customer, item_row_name):
+    try:
+        from erpnext.controllers.sales_and_purchase_return import get_returned_qty_map_for_row
+
+        result = get_returned_qty_map_for_row(invoice, customer, item_row_name, doctype) or {}
+        if hasattr(result, "get"):
+            return flt(result.get("qty") or 0)
+        return flt(getattr(result, "qty", 0) or 0)
+    except Exception:
+        return 0
+
+
+@frappe.whitelist()
+def get_invoice_item_returned_qty(doctype=None, invoice=None, customer=None, item_row_name=None):
+    """v15-compatible wrapper for ERPNext v16 returned-quantity POS API."""
+    doctype = str(doctype or "").strip()
+    invoice = str(invoice or "").strip()
+    customer = str(customer or "").strip()
+    item_row_name = str(item_row_name or "").strip()
+
+    if doctype not in ("POS Invoice", "Sales Invoice") or not invoice or not item_row_name:
+        return {"qty": 0}
+
+    source = frappe.get_doc(doctype, invoice)
+    source.check_permission("read")
+    if cint(source.get("is_return") or 0) or cint(source.get("docstatus") or 0) == 0:
+        return {"qty": 0}
+
+    customer = customer or source.get("customer")
+    return {
+        "qty": _get_returned_qty_for_invoice_item(doctype, invoice, customer, item_row_name)
+    }
+
+
+@frappe.whitelist()
+def is_invoice_returnable(doctype=None, invoice=None):
+    """v15-compatible wrapper for ERPNext v16 POS returnability check."""
+    doctype = str(doctype or "").strip()
+    invoice = str(invoice or "").strip()
+
+    if doctype not in ("POS Invoice", "Sales Invoice") or not invoice:
+        return False
+
+    source = frappe.get_doc(doctype, invoice)
+    source.check_permission("read")
+    if cint(source.get("is_return") or 0) or cint(source.get("docstatus") or 0) == 0:
+        return False
+
+    child_doctype = f"{doctype} Item"
+    item_rows = frappe.db.get_all(child_doctype, {"parent": invoice}, ["name", "qty"])
+    if not item_rows:
+        return False
+
+    fully_returned = 0
+    for row in item_rows:
+        returned_qty = _get_returned_qty_for_invoice_item(
+            doctype,
+            invoice,
+            source.get("customer"),
+            row.name,
+        )
+        if abs(flt(returned_qty) - abs(flt(row.qty))) <= 0.000001:
+            fully_returned += 1
+
+    return len(item_rows) != fully_returned
 
 
 
