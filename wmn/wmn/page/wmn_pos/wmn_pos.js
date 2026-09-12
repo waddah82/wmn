@@ -14063,6 +14063,66 @@ function wmn_render_raw_print_temp(template, doc) {
             return type === "js" || type === "javascript";
         }
 
+        function wmn_print_template_looks_like_html(template) {
+            return /<\/?[a-z][\s\S]*>/i.test(String(template || ""));
+        }
+
+        function wmn_server_can_render_print_template(doc) {
+            if (!doc) return false;
+            if (navigator.onLine === false) return false;
+            try {
+                if (typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline()) return false;
+            } catch (e) {}
+            try {
+                if (window.__wmn_pos_effective_offline === true || window.__wmn_pos_server_online === false) return false;
+            } catch (e) {}
+            return !!(window.frappe && frappe.call);
+        }
+
+        async function wmn_render_print_template_on_server(template, doc, printFormat) {
+            template = String(template || "");
+            if (!template || !wmn_server_can_render_print_template(doc)) return "";
+
+            printFormat = printFormat || {};
+            const formatName =
+                printFormat.print_format_name ||
+                printFormat.wmn_print_format ||
+                printFormat.print_format ||
+                printFormat.name ||
+                (doc && doc.print_format) ||
+                "";
+
+            const response = await frappe.call({
+                method: "wmn.wmn.page.wmn_pos.wmn_pos.render_pos_print_template",
+                args: {
+                    doc: JSON.stringify(doc || {}),
+                    template,
+                    print_format: formatName,
+                    wmn_print_format: printFormat.name || formatName || "",
+                },
+                freeze: false,
+            });
+
+            return String((response && response.message && response.message.html) || "");
+        }
+
+        function wmn_print_html_to_text(html) {
+            html = String(html || "");
+            const div = document.createElement("div");
+            div.innerHTML = html;
+            const text = div.innerText || div.textContent || "";
+            const cleanedLines = [];
+            let lastWasEmpty = false;
+            text.replace(/\r/g, "").split("\n").forEach(function(line) {
+                line = line.replace(/[\t ]+$/g, "");
+                const isEmpty = line.trim() === "";
+                if (isEmpty && lastWasEmpty) return;
+                cleanedLines.push(line);
+                lastWasEmpty = isEmpty;
+            });
+            return cleanedLines.join("\n").trim();
+        }
+
         function wmn_render_raw_print_template(template, doc, printFormat) {
             template = String(template || "");
             doc = doc || {};
@@ -14310,6 +14370,15 @@ function wmn_render_raw_print_temp(template, doc) {
 /* PDF/PNG rendering and printer transport. */
         function wmn_mm_to_pt(mm) {
             return flt(mm || 0) * 72 / 25.4;
+        }
+
+        function wmn_get_pdf_paper_width_mm(printFormat) {
+            const page = wmn_get_page_size_mm(
+                wmn_get_wmn_print_page_size(printFormat),
+                wmn_get_wmn_print_orientation(printFormat),
+                printFormat || {}
+            );
+            return page.width_mm || 80;
         }
 
         function wmn_pdf_money(value) {
@@ -14800,7 +14869,8 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             const directMm =
                 printFormat.paper_width_mm ||
                 printFormat.width_mm ||
-                printFormat.print_width_mm;
+                printFormat.print_width_mm ||
+                printFormat.custom_width;
 
             if (directMm) return flt(directMm) + "mm";
 
@@ -14913,13 +14983,15 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 printFormat.page_width_mm ||
                 printFormat.paper_width_mm ||
                 printFormat.width_mm ||
-                printFormat.print_width_mm;
+                printFormat.print_width_mm ||
+                printFormat.custom_width;
 
             const explicitHeight =
                 printFormat.page_height_mm ||
                 printFormat.paper_height_mm ||
                 printFormat.height_mm ||
-                printFormat.print_height_mm;
+                printFormat.print_height_mm ||
+                printFormat.custom_height;
 
             if (explicitWidth) {
                 return {
@@ -15194,14 +15266,34 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             doc.__wmn_receipt_no = doc.__wmn_receipt_no || doc.wmn_receipt_no || doc.name || "";
 
             const cfg = await wmn_get_raw_print_template(doc);
-            const mode = wmn_get_silent_print_mode(cfg.printFormat);
+            let mode = wmn_get_silent_print_mode(cfg.printFormat);
             const printType = wmn_get_print_type(cfg.printFormat) || cfg.printType;
             const isOfflineDoc = wmn_is_offline_invoice_doc(doc);
+            const templateLooksHtml = typeof wmn_print_template_looks_like_html === "function"
+                && wmn_print_template_looks_like_html(cfg.template);
+
+            if (mode === "raw_text" && templateLooksHtml) {
+                mode = "html2canvas";
+            }
 
             try { console.info("WMN silent print mode:", mode, "offline:", isOfflineDoc); } catch(e) {}
 
             if (mode === "raw_text") {
-                const rawText = wmn_render_raw_print_temp(cfg.template, doc);
+                let rawText = "";
+                try {
+                    const rendered = typeof wmn_render_print_template_on_server === "function"
+                        ? await wmn_render_print_template_on_server(cfg.template, doc, cfg.printFormat)
+                        : "";
+                    rawText = typeof wmn_print_template_looks_like_html === "function" && wmn_print_template_looks_like_html(rendered)
+                        ? wmn_print_html_to_text(rendered)
+                        : rendered;
+                } catch (e) {
+                    console.warn("WMN server raw print render skipped", e);
+                }
+
+                if (!String(rawText || "").trim()) {
+                    rawText = wmn_render_raw_print_temp(cfg.template, doc);
+                }
                 const barcode = window.WMN_POS?.Services?.Barcode?.InvoiceBarcode;
                 const printService = window.WMN_POS?.Services?.Printing?.PrintService;
                 const printConfig = printService?.getConfig?.() || {};
@@ -15233,11 +15325,22 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
              */
             if (cfg.template && String(cfg.template || "").trim()) {
                 try {
-                    let rendered = wmn_render_raw_print_template(
-                        cfg.template,
-                        doc,
-                        cfg.printFormat
-                    );
+                    let rendered = "";
+                    try {
+                        if (typeof wmn_render_print_template_on_server === "function") {
+                            rendered = await wmn_render_print_template_on_server(cfg.template, doc, cfg.printFormat);
+                        }
+                    } catch (e) {
+                        console.warn("WMN server print template render skipped", e);
+                    }
+
+                    if (!String(rendered || "").trim()) {
+                        rendered = wmn_render_raw_print_template(
+                            cfg.template,
+                            doc,
+                            cfg.printFormat
+                        );
+                    }
 
                     if (rendered && typeof rendered === "object") {
                         const barcode = window.WMN_POS?.Services?.Barcode?.InvoiceBarcode;

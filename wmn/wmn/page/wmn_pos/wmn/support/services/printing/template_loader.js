@@ -174,6 +174,66 @@
             return type === "js" || type === "javascript";
         }
 
+        function wmn_print_template_looks_like_html(template) {
+            return /<\/?[a-z][\s\S]*>/i.test(String(template || ""));
+        }
+
+        function wmn_server_can_render_print_template(doc) {
+            if (!doc) return false;
+            if (navigator.onLine === false) return false;
+            try {
+                if (typeof wmn_is_pos_offline === "function" && wmn_is_pos_offline()) return false;
+            } catch (e) {}
+            try {
+                if (window.__wmn_pos_effective_offline === true || window.__wmn_pos_server_online === false) return false;
+            } catch (e) {}
+            return !!(window.frappe && frappe.call);
+        }
+
+        async function wmn_render_print_template_on_server(template, doc, printFormat) {
+            template = String(template || "");
+            if (!template || !wmn_server_can_render_print_template(doc)) return "";
+
+            printFormat = printFormat || {};
+            const formatName =
+                printFormat.print_format_name ||
+                printFormat.wmn_print_format ||
+                printFormat.print_format ||
+                printFormat.name ||
+                (doc && doc.print_format) ||
+                "";
+
+            const response = await frappe.call({
+                method: "wmn.wmn.page.wmn_pos.wmn_pos.render_pos_print_template",
+                args: {
+                    doc: JSON.stringify(doc || {}),
+                    template,
+                    print_format: formatName,
+                    wmn_print_format: printFormat.name || formatName || "",
+                },
+                freeze: false,
+            });
+
+            return String((response && response.message && response.message.html) || "");
+        }
+
+        function wmn_print_html_to_text(html) {
+            html = String(html || "");
+            const div = document.createElement("div");
+            div.innerHTML = html;
+            const text = div.innerText || div.textContent || "";
+            const cleanedLines = [];
+            let lastWasEmpty = false;
+            text.replace(/\r/g, "").split("\n").forEach(function(line) {
+                line = line.replace(/[\t ]+$/g, "");
+                const isEmpty = line.trim() === "";
+                if (isEmpty && lastWasEmpty) return;
+                cleanedLines.push(line);
+                lastWasEmpty = isEmpty;
+            });
+            return cleanedLines.join("\n").trim();
+        }
+
         function wmn_render_raw_print_template(template, doc, printFormat) {
             template = String(template || "");
             doc = doc || {};
