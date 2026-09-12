@@ -11,7 +11,7 @@ def _wmn_api(method, *args, **kwargs):
 
 
 @frappe.whitelist()
-def get_wmn_pos_stylesheet():
+def get_wmn_pos_stylesheet(v=None):
     css_path = frappe.get_app_path("wmn", "wmn", "page", "wmn_pos", "wmn_pos.css")
     with open(css_path, encoding="utf-8") as css_file:
         response = Response(css_file.read(), content_type="text/css; charset=utf-8")

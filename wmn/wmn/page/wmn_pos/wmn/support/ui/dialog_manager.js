@@ -7,7 +7,8 @@
     ns.UI.Dialogs = ns.UI.Dialogs || {};
 
     const PAGE_STYLE_ID = "wmn-pos-page-stylesheet";
-    const PAGE_STYLE_HREF = "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet";
+    const PAGE_STYLE_VERSION = "20260912-item-details-modal";
+    const PAGE_STYLE_HREF = `/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet?v=${encodeURIComponent(PAGE_STYLE_VERSION)}`;
     let pageStylesheetPromise = null;
     let initialized = false;
 
