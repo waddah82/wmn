@@ -366,48 +366,6 @@ body:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {
 	background: var(--wmn-soft);
 }
 
-.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*="display: flex"]) {
-	grid-template-columns:
-		minmax(0, 3fr)
-		minmax(0, 4fr)
-		minmax(0, 3fr) !important;
-}
-
-.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*="display: flex"]) > .item-details-container {
-	grid-column: 2 !important;
-}
-
-.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*="display: flex"]) > .customer-cart-container {
-	grid-column: 3 !important;
-}
-
-.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*="display: flex"]) .wmn-pos-nav-links .wmn-nav-btn span,
-.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*="display: flex"]) .wmn-menu-search,
-.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*="display: flex"]) .wmn-category-section {
-	display: none !important;
-}
-
-.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*="display: flex"]) .wmn-pos-nav {
-	justify-content: center;
-	padding-inline: 8px;
-}
-
-.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*="display: flex"]) .wmn-pos-nav-links {
-	gap: 2px;
-}
-
-.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*="display: flex"]) .wmn-nav-btn {
-	padding: 0 8px;
-}
-
-.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*="display: flex"]) .wmn-items-content {
-	padding: 12px 8px;
-}
-
-.wmn-mamsek-shell .point-of-sale-app:has(> .item-details-container[style*="display: flex"]) .items-container {
-	grid-template-columns: minmax(0, 1fr) !important;
-}
-
 .wmn-mamsek-shell
 .point-of-sale-app:not(:has(> .past-order-list[style*="display: flex"]))
 > .past-order-summary[style*="span 10"] {
@@ -2803,95 +2761,524 @@ body.wmn-cart-is-resizing * {
 
 
 
-/* Item Details modal base */
-.wmn-item-details-layer {
-	position: fixed;
-	top: var(--wmn-pos-header-height, 64px);
-	right: 0;
-	bottom: 0;
-	left: 0;
-	z-index: 1600;
-	display: none;
-	place-items: center;
-	padding: 18px 24px 24px;
+/* ==========================================================================
+ * WMN Item Details modal
+ * The ERPNext ItemDetails component is moved into this page-owned layer; all
+ * visual rules for the dialog live here so the page does not depend on public
+ * POS CSS, overrides, or JS-injected styles.
+ * ========================================================================== */
+body.wmn-mamsek-pos-route .wmn-mamsek-shell .wmn-item-details-layer {
+	position: fixed !important;
+	inset: var(--wmn-pos-header-height, 64px) 0 0 0 !important;
+	z-index: 1600 !important;
+	display: none !important;
+	place-items: center !important;
+	box-sizing: border-box !important;
+	padding: 18px 24px 24px !important;
+	pointer-events: none !important;
 }
 
-.wmn-mamsek-shell.wmn-button-view-active .wmn-item-details-layer {
-	top: 0;
+body.wmn-mamsek-pos-route .wmn-mamsek-shell.wmn-button-view-active .wmn-item-details-layer {
+	inset-block-start: 0 !important;
 }
 
-.wmn-item-details-layer.is-open {
-	display: grid;
+body.wmn-mamsek-pos-route .wmn-mamsek-shell.wmn-item-details-open .wmn-item-details-layer,
+body.wmn-mamsek-pos-route .wmn-mamsek-shell .wmn-item-details-layer.is-open {
+	display: grid !important;
+	pointer-events: auto !important;
 }
 
-.wmn-item-details-backdrop {
-	position: absolute;
-	inset: 0;
-	background: rgba(17, 31, 48, 0.44);
+body.wmn-mamsek-pos-route .wmn-item-details-backdrop {
+	position: absolute !important;
+	inset: 0 !important;
+	z-index: 0 !important;
+	background: rgba(17, 31, 48, 0.48) !important;
 	backdrop-filter: blur(3px);
 }
 
-.wmn-item-details-modal {
-	position: relative;
-	z-index: 1;
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
-	width: min(1080px, calc(100vw - 48px));
-	height: min(720px, calc(100dvh - var(--wmn-pos-header-height, 64px) - 42px));
-	min-width: 0;
-	min-height: 0;
-	overflow: hidden;
-	border: 1px solid var(--wmn-border-strong);
-	border-radius: 20px;
-	background: #fff;
-	box-shadow: 0 24px 70px rgba(19, 35, 51, 0.28);
+body.wmn-mamsek-pos-route .wmn-item-details-modal {
+	position: relative !important;
+	z-index: 1 !important;
+	display: grid !important;
+	grid-template-columns: minmax(0, 1fr) minmax(280px, 320px) !important;
+	grid-template-rows: minmax(0, 1fr) !important;
+	width: min(1080px, calc(100vw - 48px)) !important;
+	height: min(720px, calc(100dvh - var(--wmn-pos-header-height, 64px) - 42px)) !important;
+	min-width: 0 !important;
+	min-height: 0 !important;
+	max-width: calc(100vw - 48px) !important;
+	max-height: calc(100dvh - var(--wmn-pos-header-height, 64px) - 42px) !important;
+	overflow: hidden !important;
+	box-sizing: border-box !important;
+	border: 1px solid var(--wmn-border-strong) !important;
+	border-radius: 20px !important;
+	background: #fff !important;
+	box-shadow: 0 24px 70px rgba(19, 35, 51, 0.28) !important;
 }
 
-.wmn-mamsek-shell.wmn-button-view-active .wmn-item-details-modal {
-	height: min(720px, calc(100dvh - 36px));
+body.wmn-mamsek-pos-route .wmn-mamsek-shell.wmn-button-view-active .wmn-item-details-modal {
+	height: min(720px, calc(100dvh - 36px)) !important;
+	max-height: calc(100dvh - 36px) !important;
 }
 
-.wmn-item-details-host {
-	min-width: 0;
-	min-height: 0;
-	overflow: auto;
-	background: #fff;
+body.wmn-mamsek-pos-route .wmn-item-details-host {
+	min-width: 0 !important;
+	min-height: 0 !important;
+	overflow-x: hidden !important;
+	overflow-y: auto !important;
+	background: #fff !important;
 }
 
-.wmn-item-details-numpad-host {
-	display: flex;
-	min-width: 0;
-	min-height: 0;
-	overflow: auto;
-	border-left: 1px solid var(--wmn-border-strong);
-	background: #f7f9fb;
+body.wmn-mamsek-pos-route .wmn-item-details-numpad-host {
+	display: flex !important;
+	flex-direction: column !important;
+	align-items: stretch !important;
+	min-width: 0 !important;
+	min-height: 0 !important;
+	padding: 0 !important;
+	overflow-x: hidden !important;
+	overflow-y: auto !important;
+	border-left: 1px solid var(--wmn-border-strong) !important;
+	background: #f7f9fb !important;
 }
 
-body[dir="rtl"] .wmn-item-details-numpad-host,
-body.rtl-mode .wmn-item-details-numpad-host {
-	border-right: 1px solid var(--wmn-border-strong);
-	border-left: 0;
+body[dir="rtl"].wmn-mamsek-pos-route .wmn-item-details-numpad-host,
+body.rtl-mode.wmn-mamsek-pos-route .wmn-item-details-numpad-host {
+	border-right: 1px solid var(--wmn-border-strong) !important;
+	border-left: 0 !important;
 }
 
-.wmn-item-details-modal .item-details-container {
+body.wmn-mamsek-pos-route .wmn-item-details-modal .item-details-container {
 	position: relative !important;
 	grid-column: auto !important;
 	grid-row: auto !important;
-	display: none;
+	display: none !important;
 	width: 100% !important;
+	min-width: 0 !important;
 	height: auto !important;
 	min-height: 100% !important;
 	max-height: none !important;
 	margin: 0 !important;
-	overflow: visible !important;
+	padding: 16px 18px 18px !important;
+	gap: 10px !important;
+	overflow-x: hidden !important;
+	overflow-y: visible !important;
 	border: 0 !important;
 	border-radius: 0 !important;
 	background: #fff !important;
 	box-shadow: none !important;
 }
 
-.wmn-item-details-modal .numpad-section {
-	display: none;
+body.wmn-mamsek-pos-route .wmn-mamsek-shell.wmn-item-details-open .wmn-item-details-modal .item-details-container,
+body.wmn-mamsek-pos-route .wmn-item-details-layer.is-open .wmn-item-details-modal .item-details-container {
+	display: grid !important;
+	grid-template-columns: minmax(0, 1fr) !important;
+	grid-template-rows: auto auto auto auto auto !important;
+	grid-template-areas:
+		"header"
+		"preview"
+		"form"
+		"discount"
+		"serial" !important;
+	align-content: start !important;
+	align-items: start !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .item-details-header {
+	grid-area: header !important;
+	display: flex !important;
+	align-items: center !important;
+	justify-content: space-between !important;
+	width: 100% !important;
+	min-width: 0 !important;
+	min-height: 42px !important;
+	margin: 0 !important;
+	padding: 0 0 10px !important;
+	border-bottom: 1px solid var(--wmn-border) !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .item-details-header .label {
+	font-size: 18px !important;
+	font-weight: 750 !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .item-details-header .close-btn {
+	display: grid !important;
+	place-items: center !important;
+	flex: 0 0 34px !important;
+	width: 34px !important;
+	height: 34px !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .item-display {
+	grid-area: preview !important;
+	display: grid !important;
+	grid-template-columns: minmax(0, 1fr) 96px !important;
+	grid-template-rows: auto !important;
+	align-items: center !important;
+	width: 100% !important;
+	min-width: 0 !important;
+	margin: 0 !important;
+	padding: 4px 0 8px !important;
+	gap: 12px !important;
+	border: 0 !important;
+	border-radius: 0 !important;
+	background: transparent !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .item-display > .item-name-desc-price {
+	grid-column: 1 !important;
+	grid-row: 1 !important;
+	display: flex !important;
+	flex-direction: column !important;
+	justify-content: center !important;
+	align-items: flex-start !important;
+	width: 100% !important;
+	min-width: 0 !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	gap: 2px !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .item-display .item-name {
+	font-size: 17px !important;
+	line-height: 1.3 !important;
+	font-weight: 750 !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .item-display .item-desc {
+	max-height: 34px !important;
+	overflow: hidden !important;
+	font-size: 11px !important;
+	line-height: 17px !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .item-display .item-price {
+	margin-top: 2px !important;
+	font-size: 17px !important;
+	line-height: 1.3 !important;
+	font-weight: 800 !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .item-display > .item-image {
+	grid-column: 2 !important;
+	grid-row: 1 !important;
+	display: grid !important;
+	place-items: center !important;
+	width: 96px !important;
+	min-width: 96px !important;
+	max-width: 96px !important;
+	height: 78px !important;
+	min-height: 78px !important;
+	max-height: 78px !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	overflow: hidden !important;
+	border: 1px solid var(--wmn-border) !important;
+	border-radius: 10px !important;
+	background: #f2f4f5 !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .item-display > .item-image > img {
+	display: block !important;
+	width: 100% !important;
+	height: 100% !important;
+	min-width: 0 !important;
+	min-height: 0 !important;
+	max-width: none !important;
+	max-height: none !important;
+	object-fit: cover !important;
+	object-position: center !important;
+	margin: 0 !important;
+	padding: 0 !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .item-display > .item-image .item-abbr {
+	display: grid !important;
+	place-items: center !important;
+	width: 100% !important;
+	height: 100% !important;
+	font-size: 24px !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .form-container {
+	grid-area: form !important;
+	display: grid !important;
+	grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+	align-content: start !important;
+	align-items: start !important;
+	width: 100% !important;
+	min-width: 0 !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	column-gap: 12px !important;
+	row-gap: 8px !important;
+	overflow: visible !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .form-container > *,
+body.wmn-mamsek-pos-route .wmn-item-details-modal .form-container > [data-fieldname],
+body.wmn-mamsek-pos-route .wmn-item-details-modal .form-container .frappe-control,
+body.wmn-mamsek-pos-route .wmn-item-details-modal .form-container .form-group,
+body.wmn-mamsek-pos-route .wmn-item-details-modal .form-container .control-input-wrapper,
+body.wmn-mamsek-pos-route .wmn-item-details-modal .form-container .control-input,
+body.wmn-mamsek-pos-route .wmn-item-details-modal .form-container .awesomplete {
+	width: 100% !important;
+	min-width: 0 !important;
+	max-width: 100% !important;
+	margin: 0 !important;
+	overflow: visible !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .form-container .control-label,
+body.wmn-mamsek-pos-route .wmn-item-details-modal .form-container label {
+	margin: 0 0 3px !important;
+	font-size: 11px !important;
+	line-height: 16px !important;
+	font-weight: 650 !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .form-container .form-control,
+body.wmn-mamsek-pos-route .wmn-item-details-modal .form-container .input-with-feedback {
+	width: 100% !important;
+	min-width: 0 !important;
+	max-width: 100% !important;
+	height: 34px !important;
+	min-height: 34px !important;
+	padding: 4px 9px !important;
+	border-radius: 8px !important;
+	font-size: 13px !important;
+	line-height: 24px !important;
+	box-sizing: border-box !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .form-container .serial_no-control,
+body.wmn-mamsek-pos-route .wmn-item-details-modal .form-container .batch_no-control,
+body.wmn-mamsek-pos-route .wmn-item-details-modal .form-container .auto-fetch-btn,
+body.wmn-mamsek-pos-route .wmn-item-details-modal .form-container .grid-filler {
+	grid-column: 1 / -1 !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .discount-section {
+	grid-area: discount !important;
+	width: 100% !important;
+	min-width: 0 !important;
+	margin: 0 !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .discount-section:empty {
+	display: none !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .serial-batch-container {
+	grid-area: serial !important;
+	width: 100% !important;
+	min-width: 0 !important;
+	margin: 0 !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .numpad-section {
+	flex: 1 1 auto !important;
+	flex-direction: column !important;
+	align-items: stretch !important;
+	width: 100% !important;
+	height: auto !important;
+	min-height: 0 !important;
+	margin: 0 !important;
+	padding: 14px 12px !important;
+	overflow-x: hidden !important;
+	overflow-y: auto !important;
+	background: #f7f9fb !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .numpad-totals {
+	display: flex !important;
+	align-items: center !important;
+	justify-content: space-between !important;
+	flex: 0 0 auto !important;
+	width: 100% !important;
+	gap: 8px !important;
+	margin: 0 0 10px !important;
+	padding: 8px 10px !important;
+	border: 1px solid var(--wmn-border) !important;
+	border-radius: 10px !important;
+	background: #fff !important;
+	font-size: 12px !important;
+	line-height: 18px !important;
+	font-weight: 700 !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .numpad-container {
+	display: grid !important;
+	grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+	flex: 0 0 auto !important;
+	width: 100% !important;
+	gap: 7px !important;
+	margin: 0 0 10px !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .numpad-btn {
+	display: flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	width: 100% !important;
+	height: 46px !important;
+	min-height: 46px !important;
+	max-height: 46px !important;
+	padding: 0 5px !important;
+	margin: 0 !important;
+	border: 1px solid var(--wmn-border-strong) !important;
+	border-radius: 8px !important;
+	background: #fff !important;
+	color: var(--wmn-ink) !important;
+	box-shadow: none !important;
+	font-size: 13px !important;
+	font-weight: 650 !important;
+	line-height: 1 !important;
+	text-align: center !important;
+	box-sizing: border-box !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .numpad-btn:hover {
+	border-color: #9bcfcf !important;
+	background: #eefafa !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .checkout-btn {
+	display: flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	flex: 0 0 auto !important;
+	width: 100% !important;
+	height: 40px !important;
+	min-height: 40px !important;
+	margin: 0 !important;
+	border: 0 !important;
+	border-radius: 8px !important;
+	background: var(--wmn-teal) !important;
+	color: #fff !important;
+	font-size: 14px !important;
+	font-weight: 700 !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .awesomplete {
+	position: relative !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .frappe-control:focus-within {
+	position: relative !important;
+	z-index: 2100 !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .awesomplete > ul {
+	z-index: 2200 !important;
+	max-height: 220px !important;
+	overflow-x: hidden !important;
+	overflow-y: auto !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .serial-batch-container,
+body.wmn-mamsek-pos-route .wmn-item-details-modal .serial-batch-container .frappe-control,
+body.wmn-mamsek-pos-route .wmn-item-details-modal .serial-batch-container .form-group,
+body.wmn-mamsek-pos-route .wmn-item-details-modal .serial-batch-container .control-input-wrapper,
+body.wmn-mamsek-pos-route .wmn-item-details-modal .serial-batch-container .control-input,
+body.wmn-mamsek-pos-route .wmn-item-details-modal .serial-batch-container .awesomplete {
+	position: relative !important;
+	overflow: visible !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal .batch_no-control .awesomplete > ul {
+	top: auto !important;
+	bottom: calc(100% + 4px) !important;
+	width: 100% !important;
+	max-height: 220px !important;
+	overflow-x: hidden !important;
+	overflow-y: auto !important;
+	z-index: 2300 !important;
+}
+
+body.wmn-mamsek-pos-route .wmn-item-details-modal [data-fieldname="warehouse"]:focus-within,
+body.wmn-mamsek-pos-route .wmn-item-details-modal .warehouse-control:focus-within {
+	position: relative !important;
+	z-index: 2250 !important;
+}
+
+@media (max-width: 900px) {
+	body.wmn-mamsek-pos-route .wmn-item-details-modal {
+		grid-template-columns: minmax(0, 1fr) !important;
+		grid-template-rows: minmax(0, 1fr) auto !important;
+		width: min(680px, calc(100vw - 24px)) !important;
+		height: min(760px, calc(100dvh - var(--wmn-pos-header-height, 64px) - 24px)) !important;
+		max-width: calc(100vw - 24px) !important;
+		max-height: calc(100dvh - var(--wmn-pos-header-height, 64px) - 24px) !important;
+	}
+
+	body.wmn-mamsek-pos-route .wmn-item-details-numpad-host {
+		width: 100% !important;
+		max-height: 280px !important;
+		overflow-y: auto !important;
+		border-top: 1px solid var(--wmn-border-strong) !important;
+		border-right: 0 !important;
+		border-left: 0 !important;
+	}
+
+	body.wmn-mamsek-pos-route .wmn-item-details-modal .numpad-section {
+		padding: 10px 12px !important;
+	}
+
+	body.wmn-mamsek-pos-route .wmn-item-details-modal .numpad-container > .numpad-btn {
+		height: 40px !important;
+		min-height: 40px !important;
+		max-height: 40px !important;
+	}
+}
+
+@media (max-width: 720px) {
+	body.wmn-mamsek-pos-route .wmn-mamsek-shell .wmn-item-details-layer {
+		inset-block-start: var(--wmn-pos-mobile-header-height, 52px) !important;
+		padding: 0 !important;
+	}
+
+	body.wmn-mamsek-pos-route .wmn-mamsek-shell.wmn-button-view-active .wmn-item-details-layer {
+		inset-block-start: 0 !important;
+	}
+
+	body.wmn-mamsek-pos-route .wmn-item-details-modal {
+		width: 100vw !important;
+		height: 100% !important;
+		max-width: 100vw !important;
+		max-height: 100% !important;
+		border: 0 !important;
+		border-radius: 0 !important;
+	}
+
+	body.wmn-mamsek-pos-route .wmn-item-details-modal .item-details-container {
+		min-height: 0 !important;
+		padding: 14px !important;
+	}
+
+	body.wmn-mamsek-pos-route .wmn-item-details-modal .form-container {
+		grid-template-columns: minmax(0, 1fr) !important;
+	}
+
+	body.wmn-mamsek-pos-route .wmn-item-details-modal .item-display > .item-image {
+		max-height: 260px !important;
+	}
+}
+
+@media (max-width: 420px) {
+	body.wmn-mamsek-pos-route .wmn-item-details-modal .item-display {
+		grid-template-columns: minmax(0, 1fr) 82px !important;
+	}
+
+	body.wmn-mamsek-pos-route .wmn-item-details-modal .item-display > .item-image {
+		width: 82px !important;
+		min-width: 82px !important;
+		max-width: 82px !important;
+		height: 68px !important;
+		min-height: 68px !important;
+		max-height: 68px !important;
+	}
 }
 
 /* Mobile cart drawer ------------------------------------------------------- */
@@ -3069,65 +3456,6 @@ body.rtl-mode .wmn-item-details-numpad-host {
 		place-items: center;
 	}
 
-	/* Item Details becomes a full-screen modal below the mobile navbar. */
-	.wmn-item-details-layer {
-		top: var(--wmn-pos-mobile-header-height, 52px);
-		padding: 0;
-	}
-
-	.wmn-mamsek-shell.wmn-button-view-active .wmn-item-details-layer {
-		top: 0;
-	}
-
-	.wmn-item-details-modal {
-		grid-template-columns: minmax(0, 1fr);
-		grid-template-rows: minmax(0, 1fr) auto;
-		width: 100vw;
-		height: 100%;
-		border: 0;
-		border-radius: 0;
-	}
-
-	.wmn-item-details-modal .item-details-container {
-		grid-template-columns: minmax(0, 1fr) !important;
-		grid-template-rows: auto auto auto auto auto !important;
-		grid-template-areas:
-			"header"
-			"preview"
-			"form"
-			"discount"
-			"serial" !important;
-		gap: 12px !important;
-	}
-
-	.wmn-item-details-modal .form-container {
-		grid-template-columns: minmax(0, 1fr) !important;
-	}
-
-	.wmn-item-details-modal .item-display > .item-image {
-		max-height: 260px;
-	}
-
-	.wmn-item-details-host {
-		min-height: 0;
-		overflow: auto;
-	}
-
-	.wmn-item-details-numpad-host {
-		max-height: 43dvh;
-		border-top: 1px solid var(--wmn-border-strong);
-		border-right: 0 !important;
-		border-left: 0 !important;
-	}
-
-	.wmn-item-details-modal .item-details-container {
-		min-height: 0 !important;
-		padding: 14px !important;
-	}
-
-	.wmn-item-details-modal .numpad-section {
-		padding: 10px 12px !important;
-	}
 }
 
 /* ==========================================================================
@@ -3319,607 +3647,6 @@ body.rtl-mode .wmn-item-details-numpad-host {
 
 
 
-/* =========================================================
-   WMN ITEM DETAILS - FINAL COMPACT RESPONSIVE LAYOUT
-   ========================================================= */
-
-/* ---------------------------------------------------------
-   Modal
-   --------------------------------------------------------- */
-
-.wmn-item-details-modal {
-    grid-template-columns:
-        minmax(0, 1fr)
-        minmax(280px, 320px) !important;
-}
-
-.wmn-item-details-host {
-    min-width: 0 !important;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-}
-
-
-/* Keep ERPNext in control of display state; only restyle the component while it is open. */
-
-.wmn-item-details-layer.is-open
-.wmn-item-details-modal
-.item-details-container {
-    display: grid !important;
-
-    grid-template-columns: minmax(0, 1fr) !important;
-
-    grid-template-rows:
-        auto
-        auto
-        auto
-        auto
-        auto !important;
-
-    grid-template-areas:
-        "header"
-        "preview"
-        "form"
-        "discount"
-        "serial" !important;
-
-    align-content: start !important;
-    align-items: start !important;
-
-    width: 100% !important;
-    min-width: 0 !important;
-    height: auto !important;
-    min-height: 100% !important;
-
-    padding: 16px 18px 18px !important;
-    gap: 10px !important;
-
-    overflow-x: hidden !important;
-    overflow-y: visible !important;
-}
-
-
-/* =========================================================
-   HEADER
-   ========================================================= */
-
-.wmn-item-details-modal .item-details-header {
-    grid-area: header !important;
-
-    display: flex !important;
-    align-items: center !important;
-    justify-content: space-between !important;
-
-    width: 100% !important;
-    min-width: 0 !important;
-
-    min-height: 42px !important;
-    margin: 0 !important;
-    padding: 0 0 10px !important;
-
-    border-bottom: 1px solid var(--wmn-border) !important;
-}
-
-.wmn-item-details-modal .item-details-header .label {
-    font-size: 18px !important;
-    font-weight: 750 !important;
-}
-
-.wmn-item-details-modal .item-details-header .close-btn {
-    flex: 0 0 34px !important;
-
-    width: 34px !important;
-    height: 34px !important;
-
-    display: grid !important;
-    place-items: center !important;
-}
-
-
-/* =========================================================
-   ITEM PREVIEW
-   Compact item summary with a small image
-   ========================================================= */
-
-.wmn-item-details-modal .item-display {
-    grid-area: preview !important;
-
-    display: grid !important;
-
-    grid-template-columns:
-        minmax(0, 1fr)
-        96px !important;
-
-    grid-template-rows: auto !important;
-
-    align-items: center !important;
-
-    width: 100% !important;
-    min-width: 0 !important;
-
-    margin: 0 !important;
-    padding: 4px 0 8px !important;
-
-    gap: 12px !important;
-
-    border: 0 !important;
-    border-radius: 0 !important;
-    background: transparent !important;
-}
-
-
-/* Item name, description, and price */
-
-.wmn-item-details-modal
-.item-display
-> .item-name-desc-price {
-    grid-column: 1 !important;
-    grid-row: 1 !important;
-
-    display: flex !important;
-    flex-direction: column !important;
-
-    justify-content: center !important;
-    align-items: flex-start !important;
-
-    width: 100% !important;
-    min-width: 0 !important;
-
-    margin: 0 !important;
-    padding: 0 !important;
-
-    gap: 2px !important;
-}
-
-.wmn-item-details-modal .item-display .item-name {
-    font-size: 17px !important;
-    line-height: 1.3 !important;
-    font-weight: 750 !important;
-}
-
-.wmn-item-details-modal .item-display .item-desc {
-    max-height: 34px !important;
-
-    font-size: 11px !important;
-    line-height: 17px !important;
-
-    overflow: hidden !important;
-}
-
-.wmn-item-details-modal .item-display .item-price {
-    margin-top: 2px !important;
-
-    font-size: 17px !important;
-    line-height: 1.3 !important;
-    font-weight: 800 !important;
-}
-
-
-/* =========================================================
-   SMALL IMAGE
-   ========================================================= */
-
-.wmn-item-details-modal
-.item-display
-> .item-image {
-    grid-column: 2 !important;
-    grid-row: 1 !important;
-
-    display: grid !important;
-    place-items: center !important;
-
-    width: 96px !important;
-    min-width: 96px !important;
-    max-width: 96px !important;
-
-    height: 78px !important;
-    min-height: 78px !important;
-    max-height: 78px !important;
-
-    aspect-ratio: auto !important;
-
-    margin: 0 !important;
-    padding: 0 !important;
-
-    overflow: hidden !important;
-
-    border: 1px solid var(--wmn-border) !important;
-    border-radius: 10px !important;
-
-    background: #f2f4f5 !important;
-}
-
-.wmn-item-details-modal
-.item-display
-> .item-image
-> img {
-    display: block !important;
-
-    width: 100% !important;
-    height: 100% !important;
-
-    min-width: 0 !important;
-    min-height: 0 !important;
-
-    max-width: none !important;
-    max-height: none !important;
-
-    object-fit: cover !important;
-    object-position: center !important;
-
-    margin: 0 !important;
-    padding: 0 !important;
-}
-
-.wmn-item-details-modal
-.item-display
-> .item-image
-.item-abbr {
-    display: grid !important;
-    place-items: center !important;
-
-    width: 100% !important;
-    height: 100% !important;
-
-    font-size: 24px !important;
-}
-
-
-/* =========================================================
-   FORM
-   Fields below the item summary
-   ========================================================= */
-
-.wmn-item-details-modal .form-container {
-    grid-area: form !important;
-
-    display: grid !important;
-
-    grid-template-columns:
-        repeat(2, minmax(0, 1fr)) !important;
-
-    align-content: start !important;
-    align-items: start !important;
-
-    width: 100% !important;
-    min-width: 0 !important;
-
-    margin: 0 !important;
-    padding: 0 !important;
-
-    column-gap: 12px !important;
-    row-gap: 8px !important;
-
-    overflow: hidden !important;
-}
-
-
-/* Field wrappers */
-
-.wmn-item-details-modal
-.form-container
-> [data-fieldname] {
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
-
-    margin: 0 !important;
-    padding: 0 !important;
-}
-
-.wmn-item-details-modal
-.form-container
-.frappe-control,
-
-.wmn-item-details-modal
-.form-container
-.form-group,
-
-.wmn-item-details-modal
-.form-container
-.control-input-wrapper,
-
-.wmn-item-details-modal
-.form-container
-.control-input,
-
-.wmn-item-details-modal
-.form-container
-.awesomplete {
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
-
-    margin: 0 !important;
-}
-
-
-/* Labels */
-
-.wmn-item-details-modal
-.form-container
-.control-label,
-
-.wmn-item-details-modal
-.form-container
-label {
-    margin: 0 0 3px !important;
-
-    font-size: 11px !important;
-    line-height: 16px !important;
-    font-weight: 650 !important;
-}
-
-
-/* Compact field controls */
-
-.wmn-item-details-modal
-.form-container
-.form-control,
-
-.wmn-item-details-modal
-.form-container
-.input-with-feedback {
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
-
-    height: 34px !important;
-    min-height: 34px !important;
-
-    padding: 4px 9px !important;
-
-    border-radius: 8px !important;
-
-    font-size: 13px !important;
-    line-height: 24px !important;
-
-    box-sizing: border-box !important;
-}
-
-
-/* Serial / Batch */
-
-.wmn-item-details-modal
-.form-container
-.serial_no-control,
-
-.wmn-item-details-modal
-.form-container
-.batch_no-control,
-
-.wmn-item-details-modal
-.form-container
-.auto-fetch-btn,
-
-.wmn-item-details-modal
-.form-container
-.grid-filler {
-    grid-column: 1 / -1 !important;
-}
-
-
-/* =========================================================
-   DISCOUNT / SERIAL AREA
-   ========================================================= */
-
-.wmn-item-details-modal .discount-section {
-    grid-area: discount !important;
-
-    width: 100% !important;
-    min-width: 0 !important;
-
-    margin: 0 !important;
-}
-
-.wmn-item-details-modal .discount-section:empty {
-    display: none !important;
-}
-
-.wmn-item-details-modal .serial-batch-container {
-    grid-area: serial !important;
-
-    width: 100% !important;
-    min-width: 0 !important;
-
-    margin: 0 !important;
-}
-
-
-/* =========================================================
-   NUMPAD - COMPACT
-   ========================================================= */
-
-.wmn-item-details-numpad-host {
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: stretch !important;
-    min-width: 0 !important;
-    min-height: 0 !important;
-    padding: 0 !important;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-}
-
-.wmn-item-details-modal .numpad-section {
-    flex: 1 1 auto !important;
-    flex-direction: column !important;
-    align-items: stretch !important;
-    width: 100% !important;
-    height: auto !important;
-    min-height: 0 !important;
-    margin: 0 !important;
-    padding: 14px 12px !important;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-    background: #f7f9fb !important;
-}
-
-.wmn-item-details-modal .numpad-totals {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: space-between !important;
-    flex: 0 0 auto !important;
-    width: 100% !important;
-    gap: 8px !important;
-    margin: 0 0 10px !important;
-    padding: 8px 10px !important;
-    border: 1px solid var(--wmn-border) !important;
-    border-radius: 10px !important;
-    background: #fff !important;
-    font-size: 12px !important;
-    line-height: 18px !important;
-    font-weight: 700 !important;
-}
-
-.wmn-item-details-modal .numpad-container {
-    display: grid !important;
-    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-    flex: 0 0 auto !important;
-    width: 100% !important;
-    gap: 7px !important;
-    margin: 0 0 10px !important;
-}
-
-.wmn-item-details-modal .numpad-btn {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    width: 100% !important;
-    height: 46px !important;
-    min-height: 46px !important;
-    max-height: 46px !important;
-    padding: 0 5px !important;
-    margin: 0 !important;
-    border: 1px solid var(--wmn-border-strong) !important;
-    border-radius: 8px !important;
-    background: #fff !important;
-    color: var(--wmn-ink) !important;
-    box-shadow: none !important;
-    font-size: 13px !important;
-    font-weight: 650 !important;
-    line-height: 1 !important;
-    text-align: center !important;
-    box-sizing: border-box !important;
-}
-
-.wmn-item-details-modal .numpad-btn:hover {
-    border-color: #9bcfcf !important;
-    background: #eefafa !important;
-}
-
-.wmn-item-details-modal .checkout-btn {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    flex: 0 0 auto !important;
-    width: 100% !important;
-    height: 40px !important;
-    min-height: 40px !important;
-    margin: 0 !important;
-    border: 0 !important;
-    border-radius: 8px !important;
-    background: var(--wmn-teal) !important;
-    color: #fff !important;
-    font-size: 14px !important;
-    font-weight: 700 !important;
-}
-
-
-/* =========================================================
-   MEDIUM / SMALL WIDTH
-   Move the numpad below the details when the viewport becomes narrow.
-   ========================================================= */
-
-@media (max-width: 900px) {
-
-    .wmn-item-details-modal {
-        grid-template-columns: minmax(0, 1fr) !important;
-
-        grid-template-rows:
-            minmax(0, 1fr)
-            auto !important;
-
-        width: calc(100vw - 16px) !important;
-
-        height:
-            calc(
-                100dvh -
-                var(--wmn-pos-header-height, 64px) -
-                16px
-            ) !important;
-    }
-
-
-    .wmn-item-details-host {
-        min-height: 0 !important;
-
-        overflow-x: hidden !important;
-        overflow-y: auto !important;
-    }
-
-
-    .wmn-item-details-numpad-host {
-        width: 100% !important;
-
-        max-height: 280px !important;
-
-        overflow-y: auto !important;
-
-        border-left: 0 !important;
-        border-right: 0 !important;
-
-        border-top:
-            1px solid
-            var(--wmn-border-strong) !important;
-    }
-
-
-    .wmn-item-details-modal .numpad-section {
-        padding: 10px 12px !important;
-    }
-
-
-    .wmn-item-details-modal
-    .wmn-item-details-numpad-host
-    .numpad-container
-    > .numpad-btn {
-        height: 40px !important;
-        min-height: 40px !important;
-        max-height: 40px !important;
-    }
-}
-
-
-/* Very narrow screens */
-
-@media (max-width: 420px) {
-
-    .wmn-item-details-modal .form-container {
-        grid-template-columns:
-            minmax(0, 1fr) !important;
-    }
-
-    .wmn-item-details-modal .item-display {
-        grid-template-columns:
-            minmax(0, 1fr)
-            82px !important;
-    }
-
-    .wmn-item-details-modal
-    .item-display
-    > .item-image {
-        width: 82px !important;
-        min-width: 82px !important;
-        max-width: 82px !important;
-
-        height: 68px !important;
-        min-height: 68px !important;
-        max-height: 68px !important;
-    }
-}
-
-
 /* Past order summary responsive sizing */
 
 .wmn-mamsek-shell
@@ -3976,139 +3703,6 @@ label {
 > .summary-btn {
     min-width: 0 !important;
 }
-
-/* Item Details link dropdown visibility */
-
-.wmn-item-details-modal
-.wmn-item-details-host
-.form-container {
-    overflow: visible !important;
-}
-
-.wmn-item-details-modal
-.wmn-item-details-host
-.form-container
-> *,
-
-.wmn-item-details-modal
-.wmn-item-details-host
-.form-container
-.frappe-control,
-
-.wmn-item-details-modal
-.wmn-item-details-host
-.form-container
-.form-group,
-
-.wmn-item-details-modal
-.wmn-item-details-host
-.form-container
-.control-input-wrapper,
-
-.wmn-item-details-modal
-.wmn-item-details-host
-.form-container
-.control-input,
-
-.wmn-item-details-modal
-.wmn-item-details-host
-.form-container
-.awesomplete {
-    overflow: visible !important;
-}
-
-.wmn-item-details-modal
-.wmn-item-details-host
-.awesomplete {
-    position: relative !important;
-}
-
-.wmn-item-details-modal
-.wmn-item-details-host
-.frappe-control:focus-within {
-    position: relative !important;
-    z-index: 2100 !important;
-}
-
-.wmn-item-details-modal
-.wmn-item-details-host
-.awesomplete
-> ul {
-    z-index: 2200 !important;
-    max-height: 220px !important;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-}
-
-
-/* Batch and Serial controls */
-
-.wmn-item-details-modal
-.wmn-item-details-host
-.serial-batch-container,
-
-.wmn-item-details-modal
-.wmn-item-details-host
-.serial-batch-container
-.frappe-control,
-
-.wmn-item-details-modal
-.wmn-item-details-host
-.serial-batch-container
-.form-group,
-
-.wmn-item-details-modal
-.wmn-item-details-host
-.serial-batch-container
-.control-input-wrapper,
-
-.wmn-item-details-modal
-.wmn-item-details-host
-.serial-batch-container
-.control-input,
-
-.wmn-item-details-modal
-.wmn-item-details-host
-.serial-batch-container
-.awesomplete {
-    position: relative !important;
-    overflow: visible !important;
-}
-
-
-/* Open Batch No suggestions upward */
-
-.wmn-item-details-modal
-.wmn-item-details-host
-.batch_no-control
-.awesomplete
-> ul {
-    top: auto !important;
-    bottom: calc(100% + 4px) !important;
-
-    width: 100% !important;
-    max-height: 220px !important;
-
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-
-    z-index: 2300 !important;
-}
-
-
-/* Keep Warehouse suggestions above surrounding controls */
-
-.wmn-item-details-modal
-.wmn-item-details-host
-[data-fieldname="warehouse"]:focus-within,
-
-.wmn-item-details-modal
-.wmn-item-details-host
-.warehouse-control:focus-within {
-    position: relative !important;
-    z-index: 2250 !important;
-}
-
 
 .wmn-mamsek-shell
 .past-order-list
