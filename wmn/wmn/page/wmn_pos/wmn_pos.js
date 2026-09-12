@@ -9499,45 +9499,42 @@ function wmn_is_mobile_pos_device() {
     ns.UI.Dialogs = ns.UI.Dialogs || {};
 
     const PAGE_STYLE_ID = "wmn-pos-page-stylesheet";
+    const PAGE_STYLE_HREF = "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet";
     let pageStylesheetPromise = null;
     let initialized = false;
 
-    function pageStylesheetIsLoaded() {
-        try {
-            return Boolean(
-                window.getComputedStyle(document.documentElement)
-                    .getPropertyValue("--wmn-teal")
-                    .trim()
-            );
-        } catch (e) {
-            return false;
-        }
-    }
-
-    function injectPageStylesheet(css) {
-        if (!css || document.getElementById(PAGE_STYLE_ID)) return;
-        const style = document.createElement("style");
-        style.id = PAGE_STYLE_ID;
-        style.textContent = css;
-        document.head.appendChild(style);
-    }
-
     function ensurePageStylesheet() {
-        if (pageStylesheetIsLoaded() || document.getElementById(PAGE_STYLE_ID)) {
+        const existing = document.getElementById(PAGE_STYLE_ID);
+        if (existing && existing.dataset.loaded === "1") {
             return Promise.resolve();
         }
 
+        if (existing && existing.__wmnLoadPromise) return existing.__wmnLoadPromise;
         if (pageStylesheetPromise) return pageStylesheetPromise;
 
-        pageStylesheetPromise = frappe.call({
-            method: "wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet",
-            freeze: false,
-        }).then((response) => {
-            injectPageStylesheet(response && response.message);
-        }).catch((error) => {
-            pageStylesheetPromise = null;
-            console.warn("WMN POS stylesheet load failed", error);
+        pageStylesheetPromise = new Promise((resolve) => {
+            const link = existing || document.createElement("link");
+            link.id = PAGE_STYLE_ID;
+            link.rel = "stylesheet";
+            link.href = PAGE_STYLE_HREF;
+            link.__wmnLoadPromise = pageStylesheetPromise;
+
+            link.addEventListener("load", () => {
+                link.dataset.loaded = "1";
+                resolve();
+            }, { once: true });
+
+            link.addEventListener("error", (error) => {
+                pageStylesheetPromise = null;
+                link.remove();
+                console.warn("WMN POS stylesheet load failed", error);
+                resolve();
+            }, { once: true });
+
+            if (!existing) document.head.appendChild(link);
         });
+        const link = document.getElementById(PAGE_STYLE_ID);
+        if (link) link.__wmnLoadPromise = pageStylesheetPromise;
 
         return pageStylesheetPromise;
     }

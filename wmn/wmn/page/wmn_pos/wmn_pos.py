@@ -1,4 +1,5 @@
 import frappe
+from werkzeug.wrappers import Response
 
 
 def _call(path, *args, **kwargs):
@@ -13,7 +14,9 @@ def _wmn_api(method, *args, **kwargs):
 def get_wmn_pos_stylesheet():
     css_path = frappe.get_app_path("wmn", "wmn", "page", "wmn_pos", "wmn_pos.css")
     with open(css_path, encoding="utf-8") as css_file:
-        return css_file.read()
+        response = Response(css_file.read(), content_type="text/css; charset=utf-8")
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return response
 
 
 @frappe.whitelist(allow_guest=False)
