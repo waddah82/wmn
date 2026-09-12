@@ -1220,35 +1220,9 @@ wmn_install_pos_pwa_app_css();
 
                     window.__wmn_stock_settings = stockSettings;
                     window.__wmn_pos_stock_settings = stockSettings;
-                    let wmnPrintFormat = data.wmn_print_format || data.wmn_print_format_doc || data.wmn_print_format_data || {};
-                    const wmnPrintFormatName =
-                        (wmnPrintFormat && wmnPrintFormat.name) ||
-                        posProfile.print_format ||
-                        liveSettings.print_format ||
-                        liveSettings.wmn_print_format ||
-                        "";
-
-                    if ((!wmnPrintFormat || !wmnPrintFormat.name) && wmnPrintFormatName) {
-                        try {
-                            const pfRes = await frappe.call({
-                                method: "frappe.client.get",
-                                args: {
-                                    doctype: "WMN Print Format",
-                                    name: wmnPrintFormatName
-                                },
-                                freeze: false,
-                            });
-                            wmnPrintFormat = pfRes && pfRes.message ? pfRes.message : {};
-                        } catch (e) {
-                            wmnPrintFormat = {};
-                        }
-                    }
-
                     let printFormatDoc = data.print_format_doc || data.print_format || data.erpnext_print_format || {};
                     const printFormatName =
                         (printFormatDoc && printFormatDoc.name) ||
-                        (wmnPrintFormat && (wmnPrintFormat.wmn_print_format || wmnPrintFormat.print_format || wmnPrintFormat.print_format_name)) ||
-                        wmnPrintFormatName ||
                         posProfile.print_format ||
                         liveSettings.print_format ||
                         "";
@@ -1270,20 +1244,7 @@ wmn_install_pos_pwa_app_css();
                     }
 
                     if (printFormatDoc && printFormatDoc.name) {
-                        wmnPrintFormat.print_format_doc = printFormatDoc;
-                        wmnPrintFormat.print_format_name = wmnPrintFormat.print_format_name || printFormatDoc.name;
-                        wmnPrintFormat.print_format_html =
-                            printFormatDoc.html ||
-                            printFormatDoc.custom_html ||
-                            printFormatDoc.print_format ||
-                            printFormatDoc.format_data ||
-                            wmnPrintFormat.print_format_html ||
-                            "";
-                    }
-
-                    if (wmnPrintFormat && wmnPrintFormat.name) {
-                        posProfile.wmn_print_format = wmnPrintFormat;
-                        posProfile.default_print_type = posProfile.default_print_type || wmnPrintFormat.default_print_type || wmnPrintFormat.print_type || "";
+                        posProfile.print_format_doc = printFormatDoc;
                     }
                     const openingEntries = []
                         .concat(data.pos_opening_entry ? [data.pos_opening_entry] : [])
@@ -1331,11 +1292,6 @@ wmn_install_pos_pwa_app_css();
                         { key: "payment_gateway_mappings", value: paymentGatewayMappings },
                         { key: "payment_gateway_mappings::" + (posProfile.pos_profile || posProfile.name || args.pos_profile || ""), value: paymentGatewayMappings },
                     ];
-
-                    if (wmnPrintFormat && wmnPrintFormat.name) {
-                        settingsRows.push({ key: "wmn_print_format", value: wmnPrintFormat });
-                        settingsRows.push({ key: "wmn_print_format::" + wmnPrintFormat.name, value: wmnPrintFormat });
-                    }
 
                     if (printFormatDoc && printFormatDoc.name) {
                         settingsRows.push({ key: "print_format_doc", value: printFormatDoc });

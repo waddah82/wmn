@@ -1,12 +1,11 @@
 import frappe
 from frappe import _
-from frappe.utils import cint, flt
+from frappe.utils import cint
 
 
 SETTINGS_DOCTYPE = "WMN POS Profile Settings"
 LEGACY_PROFILE_FIELDS = (
     "enable_auto_silent_print",
-    "wmn_silent_print_mode",
 )
 
 ALLOWED_FIELDS = {
@@ -19,7 +18,6 @@ ALLOWED_FIELDS = {
     "default_item_view",
     "show_item_cart_counter",
     "enable_auto_silent_print",
-    "wmn_silent_print_mode",
     "print_after_cashier_completion",
     "printing_method",
     "fallback_method",
@@ -79,7 +77,6 @@ SELECT_VALUES = {
     "promotion_coupon_policy": {"Promotion Wins", "Coupon Wins", "Combine"},
     "pricing_rule_promotion_coupon_policy": {"Pricing Rule Wins", "Promotion Wins", "Coupon Wins", "Combine"},
     "combined_discount_representation": {"Amount Only", "Percentage Equivalent (Net Total)"},
-    "wmn_silent_print_mode": {"raw_text", "html2canvas", "pdfmake"},
     "printing_method": {"legacy_bridge", "browser", "webusb", "webserial", "qz"},
     "fallback_method": {"none", "legacy_bridge", "browser", "webusb", "webserial", "qz"},
     "qz_connector_mode": {"legacy", "managed", "auto", "custom"},
@@ -190,8 +187,6 @@ def migrate_legacy_pos_profile_settings():
         doc.pos_profile = row.name
         if "enable_auto_silent_print" in legacy_fields:
             doc.enable_auto_silent_print = cint(row.get("enable_auto_silent_print") or 0)
-        if "wmn_silent_print_mode" in legacy_fields and row.get("wmn_silent_print_mode"):
-            doc.wmn_silent_print_mode = row.get("wmn_silent_print_mode")
         doc.insert(ignore_permissions=True)
 
 

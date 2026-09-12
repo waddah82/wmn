@@ -10,7 +10,6 @@ DEFAULT_MENU_ITEMS = (
     {"doctype_name": "WMN POS Supervisor", "section": "Setup", "display_order": 40},
     {"doctype_name": "WMN POS Supervisor Settings", "section": "Setup", "display_order": 50},
     {"doctype_name": "WMN Print Settings", "section": "Setup", "display_order": 60},
-    {"doctype_name": "WMN Print Format", "section": "Setup", "display_order": 70},
     {"doctype_name": "WMN Settings", "section": "Setup", "display_order": 80},
     {"doctype_name": "WMN POS Offline DocType", "section": "Setup", "display_order": 90},
     {"doctype_name": "WMN POS Dialog Script", "section": "Setup", "display_order": 100},
@@ -26,6 +25,8 @@ DEFAULT_MENU_ITEMS = (
     {"doctype_name": "WMN POS Supervisor Approval", "section": "Audit", "display_order": 320},
 )
 
+REMOVED_MENU_DOCTYPES = {"WMN " + "Print Format"}
+
 
 def ensure_default_pos_menu_settings():
     if not frappe.db.exists("DocType", "WMN POS Menu Settings"):
@@ -37,6 +38,15 @@ def ensure_default_pos_menu_settings():
     if not settings.initialized:
         settings.set("menu_items", [])
         changed = True
+
+    if settings.menu_items:
+        kept_items = [
+            row for row in settings.menu_items
+            if row.doctype_name not in REMOVED_MENU_DOCTYPES
+        ]
+        if len(kept_items) != len(settings.menu_items):
+            settings.set("menu_items", kept_items)
+            changed = True
 
     existing = {str(row.doctype_name or "") for row in (settings.menu_items or [])}
     for entry in DEFAULT_MENU_ITEMS:

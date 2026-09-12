@@ -15,7 +15,6 @@
         default_item_view: "Grid View",
         show_item_cart_counter: 0,
         enable_auto_silent_print: 0,
-        wmn_silent_print_mode: "raw_text",
         print_after_cashier_completion: 0,
         printing_method: "legacy_bridge",
         fallback_method: "none",
@@ -346,7 +345,6 @@
         const effective = getEffective(profile);
         target = target || {};
         target.enable_auto_silent_print = cint(effective.enable_auto_silent_print || 0);
-        target.wmn_silent_print_mode = effective.wmn_silent_print_mode || "raw_text";
         return target;
     }
 
