@@ -1,0 +1,9 @@
+{
+  "doctype": "Page",
+  "name": "wmn-pos",
+  "module": "Wmn",
+  "title": "WMN POS",
+  "page_name": "wmn-pos",
+  "standard": "Yes",
+  "icon": "fa fa-shopping-cart"
+}
