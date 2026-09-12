@@ -18,7 +18,7 @@
 
         try {
             const doc = iframe.contentDocument;
-            const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet";
+            const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/assets/wmn/css/wmn_pos.css";
             doc.open();
             doc.write("<!doctype html><html><head><meta charset='utf-8'><title>WMN Receipt</title>" +
                 "<link rel='stylesheet' href='" + stylesheet + "'>" +

@@ -603,7 +603,7 @@
             document.body.appendChild(iframe);
             const doc = iframe.contentDocument;
             doc.open();
-            const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet";
+            const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/assets/wmn/css/wmn_pos.css";
             const printClass = mode === "sheet" ? "wmn-print-sheet" : "wmn-print-single";
             doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(__("Barcode Labels"))}</title><link rel="stylesheet" href="${stylesheet}"></head><body class="wmn-barcode-label-print ${printClass}">${pageHtml}</body></html>`);
             doc.close();

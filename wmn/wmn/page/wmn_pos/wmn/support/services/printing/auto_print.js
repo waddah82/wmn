@@ -84,7 +84,7 @@
                 }
 
                 win.document.open();
-                const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet";
+                const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/assets/wmn/css/wmn_pos.css";
                 win.document.write("<!doctype html><html><head><meta charset='utf-8'><title>WMN Print Debug</title><link rel='stylesheet' href='" + stylesheet + "'></head><body>" + (html || "<h3 class='wmn-print-debug-empty'>HTML IS EMPTY</h3>") + "</body></html>");
                 win.document.close();
             } catch (e) {
@@ -350,7 +350,7 @@ function wmn_render_offline_print_template(template, doc) {
 <head>
 <meta charset="utf-8">
 <title>${wmn_escape_html(invoiceNo)}</title>
-<link rel="stylesheet" href="${window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet"}">
+<link rel="stylesheet" href="${window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/assets/wmn/css/wmn_pos.css"}">
 </head>
 <body class="wmn-pos-offline-receipt-print">
 <div class="receipt">

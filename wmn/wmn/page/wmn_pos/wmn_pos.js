@@ -7532,7 +7532,7 @@ wmn_install_pos_pwa_app_css();
             document.body.appendChild(iframe);
             const doc = iframe.contentDocument;
             doc.open();
-            const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet";
+            const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/assets/wmn/css/wmn_pos.css";
             const printClass = mode === "sheet" ? "wmn-print-sheet" : "wmn-print-single";
             doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(__("Barcode Labels"))}</title><link rel="stylesheet" href="${stylesheet}"></head><body class="wmn-barcode-label-print ${printClass}">${pageHtml}</body></html>`);
             doc.close();
@@ -9398,7 +9398,7 @@ function wmn_is_mobile_pos_device() {
 
     const PAGE_STYLE_ID = "wmn-pos-page-stylesheet";
     const PAGE_STYLE_VERSION = "20260912-item-details-modal";
-    const PAGE_STYLE_HREF = `/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet?v=${encodeURIComponent(PAGE_STYLE_VERSION)}`;
+    const PAGE_STYLE_HREF = `/assets/wmn/css/wmn_pos.css?v=${encodeURIComponent(PAGE_STYLE_VERSION)}`;
     let pageStylesheetPromise = null;
     let initialized = false;
 
@@ -13494,7 +13494,7 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                     <head>
                         <meta charset="utf-8">
                         <title>${frappe.utils.escape_html((doc && (doc.name || doc.custom_offline_id)) || "Offline Receipt")}</title>
-                        <link rel="stylesheet" href="${window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet"}">
+                        <link rel="stylesheet" href="${window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/assets/wmn/css/wmn_pos.css"}">
                     </head>
                     <body class="wmn-pos-raw-receipt-print">${html || ""}</body>
                 </html>
@@ -15459,7 +15459,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
 
         try {
             const doc = iframe.contentDocument;
-            const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet";
+            const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/assets/wmn/css/wmn_pos.css";
             doc.open();
             doc.write("<!doctype html><html><head><meta charset='utf-8'><title>WMN Receipt</title>" +
                 "<link rel='stylesheet' href='" + stylesheet + "'>" +
@@ -16642,7 +16642,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 }
 
                 win.document.open();
-                const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet";
+                const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/assets/wmn/css/wmn_pos.css";
                 win.document.write("<!doctype html><html><head><meta charset='utf-8'><title>WMN Print Debug</title><link rel='stylesheet' href='" + stylesheet + "'></head><body>" + (html || "<h3 class='wmn-print-debug-empty'>HTML IS EMPTY</h3>") + "</body></html>");
                 win.document.close();
             } catch (e) {
@@ -16908,7 +16908,7 @@ function wmn_render_offline_print_template(template, doc) {
 <head>
 <meta charset="utf-8">
 <title>${wmn_escape_html(invoiceNo)}</title>
-<link rel="stylesheet" href="${window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet"}">
+<link rel="stylesheet" href="${window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/assets/wmn/css/wmn_pos.css"}">
 </head>
 <body class="wmn-pos-offline-receipt-print">
 <div class="receipt">
@@ -25618,7 +25618,7 @@ function wmn_render_offline_print_template(template, doc) {
         link.id = "wmn-pos-page-stylesheet";
         link.rel = "stylesheet";
         link.href = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF
-            || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet";
+            || "/assets/wmn/css/wmn_pos.css";
         frameDocument.head.appendChild(link);
     }
 
