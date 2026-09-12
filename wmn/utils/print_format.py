@@ -1,6 +1,10 @@
 import base64
+import mimetypes
 import os
-from urllib.parse import quote
+import re
+from io import BytesIO
+from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 import frappe
 from frappe import _
@@ -29,16 +33,41 @@ def xpos_barcode(value, barcode_type="Code128"):
     if not value:
         return Markup("")
 
-    src = (
-        "/api/method/frappe.utils.barcode.get_barcode"
-        f"?barcode_type={quote(str(barcode_type or 'Code128'), safe='')}&value={quote(value, safe='')}"
-    )
+    src = _make_barcode_data_uri(value, barcode_type)
+    if not src:
+        return Markup('<span class="xpos-barcode-text">{0}</span>'.format(frappe.utils.escape_html(value)))
+
     return Markup(
         '<img class="xpos-barcode-img" src="{0}" alt="{1}" />'.format(
             src,
             frappe.utils.escape_html(value),
         )
     )
+
+
+def _make_barcode_data_uri(value, barcode_type="Code128"):
+    try:
+        from barcode import get_barcode_class
+        from barcode.writer import SVGWriter
+    except Exception:
+        return ""
+
+    try:
+        barcode_class = get_barcode_class(str(barcode_type or "Code128").lower())
+        stream = BytesIO()
+        barcode_class(value, writer=SVGWriter()).write(
+            stream,
+            options={
+                "module_width": 0.28,
+                "module_height": 9,
+                "quiet_zone": 1,
+                "write_text": False,
+            },
+        )
+        encoded = base64.b64encode(stream.getvalue()).decode()
+        return "data:image/svg+xml;base64," + encoded
+    except Exception:
+        return ""
 
 
 def _ensure_pdf_runtime_cache():
@@ -74,6 +103,63 @@ def _get_pdf_options(print_format):
     return options
 
 
+def _strip_pdf_network_dependencies(html):
+    html = str(html or "")
+    html = re.sub(r"<base\b[^>]*>", "", html, flags=re.IGNORECASE)
+    html = re.sub(
+        r"<link\b(?=[^>]*\brel=[\"'][^\"']*stylesheet[^\"']*[\"'])[^>]*>",
+        "",
+        html,
+        flags=re.IGNORECASE,
+    )
+    return _inline_local_image_sources(html)
+
+
+def _inline_local_image_sources(html):
+    def replace_src(match):
+        prefix, quote, src = match.group(1), match.group(2), match.group(3)
+        data_uri = _local_file_data_uri(src)
+        if not data_uri:
+            return match.group(0)
+        return f"{prefix}{quote}{data_uri}{quote}"
+
+    return re.sub(
+        r"(<img\b[^>]*?\bsrc\s*=\s*)([\"'])([^\"']+)\2",
+        replace_src,
+        html,
+        flags=re.IGNORECASE,
+    )
+
+
+def _local_file_data_uri(src):
+    path = _local_site_file_path(src)
+    if not path or not path.is_file():
+        return ""
+
+    mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    return "data:{0};base64,{1}".format(
+        mime_type,
+        base64.b64encode(path.read_bytes()).decode(),
+    )
+
+
+def _local_site_file_path(src):
+    src = str(src or "").strip()
+    if not src or src.startswith(("data:", "blob:")):
+        return None
+
+    parsed = urlparse(src)
+    path = unquote(parsed.path or src)
+
+    if path.startswith("/files/"):
+        return Path(frappe.get_site_path("public", "files", path.removeprefix("/files/").lstrip("/")))
+    if path.startswith("/private/files/"):
+        return Path(
+            frappe.get_site_path("private", "files", path.removeprefix("/private/files/").lstrip("/"))
+        )
+    return None
+
+
 @frappe.whitelist()
 def create_pdf(doctype=None, name=None, print_format=None, doc=None, no_letterhead=1, print_type="RECEIPT"):
     if not doctype or not name:
@@ -90,6 +176,7 @@ def create_pdf(doctype=None, name=None, print_format=None, doc=None, no_letterhe
         doc=doc,
         no_letterhead=cint(no_letterhead),
     )
+    html = _strip_pdf_network_dependencies(html)
     pdf_options = _get_pdf_options(selected_format)
     _ensure_pdf_runtime_cache()
     pdf = get_pdf(html, options=pdf_options)
