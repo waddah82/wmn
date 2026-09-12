@@ -26,6 +26,23 @@
             }
         }
 
+        async function wmn_get_cached_wmn_print_format(formatName) {
+            try {
+                if (!window.wmnPOSOffline || !window.wmnPOSOffline.getSetting) return null;
+
+                let cached = null;
+                if (formatName) {
+                    cached = await window.wmnPOSOffline.getSetting("wmn_print_format::" + formatName);
+                }
+                if (!cached) {
+                    cached = await window.wmnPOSOffline.getSetting("wmn_print_format");
+                }
+                return cached || null;
+            } catch (e) {
+                return null;
+            }
+        }
+
         function wmn_get_raw_value(scope, path) {
             path = String(path || "").trim();
             if (!path) return "";
@@ -89,9 +106,48 @@
             return Array.from(String(value || "")).slice(0, Math.max(0, width)).join("");
         }
 
-        async function wmn_get_raw_print_template(doc) {
+        async function wmn_get_raw_print_template(doc, options = {}) {
             const settings = (window.cur_pos && window.cur_pos.settings) || {};
             const formatName = settings.print_format || (doc && doc.print_format) || "";
+            const source = String(options.source || "erpnext_print_format").trim().toLowerCase();
+
+            if (source === "wmn_raw") {
+                let wmnPrintFormat = await wmn_get_cached_wmn_print_format(formatName) || {};
+
+                if ((!wmnPrintFormat || !wmnPrintFormat.name) && formatName && window.frappe && frappe.call && navigator.onLine !== false) {
+                    try {
+                        const res = await frappe.call({
+                            method: "frappe.client.get",
+                            args: {
+                                doctype: "WMN Print Format",
+                                name: formatName
+                            },
+                            freeze: false,
+                        });
+                        wmnPrintFormat = res && res.message ? res.message : {};
+                    } catch (e) {
+                        wmnPrintFormat = {};
+                    }
+                }
+
+                const template =
+                    (wmnPrintFormat && (
+                        wmnPrintFormat.raw_template_code ||
+                        wmnPrintFormat.raw_template ||
+                        wmnPrintFormat.raw_receipt_template
+                    )) ||
+                    "";
+
+                return {
+                    printFormat: wmnPrintFormat && wmnPrintFormat.name
+                        ? wmnPrintFormat
+                        : { name: formatName, print_format: formatName },
+                    printFormatDoc: null,
+                    template,
+                    printType: (wmnPrintFormat && (wmnPrintFormat.default_print_type || wmnPrintFormat.print_type)) || "RECEIPT"
+                };
+            }
+
             let printFormatDoc = await wmn_get_cached_print_format_doc(formatName) || {};
 
             if ((!printFormatDoc || !printFormatDoc.name) && formatName && window.frappe && frappe.call && navigator.onLine !== false) {

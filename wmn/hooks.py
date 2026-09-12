@@ -299,6 +299,10 @@ fixtures = [
         "filters": [["module", "in", ["Wmn"]]]
     },
     {
+        "doctype": "WMN Print Format",
+        "filters": [["print_format", "!=", ""]]
+    },
+    {
         "doctype": "Party Type",
         "filters": [
             ["name", "in", ["Receivable", "Payable"]]

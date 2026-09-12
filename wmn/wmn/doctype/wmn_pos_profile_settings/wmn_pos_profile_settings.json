@@ -21,6 +21,7 @@
   "section_2",
   "enable_auto_silent_print",
   "print_after_cashier_completion",
+  "receipt_print_format_source",
   "printing_method",
   "fallback_method",
   "copies",
@@ -159,6 +160,14 @@
    "fieldtype": "Check",
    "default": "0",
    "description": "When enabled, a cashier handoff invoice is printed again after final completion. The handoff print remains unchanged."
+  },
+  {
+   "fieldname": "receipt_print_format_source",
+   "label": "Receipt Print Format Source",
+   "fieldtype": "Select",
+   "options": "ERPNext Print Format\nWMN Raw Print Format",
+   "default": "ERPNext Print Format",
+   "description": "Choose whether POS receipts are rendered by the selected ERPNext Print Format or by the linked WMN Print Format RAW template."
   },
   {
    "fieldname": "printing_method",

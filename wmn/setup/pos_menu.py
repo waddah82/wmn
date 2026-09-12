@@ -10,6 +10,7 @@ DEFAULT_MENU_ITEMS = (
     {"doctype_name": "WMN POS Supervisor", "section": "Setup", "display_order": 40},
     {"doctype_name": "WMN POS Supervisor Settings", "section": "Setup", "display_order": 50},
     {"doctype_name": "WMN Print Settings", "section": "Setup", "display_order": 60},
+    {"doctype_name": "WMN Print Format", "section": "Setup", "display_order": 70},
     {"doctype_name": "WMN Settings", "section": "Setup", "display_order": 80},
     {"doctype_name": "WMN POS Offline DocType", "section": "Setup", "display_order": 90},
     {"doctype_name": "WMN POS Dialog Script", "section": "Setup", "display_order": 100},
@@ -25,7 +26,7 @@ DEFAULT_MENU_ITEMS = (
     {"doctype_name": "WMN POS Supervisor Approval", "section": "Audit", "display_order": 320},
 )
 
-REMOVED_MENU_DOCTYPES = {"WMN " + "Print Format"}
+REMOVED_MENU_DOCTYPES = set()
 
 
 def ensure_default_pos_menu_settings():
