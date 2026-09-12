@@ -219,29 +219,29 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                     const erpName = row.erpnext_name || row.server_name || "";
                     const pendingPaymentCount = pendingPaymentCounts.get(String(row.offline_id || "")) || 0;
                     const syncAction = status === "draft_synced"
-                        ? `<span class="text-muted" style="display:inline-block;padding:4px 8px;">${wmn_t("Draft Synced", "تمت مزامنة المسودة")}</span>`
+                        ? `<span class="text-muted wmn-offline-invoice-status">${wmn_t("Draft Synced", "تمت مزامنة المسودة")}</span>`
                         : status === "synced"
                             ? (pendingPaymentCount > 0
                                 ? `<button class="btn btn-xs btn-primary wmn-sync-one" data-idx="${idx}">${wmn_t("Sync Payment", "مزامنة الدفع")}</button>`
-                                : `<span class="text-muted" style="display:inline-block;padding:4px 8px;">${wmn_t("Synced", "تمت المزامنة")}</span>`)
+                                : `<span class="text-muted wmn-offline-invoice-status">${wmn_t("Synced", "تمت المزامنة")}</span>`)
                         : status === "syncing"
                             ? `<button class="btn btn-xs btn-primary wmn-sync-one" data-idx="${idx}" disabled>${wmn_t("Syncing...", "جاري المزامنة...")}</button>`
                             : `<button class="btn btn-xs btn-primary wmn-sync-one" data-idx="${idx}">${wmn_t("Sync", "مزامنة")}</button>`;
 
                     return `
                         <tr data-offline-id="${frappe.utils.escape_html(id)}">
-                            <td style="min-width:160px;">
-                                <div style="font-weight:700;">${frappe.utils.escape_html(id)}</div>
-                                ${erpName ? `<div style="font-size:12px;color:#16a34a;">ERP: ${frappe.utils.escape_html(erpName)}</div>` : ""}
+                            <td class="wmn-offline-invoice-id">
+                                <div class="wmn-font-bold">${frappe.utils.escape_html(id)}</div>
+                                ${erpName ? `<div class="wmn-offline-invoice-erp">ERP: ${frappe.utils.escape_html(erpName)}</div>` : ""}
                             </td>
                             <td>${frappe.utils.escape_html(customer)}</td>
-                            <td style="white-space:nowrap;">${frappe.utils.escape_html(money(total, currency))}</td>
-                            <td style="white-space:nowrap;">
+                            <td class="wmn-offline-invoice-nowrap">${frappe.utils.escape_html(money(total, currency))}</td>
+                            <td class="wmn-offline-invoice-nowrap">
                                 ${statusBadge(status)}
-                                ${pendingPaymentCount > 0 ? `<div style="margin-top:4px;font-size:11px;color:#b45309;">${wmn_t("Pending payment", "دفع معلق")}: ${pendingPaymentCount}</div>` : ""}
+                                ${pendingPaymentCount > 0 ? `<div class="wmn-offline-pending-payment">${wmn_t("Pending payment", "دفع معلق")}: ${pendingPaymentCount}</div>` : ""}
                             </td>
-                            <td style="white-space:nowrap;font-size:12px;color:#6b7280;">${frappe.utils.escape_html(created)}</td>
-                            <td style="white-space:nowrap;text-align:left;">
+                            <td class="wmn-offline-invoice-created">${frappe.utils.escape_html(created)}</td>
+                            <td class="wmn-offline-invoice-actions">
                                 ${syncAction}
                                 <button class="btn btn-xs btn-default wmn-edit-one" data-idx="${idx}">
                                     ${wmn_t("Edit", "تعديل")}
@@ -254,7 +254,7 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                     `;
                 }).join("") : `
                     <tr>
-                        <td colspan="6" style="text-align:center;color:#6b7280;padding:24px;">
+                        <td colspan="6" class="wmn-offline-invoice-empty">
                             ${wmn_t("No offline invoices saved", "\u0644\u0627 \u062A\u0648\u062C\u062F \u0641\u0648\u0627\u062A\u064A\u0631 \u0623\u0648\u0641\u0644\u0627\u064A\u0646 \u0645\u062D\u0641\u0648\u0638\u0629")}
                         </td>
                     </tr>
@@ -275,31 +275,31 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                             fieldtype: "HTML",
                             fieldname: "offline_invoices_html",
                             options: `
-                                <div class="wmn-offline-invoices-dialog" style="direction:inherit;">
-                                    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+                                <div class="wmn-offline-invoices-dialog">
+                                    <div class="wmn-offline-invoice-head">
                                         <div>
-                                            <div style="font-weight:700;font-size:16px;">${wmn_t("Invoices saved in IndexedDB", "\u0627\u0644\u0641\u0648\u0627\u062A\u064A\u0631 \u0627\u0644\u0645\u062D\u0641\u0648\u0638\u0629 \u0641\u064A IndexedDB")}</div>
-                                            <div style="color:#6b7280;font-size:13px;">
+                                            <div class="wmn-offline-invoice-title">${wmn_t("Invoices saved in IndexedDB", "\u0627\u0644\u0641\u0648\u0627\u062A\u064A\u0631 \u0627\u0644\u0645\u062D\u0641\u0648\u0638\u0629 \u0641\u064A IndexedDB")}</div>
+                                            <div class="wmn-offline-invoice-muted">
                                                 ${wmn_t("Count", "\u0627\u0644\u0639\u062F\u062F")}: <span class="wmn-offline-invoices-count">0</span>
                                             </div>
                                         </div>
-                                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                        <div class="wmn-inline-toolbar">
                                             <button class="btn btn-sm btn-default wmn-refresh-list">${wmn_t("Refresh", "\u062A\u062D\u062F\u064A\u062B")}</button>
                                             <button class="btn btn-sm btn-primary wmn-sync-all">${wmn_t("Sync All", "\u0645\u0632\u0627\u0645\u0646\u0629 \u0627\u0644\u0643\u0644")}</button>
                                             <button class="btn btn-sm btn-danger wmn-delete-all">${wmn_t("Delete All", "\u0645\u0633\u062D \u0627\u0644\u0643\u0644")}</button>
                                         </div>
                                     </div>
 
-                                    <div style="max-height:65vh;overflow:auto;border:1px solid #e5e7eb;border-radius:10px;">
-                                        <table class="table table-bordered table-hover" style="margin:0;">
-                                            <thead style="position:sticky;top:0;background:#f8fafc;z-index:1;">
+                                    <div class="wmn-table-scroll-panel tall">
+                                        <table class="table table-bordered table-hover wmn-table-flush">
+                                            <thead class="wmn-sticky-table-head">
                                                 <tr>
                                                     <th>${wmn_t("Offline ID", "\u0631\u0642\u0645 \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646")}</th>
                                                     <th>${wmn_t("Customer", "\u0627\u0644\u0639\u0645\u064A\u0644")}</th>
                                                     <th>${wmn_t("Total", "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A")}</th>
                                                     <th>${wmn_t("Status", "\u0627\u0644\u062D\u0627\u0644\u0629")}</th>
                                                     <th>${wmn_t("Created", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0625\u0646\u0634\u0627\u0621")}</th>
-                                                    <th style="text-align:left;">${wmn_t("Actions", "\u0627\u0644\u0625\u062C\u0631\u0627\u0621\u0627\u062A")}</th>
+                                                    <th class="text-left">${wmn_t("Actions", "\u0627\u0644\u0625\u062C\u0631\u0627\u0621\u0627\u062A")}</th>
                                                 </tr>
                                             </thead>
                                             <tbody class="wmn-offline-invoices-body"></tbody>
@@ -479,7 +479,7 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                     if ($target.find(".wmn-offline-invoices-btn").length) return true;
 
                     const $btn = $(`
-                        <button class="btn btn-sm btn-default wmn-offline-invoices-btn" style="margin-inline-start:6px;">
+                        <button class="btn btn-sm btn-default wmn-offline-invoices-btn wmn-btn-inline-start">
                             ${wmn_t("Offline Invoices", "\u0641\u0648\u0627\u062A\u064A\u0631 \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646")}
                         </button>
                     `);
@@ -487,7 +487,7 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                     $btn.on("click", () => openManagerDialog());
 
                     const $printerBtn = $(`
-                        <button class="btn btn-sm btn-default wmn-printer-settings-btn" style="margin-inline-start:6px;">
+                        <button class="btn btn-sm btn-default wmn-printer-settings-btn wmn-btn-inline-start">
                             ${wmn_t("Printer", "الطابعة")}
                         </button>
                     `);

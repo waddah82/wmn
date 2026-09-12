@@ -84,10 +84,10 @@
                     }
 
                     const receiptHtml = receiptNo
-                        ? `<div class="wmn-summary-receipt-number" style="display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;font-weight:600;direction:ltr"><span>R NO :</span><strong style="font-family:monospace">${frappe.utils.escape_html(receiptNo)}</strong></div>`
+                        ? `<div class="wmn-summary-receipt-number"><span>R NO :</span><strong>${frappe.utils.escape_html(receiptNo)}</strong></div>`
                         : "";
 
-                    return `<div class="wmn-summary-receipt-identity" style="flex:0 1 230px;min-width:150px;max-width:230px;text-align:center;align-self:center;padding:0 10px;box-sizing:border-box;direction:ltr">${receiptHtml}<div class="wmn-summary-barcode-wrap" style="margin:4px auto 0;max-width:220px">${barcodeHtml}</div></div>`;
+                    return `<div class="wmn-summary-receipt-identity">${receiptHtml}<div class="wmn-summary-barcode-wrap">${barcodeHtml}</div></div>`;
                 },
 
         bind_events() {

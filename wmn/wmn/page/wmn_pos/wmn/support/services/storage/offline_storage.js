@@ -121,35 +121,6 @@
         registerWMNPOSServiceWorker();
 
 function wmn_install_pos_pwa_app_css() {
-    if (window.__wmn_pos_pwa_app_css_installed) return;
-    window.__wmn_pos_pwa_app_css_installed = true;
-
-    const style = document.createElement("style");
-    style.id = "wmn-pos-pwa-app-css";
-
-    style.textContent = `
-    @media (display-mode: standalone) {
-            body > div.main-section > div.sticky-top {
-                display: none !important;
-            }
-            body > div.global-workspace-header {
-                display: none !important;
-            }
-            .page-head {
-                display: none !important;
-            }
-
-            #page-point-of-sale .page-body,
-            #page-point-of-sale .layout-main-section,
-            #page-point-of-sale .point-of-sale-app {
-                padding-top: 0 !important;
-                margin-top: 0 !important;
-            }
-        }
-    `;
-
-    document.head.appendChild(style);
-
     const isStandalone =
         window.matchMedia("(display-mode: standalone)").matches ||
         window.navigator.standalone === true;

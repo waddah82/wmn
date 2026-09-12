@@ -34,6 +34,9 @@ files and rebuild the bundle.
 - `wmn_pos.css`
   - Page-owned CSS loaded by the WMN Desk page bootstrap. Do not put WMN POS
     layout CSS in shared public POS assets.
+  - Keep static page and feature styles here only. Source JS should toggle
+    classes/data or set CSS variables for dynamic values, not inject `<style>`
+    blocks or inline `style` attributes.
 - `wmn_pos.py`
   - Page-owned Python endpoint boundary used by the browser page.
 - `wmn_pos.json`

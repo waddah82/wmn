@@ -13,24 +13,16 @@
     async function printHtml(html) {
         const iframe = document.createElement("iframe");
         iframe.setAttribute("aria-hidden", "true");
-        Object.assign(iframe.style, {
-            position: "fixed",
-            right: "0",
-            bottom: "0",
-            width: "1px",
-            height: "1px",
-            border: "0",
-            opacity: "0",
-            pointerEvents: "none",
-        });
+        iframe.className = "wmn-hidden-print-frame";
         document.body.appendChild(iframe);
 
         try {
             const doc = iframe.contentDocument;
+            const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet";
             doc.open();
             doc.write("<!doctype html><html><head><meta charset='utf-8'><title>WMN Receipt</title>" +
-                "<style>html,body{margin:0;padding:0;background:#fff} @media print{body{margin:0}}</style>" +
-                "</head><body>" + String(html || "") + "</body></html>");
+                "<link rel='stylesheet' href='" + stylesheet + "'>" +
+                "</head><body class='wmn-browser-print-body'>" + String(html || "") + "</body></html>");
             doc.close();
             await wait(120);
             iframe.contentWindow.focus();
@@ -46,12 +38,12 @@
         const escaped = window.frappe?.utils?.escape_html
             ? frappe.utils.escape_html(String(rawText || ""))
             : String(rawText || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-        return "<pre style='font-family:monospace;white-space:pre-wrap;margin:0;padding:4mm;font-size:11px'>" + escaped + "</pre>";
+        return "<pre class='wmn-browser-print-raw'>" + escaped + "</pre>";
     }
 
     async function printImage(base64) {
         const src = "data:image/png;base64," + String(base64 || "").replace(/^data:image\/[^;]+;base64,/, "");
-        return printHtml("<img alt='Receipt' src='" + src + "' style='display:block;max-width:100%;height:auto;margin:0 auto'>");
+        return printHtml("<img class='wmn-browser-print-image' alt='Receipt' src='" + src + "'>");
     }
 
     async function printPdf(base64) {

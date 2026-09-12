@@ -484,22 +484,9 @@
                             if (!groups.length) return;
 
                             const html = `
-                                <div class="wmn-item-group-buttons" style="
-                                    grid-column: 1 / -1;
-                                    display:flex;
-                                    gap:8px;
-                                    overflow-x:auto;
-                                    overflow-y:hidden;
-                                    padding:8px 2px 4px 2px;
-                                    margin-top:6px;
-                                    min-height:42px;
-                                    white-space:nowrap;
-                                    align-items:center;
-                                    scrollbar-width:thin;
-                                ">
+                                <div class="wmn-item-group-buttons">
                                     <button type="button"
                                         class="btn btn-xs btn-primary wmn-item-group-btn active"
-                                        style="flex:0 0 auto; height:28px;"
                                         data-item-group="">
                                         ${__("All")}
                                     </button>
@@ -507,7 +494,6 @@
                                     ${groups.map(g => `
                                         <button type="button"
                                             class="btn btn-xs btn-default wmn-item-group-btn"
-                                            style="flex:0 0 auto; height:28px;"
                                             data-item-group="${frappe.utils.escape_html(g)}">
                                             ${frappe.utils.escape_html(__(g))}
                                         </button>
@@ -1965,7 +1951,7 @@
                         if (statusField?.$wrapper) {
                             const profileName = repo?.resolveProfile?.() || "";
                             const source = status.has_local_override ? __("Browser preference is active") : __("Using POS Profile defaults");
-                            statusField.$wrapper.html(`<div class="alert alert-light border" style="margin:0;padding:10px 12px"><strong>${frappe.utils.escape_html(profileName || __("POS Profile"))}</strong><br>${source}</div>`);
+                            statusField.$wrapper.html(`<div class="alert alert-light border wmn-alert-compact"><strong>${frappe.utils.escape_html(profileName || __("POS Profile"))}</strong><br>${source}</div>`);
                         }
                         return dialog;
                     },
@@ -2628,75 +2614,6 @@
         if (initializeCore) initializeCore.apply(instance, args);
         if (initializeUI) initializeUI.apply(instance, args);
     }
-
-    const styleId = 'wmn-button-mode-styles';
-            if (!document.getElementById(styleId)) {
-                const style = document.createElement('style');
-                style.id = styleId;
-                style.textContent = `
-
-
-                    .items-container.wmn-button-mode .item-wrapper {
-                        cursor: pointer;
-                        transition: all 0.2s ease;
-                        text-align: center;
-                    }
-
-                    .items-container.wmn-button-mode .item-wrapper:hover {
-                        transform: translateY(-2px);
-                        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-                        border-color: var(--primary-color);
-                    }
-
-
-                    .items-container.wmn-button-mode .item-wrapper .item-display,
-                    .items-container.wmn-button-mode .item-wrapper .indicator-pill {
-                        display: none !important;
-                    }
-
-
-                    .items-container.wmn-button-mode .item-wrapper .item-detail .item-rate {
-                        display: block;
-                        margin-top: 2px;
-                        font-size: 11px;
-                        line-height: 14px;
-                    }
-    .items-container.wmn-button-mode .item-wrapper {
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
-        justify-content: center !important;
-        text-align: center !important;
-    }
-    .items-container.wmn-button-mode {
-        display: grid;
-        grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
-        gap: 1px;
-        padding: 2px;
-        padding-top: 1px;
-        overflow-y: scroll;
-        overflow-x: hidden;
-        white-space: normal !important;
-        font-weight: 600 !important;
-        overflow: auto;
-        text-overflow: ellipsis;
-        max-width: 100%;
-        vertical-align: middle;
-    }
-
-                    .items-container.wmn-button-mode .item-wrapper .item-name {
-                        white-space: normal !important;
-                        text-align: center !important;
-                        font-weight: 600 !important;
-                    }
-
-
-                    .items-container.wmn-button-mode .item-wrapper .flex.items-center {
-                        display: none !important;
-                    }
-                `;
-                document.head.appendChild(style);
-            }
 
     ns.ClassMethods.ItemSelector = { CoreMethods, UIMethods, FinalMethods, initialize };
 })();

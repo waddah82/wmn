@@ -231,7 +231,7 @@
         });
 
         const viewWidth = modules * moduleWidth;
-        return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewWidth} ${height}" width="${viewWidth}" height="${height}" style="max-width:100%;height:${height}px" preserveAspectRatio="xMidYMid meet" aria-label="${escapeHtml(value)}"><g fill="#000">${bars.join("")}</g></svg>`;
+        return `<svg class="wmn-invoice-barcode-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewWidth} ${height}" width="${viewWidth}" height="${height}" preserveAspectRatio="xMidYMid meet" aria-label="${escapeHtml(value)}"><g fill="#000">${bars.join("")}</g></svg>`;
     }
 
     function getPrintConfig() {
@@ -253,10 +253,10 @@
         const human = cint(config.invoice_barcode_human_readable === undefined ? 1 : config.invoice_barcode_human_readable) === 1;
         const svg = buildSvg(payload, { height });
         const label = human
-            ? `<div style="font:600 9px/1.2 monospace;letter-spacing:.15px;margin-top:3px;word-break:break-all">${escapeHtml(payload)}</div>`
+            ? `<div class="wmn-invoice-barcode-label">${escapeHtml(payload)}</div>`
             : "";
 
-        return `<div class="wmn-invoice-barcode" style="margin:10px auto 4px;text-align:center;max-width:360px;direction:ltr">${svg}${label}</div>`;
+        return `<div class="wmn-invoice-barcode">${svg}${label}</div>`;
     }
 
     function injectIntoHtml(html, doc, config) {
@@ -333,7 +333,7 @@
 
     function browserRawHtml(rawText, doc, config) {
         const escaped = escapeHtml(rawText).replace(/\n/g, "<br>");
-        return `<div style="font-family:monospace;white-space:pre-wrap;padding:4mm">${escaped}</div>${buildHtmlBlock(doc, config)}`;
+        return `<div class="wmn-print-raw-block">${escaped}</div>${buildHtmlBlock(doc, config)}`;
     }
 
     ns.Services.Barcode.InvoiceBarcode = {

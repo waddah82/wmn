@@ -5,15 +5,8 @@
     const feature = window.WMN_POS?.Features?.BarcodeScanQuantity;
     if (!feature) throw new Error("WMN BarcodeScanQuantity common owner must load before its UI owner.");
 
-    const STYLE_ID = "wmn-barcode-scan-quantity-style";
-    const STYLE_TEXT = ".wmn-category-search-row {\n    align-items: center;\n    gap: 8px;\n}\n\n.wmn-barcode-scan-actions {\n    display: flex;\n    align-items: center;\n    gap: 6px;\n    flex: 0 0 auto;\n}\n\n.wmn-barcode-scan-actions .btn {\n    min-height: 38px;\n    display: inline-flex;\n    align-items: center;\n    justify-content: center;\n    gap: 6px;\n    white-space: nowrap;\n}\n\n.wmn-barcode-scan-actions kbd {\n    min-width: 24px;\n    padding: 2px 5px;\n    border: 1px solid var(--gray-400, #c7c7c7);\n    border-radius: 5px;\n    background: var(--fg-color, #fff);\n    font-size: 11px;\n}\n\n.wmn-menu-search.wmn-qty-next-scan-armed {\n    border-width: 2px !important;\n    border-color: var(--orange-500, #f59e0b) !important;\n    background: var(--orange-50, #fff7ed) !important;\n    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18) !important;\n}\n\n.wmn-menu-search.wmn-qty-next-scan-armed .form-control {\n    background: var(--orange-50, #fff7ed) !important;\n}\n\n.wmn-qty-next-scan.is-armed {\n    border-width: 2px;\n    border-color: var(--orange-500, #f59e0b);\n    background: var(--orange-100, #ffedd5);\n    font-weight: 700;\n}\n\n.wmn-qty-next-scan-badge {\n    display: inline-flex;\n    align-items: center;\n    justify-content: center;\n    min-width: 30px;\n    padding: 1px 5px;\n    border-radius: 999px;\n    background: var(--orange-500, #f59e0b);\n    color: #fff;\n    font-size: 10px;\n    font-weight: 800;\n    letter-spacing: .04em;\n}\n\n@media (max-width: 860px) {\n    .wmn-category-search-row {\n        flex-wrap: wrap;\n    }\n\n    .wmn-menu-search {\n        flex: 1 1 190px !important;\n        width: auto !important;\n    }\n\n    .wmn-barcode-scan-actions {\n        flex: 1 1 auto;\n    }\n\n    .wmn-barcode-scan-actions .btn {\n        flex: 1 1 auto;\n    }\n\n    .wmn-camera-scan-label,\n    .wmn-qty-next-scan kbd {\n        display: none;\n    }\n}\n";
-
     function ensureStylesheet() {
-        if (document.getElementById(STYLE_ID)) return;
-        const style = document.createElement("style");
-        style.id = STYLE_ID;
-        style.textContent = STYLE_TEXT;
-        document.head.appendChild(style);
+        window.WMN_POS?.UI?.ensurePageStylesheet?.();
     }
 
     function getSearchShell(selector) {

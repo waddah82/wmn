@@ -286,7 +286,7 @@ window.WMN_POS.Source.ItemSelector = class {
         );
 
         this.item_group_field.$wrapper.find(".link-btn").append(
-            `<a class="btn-clear" tabindex="-1" style="display: inline-block;" title="${__("Clear Link")}">
+            `<a class="btn-clear wmn-inline-block" tabindex="-1" title="${__("Clear Link")}">
                 ${frappe.utils.icon("close", "xs", "es-icon")}
             </a>`
         );

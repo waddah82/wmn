@@ -743,7 +743,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             }
 
             const holder = document.createElement("div");
-            holder.className = "wmn-print-capture-holder";
+            holder.className = "wmn-print-capture-holder wmn-pdf-render-holder";
 
             /*
              * Important:
@@ -752,17 +752,6 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
              * versions return a white canvas for very far offscreen nodes.
              * We render it visibly at 0,0 for a few frames, capture it, then remove it.
              */
-            holder.style.position = "fixed";
-            holder.style.left = "0";
-            holder.style.top = "0";
-            holder.style.background = "#ffffff";
-            holder.style.overflow = "visible";
-            holder.style.zIndex = "2147483647";
-            holder.style.pointerEvents = "none";
-            holder.style.opacity = "1";
-            holder.style.visibility = "visible";
-            holder.style.display = "block";
-
             holder.innerHTML = renderedHtml;
             document.body.appendChild(holder);
 

@@ -148,9 +148,8 @@ window.WMN_POS.Source.ItemDetails = class {
             this.$item_image.html(
                 `<img
                     onerror="cur_pos.item_details.handle_broken_image(this)"
-                    class="h-full" src="${frappe.utils.escape_html(image)}"
-                    alt="${frappe.utils.escape_html(frappe.get_abbr(item_name))}"
-                    style="object-fit: cover;">`
+                    class="h-full wmn-object-fit-cover" src="${frappe.utils.escape_html(image)}"
+                    alt="${frappe.utils.escape_html(frappe.get_abbr(item_name))}">`
             );
         } else {
             this.$item_image.html(

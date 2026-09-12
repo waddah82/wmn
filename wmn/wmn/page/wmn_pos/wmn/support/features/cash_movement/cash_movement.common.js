@@ -89,10 +89,10 @@
             : [];
         const modeRows = byMode.length
             ? `
-                <div style="grid-column:1/-1;margin-top:4px;border-top:1px solid var(--border-color);padding-top:8px;">
+                <div class="wmn-cash-movement-wide wmn-cash-movement-section">
                     <strong>${__("By Mode of Payment")}</strong>
                     ${byMode.map((row) => `
-                        <div style="display:flex;justify-content:space-between;gap:8px;margin-top:4px;">
+                        <div class="wmn-cash-movement-row">
                             <span>${escapeText(row.mode_of_payment || "")}</span>
                             <span>${escapeText(amountText(row.net_cash_movement, currency))}</span>
                         </div>`).join("")}
@@ -100,13 +100,13 @@
             : "";
 
         return `
-            <div class="wmn-cash-movement-summary" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;padding:10px 0;">
+            <div class="wmn-cash-movement-summary">
                 <div><strong>${__("Cash In")}</strong><br>${escapeText(amountText(data.cash_in, currency))}</div>
                 <div><strong>${__("Cash Expense")}</strong><br>${escapeText(amountText(data.cash_expense, currency))}</div>
                 <div><strong>${__("Cash Withdrawal")}</strong><br>${escapeText(amountText(data.cash_withdrawal, currency))}</div>
                 <div><strong>${__("Net Cash Movement")}</strong><br>${escapeText(amountText(data.net_cash_movement, currency))}</div>
                 ${modeRows}
-                <div style="grid-column:1/-1"><strong>${__("Pending Offline")}</strong>: ${cint(pendingCount || 0)}</div>
+                <div class="wmn-cash-movement-wide"><strong>${__("Pending Offline")}</strong>: ${cint(pendingCount || 0)}</div>
             </div>`;
     }
 

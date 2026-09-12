@@ -3266,35 +3266,6 @@ var qz = (function() {
         registerWMNPOSServiceWorker();
 
 function wmn_install_pos_pwa_app_css() {
-    if (window.__wmn_pos_pwa_app_css_installed) return;
-    window.__wmn_pos_pwa_app_css_installed = true;
-
-    const style = document.createElement("style");
-    style.id = "wmn-pos-pwa-app-css";
-
-    style.textContent = `
-    @media (display-mode: standalone) {
-            body > div.main-section > div.sticky-top {
-                display: none !important;
-            }
-            body > div.global-workspace-header {
-                display: none !important;
-            }
-            .page-head {
-                display: none !important;
-            }
-
-            #page-point-of-sale .page-body,
-            #page-point-of-sale .layout-main-section,
-            #page-point-of-sale .point-of-sale-app {
-                padding-top: 0 !important;
-                margin-top: 0 !important;
-            }
-        }
-    `;
-
-    document.head.appendChild(style);
-
     const isStandalone =
         window.matchMedia("(display-mode: standalone)").matches ||
         window.navigator.standalone === true;
@@ -6264,8 +6235,6 @@ wmn_install_pos_pwa_app_css();
     const ns = window.WMN_RETAIL_TOOLS;
     ns.PriceChecker = ns.PriceChecker || {};
 
-    const STYLE_ID = "wmn-price-checker-style";
-
     function esc(value) {
         const text = String(value ?? "");
         return frappe.utils?.escape_html ? frappe.utils.escape_html(text) : text.replace(/[&<>"']/g, (ch) => ({
@@ -6274,34 +6243,7 @@ wmn_install_pos_pwa_app_css();
     }
 
     function ensureStyles() {
-        if (document.getElementById(STYLE_ID)) return;
-        const style = document.createElement("style");
-        style.id = STYLE_ID;
-        style.textContent = `
-            .wmn-price-checker-page{min-height:calc(100vh - 150px);display:flex;flex-direction:column;gap:18px;padding:18px;background:var(--bg-color,#f6f8fa)}
-            .wmn-price-checker-head{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
-            .wmn-price-checker-profile{min-width:220px;max-width:360px}
-            .wmn-price-checker-scan-wrap{position:relative;width:min(760px,100%);margin:8px auto 0}
-            .wmn-price-checker-scan{width:100%;height:64px;padding:0 22px;border:2px solid var(--border-color,#d8dce2);border-radius:16px;background:var(--card-bg,#fff);font-size:22px;font-weight:700;outline:none;box-shadow:0 8px 24px rgba(15,23,42,.06)}
-            .wmn-price-checker-scan:focus{border-color:var(--primary,#2490ef);box-shadow:0 0 0 4px rgba(36,144,239,.12)}
-            .wmn-price-checker-stage{flex:1;display:grid;place-items:center;min-height:390px}
-            .wmn-price-checker-idle,.wmn-price-checker-notfound{text-align:center;color:var(--text-muted,#687386);font-size:17px}
-            .wmn-price-checker-idle .icon,.wmn-price-checker-notfound .icon{font-size:64px;margin-bottom:12px}
-            .wmn-price-checker-card{width:min(980px,100%);display:grid;grid-template-columns:minmax(180px,280px) minmax(0,1fr);gap:28px;padding:28px;border:1px solid var(--border-color,#d8dce2);border-radius:20px;background:var(--card-bg,#fff);box-shadow:0 16px 46px rgba(15,23,42,.08)}
-            .wmn-price-checker-image{display:grid;place-items:center;min-height:240px;border:1px solid var(--border-color,#e5e7eb);border-radius:16px;background:#fff;overflow:hidden}
-            .wmn-price-checker-image img{width:100%;height:100%;max-height:300px;object-fit:contain}
-            .wmn-price-checker-image .placeholder{font-size:74px;opacity:.45}
-            .wmn-price-checker-group{display:inline-flex;width:max-content;max-width:100%;padding:5px 10px;border-radius:999px;background:rgba(36,144,239,.10);color:var(--primary,#2490ef);font-size:12px;font-weight:800}
-            .wmn-price-checker-name{margin:9px 0 5px;font-size:clamp(25px,4vw,40px);font-weight:900;line-height:1.15;color:var(--text-color,#1f2937)}
-            .wmn-price-checker-meta{color:var(--text-muted,#687386);font-size:13px;line-height:1.6}
-            .wmn-price-checker-price{margin-top:18px;font-size:clamp(36px,6vw,58px);font-weight:900;line-height:1;color:var(--primary,#2490ef)}
-            .wmn-price-checker-uom{margin-inline-start:7px;color:var(--text-muted,#687386);font-size:15px;font-weight:600}
-            .wmn-price-checker-stock{display:inline-flex;align-items:center;margin-top:18px;padding:7px 12px;border-radius:999px;font-size:13px;font-weight:800}
-            .wmn-price-checker-stock.in{background:#ecfdf3;color:#087443}.wmn-price-checker-stock.out{background:#fff1f2;color:#b42318}
-            .wmn-price-checker-source{margin-top:12px;color:var(--text-muted,#687386);font-size:11px}
-            @media(max-width:720px){.wmn-price-checker-page{padding:10px}.wmn-price-checker-card{grid-template-columns:1fr;padding:16px;gap:16px}.wmn-price-checker-image{min-height:180px}.wmn-price-checker-scan{height:56px;font-size:18px}.wmn-price-checker-profile{width:100%;max-width:none}}
-        `;
-        document.head.appendChild(style);
+        window.WMN_POS?.UI?.ensurePageStylesheet?.();
     }
 
     function shell() {
@@ -6357,7 +6299,7 @@ wmn_install_pos_pwa_app_css();
                     ${item.item_group ? `<span class="wmn-price-checker-group">${esc(item.item_group)}</span>` : ""}
                     <div class="wmn-price-checker-name">${esc(item.item_name || item.item_code)}</div>
                     <div class="wmn-price-checker-meta">${esc(item.item_code || "")}${item.brand ? ` · ${esc(item.brand)}` : ""}${item.barcode ? ` · ${esc(item.barcode)}` : ""}</div>
-                    ${item.description ? `<div class="wmn-price-checker-meta" style="margin-top:8px">${esc(item.description)}</div>` : ""}
+                    ${item.description ? `<div class="wmn-price-checker-meta wmn-price-checker-description">${esc(item.description)}</div>` : ""}
                     <div class="wmn-price-checker-price">${esc(rate)}<span class="wmn-price-checker-uom">/ ${esc(item.uom || item.stock_uom || "")}</span></div>
                     ${tracksAvailability ? `<div class="wmn-price-checker-stock ${inStock ? "in" : "out"}">${esc(inStock ? __("In Stock") : __("Out of Stock"))}${inStock ? ` · ${esc(qty)} ${esc(item.stock_uom || item.uom || "")}` : ""}</div>` : ""}
                     <div class="wmn-price-checker-source">${esc(item.warehouse || "")}${item.source ? ` · ${esc(item.source === "offline" ? __("Offline data") : __("Online data"))}` : ""}</div>
@@ -6993,7 +6935,6 @@ wmn_install_pos_pwa_app_css();
     const ns = window.WMN_RETAIL_TOOLS;
     ns.BarcodePrinting = ns.BarcodePrinting || {};
 
-    const STYLE_ID = "wmn-barcode-printing-style";
     const FRAPPE_AUTO = "__frappe_auto__";
     const FORMATS = [
         { value: FRAPPE_AUTO, label: "Frappe (Auto)" },
@@ -7018,24 +6959,7 @@ wmn_install_pos_pwa_app_css();
     }
 
     function ensureStyles() {
-        if (document.getElementById(STYLE_ID)) return;
-        const style = document.createElement("style");
-        style.id = STYLE_ID;
-        style.textContent = `
-            .wmn-barcode-page{display:grid;grid-template-columns:minmax(300px,390px) minmax(0,1fr);min-height:calc(100vh - 150px);border:1px solid var(--border-color,#d8dce2);border-radius:12px;overflow:hidden;background:var(--card-bg,#fff)}
-            .wmn-barcode-left{display:flex;flex-direction:column;min-width:0;border-inline-end:1px solid var(--border-color,#d8dce2);background:var(--bg-color,#f8fafc)}
-            .wmn-barcode-controls{padding:14px;border-bottom:1px solid var(--border-color,#d8dce2);display:grid;gap:9px}
-            .wmn-barcode-options{display:grid;grid-template-columns:1fr 1fr;gap:8px}.wmn-barcode-options .wide{grid-column:1/-1}
-            .wmn-barcode-page-custom{display:none;grid-template-columns:1fr 1fr;gap:8px}.wmn-barcode-page-custom.show{display:grid}.wmn-barcode-layout-summary{padding:7px 9px;border-radius:7px;background:var(--control-bg,#f3f5f7);line-height:1.55}
-            .wmn-barcode-results{flex:1;overflow:auto;padding:10px}.wmn-barcode-result{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;margin-bottom:6px;padding:9px 10px;border:1px solid var(--border-color,#d8dce2);border-radius:9px;background:#fff;text-align:start}.wmn-barcode-result:hover{border-color:var(--primary,#2490ef)}
-            .wmn-barcode-result strong,.wmn-barcode-row strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wmn-barcode-result small,.wmn-barcode-row small{color:var(--text-muted,#687386)}
-            .wmn-barcode-right{display:flex;flex-direction:column;min-width:0}.wmn-barcode-toolbar{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border-color,#d8dce2);flex-wrap:wrap}.wmn-barcode-toolbar .spacer{flex:1}
-            .wmn-barcode-selected{max-height:42vh;overflow:auto;padding:12px}.wmn-barcode-row{display:grid;grid-template-columns:minmax(180px,1fr) minmax(150px,260px) 90px 42px;gap:8px;align-items:center;margin-bottom:7px;padding:9px;border:1px solid var(--border-color,#d8dce2);border-radius:9px}
-            .wmn-barcode-preview-wrap{flex:1;min-height:260px;overflow:auto;padding:14px;background:var(--bg-color,#f8fafc);border-top:1px solid var(--border-color,#d8dce2)}.wmn-barcode-preview{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}.wmn-label-preview{display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;padding:1.5mm;border:1px dashed #b8c1cc;background:#fff;color:#111;text-align:center}.wmn-label-preview .name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;font-weight:800}.wmn-label-preview svg{max-width:95%;height:auto}.wmn-label-preview .price{font-size:10px;font-weight:900}
-            .wmn-barcode-empty{display:grid;place-items:center;min-height:180px;color:var(--text-muted,#687386);text-align:center}.wmn-barcode-custom{display:none;grid-template-columns:1fr 1fr;gap:8px}.wmn-barcode-custom.show{display:grid}
-            @media(max-width:900px){.wmn-barcode-page{grid-template-columns:1fr}.wmn-barcode-left{border-inline-end:0;border-bottom:1px solid var(--border-color,#d8dce2);max-height:48vh}.wmn-barcode-row{grid-template-columns:1fr}.wmn-barcode-toolbar{flex-wrap:wrap}}
-        `;
-        document.head.appendChild(style);
+        window.WMN_POS?.UI?.ensurePageStylesheet?.();
     }
 
     function shell() {
@@ -7052,7 +6976,7 @@ wmn_install_pos_pwa_app_css();
                             <select class="form-control wmn-barcode-print-mode"><option value="sheet" selected>${esc(__("Sheet / Grid"))}</option><option value="one_per_page">${esc(__("One Label Per Page"))}</option></select>
                             <select class="form-control wmn-barcode-page-size"><option value="A4" selected>A4</option><option value="A5">A5</option><option value="LETTER">Letter</option><option value="CUSTOM">${esc(__("Custom page"))}</option></select>
                             <div class="wmn-barcode-page-custom wide"><input type="number" min="20" max="1000" value="210" class="form-control wmn-barcode-page-width" placeholder="${esc(__("Page width mm"))}"><input type="number" min="20" max="1000" value="297" class="form-control wmn-barcode-page-height" placeholder="${esc(__("Page height mm"))}"></div>
-                            <label class="wide" style="display:flex;align-items:center;gap:7px;margin:0"><input type="checkbox" class="wmn-barcode-show-price" checked> ${esc(__("Show price on label"))}</label>
+                            <label class="wide wmn-barcode-show-price-label"><input type="checkbox" class="wmn-barcode-show-price" checked> ${esc(__("Show price on label"))}</label>
                             <div class="wmn-barcode-layout-summary wide small text-muted"></div>
                         </div>
                     </div>
@@ -7177,14 +7101,14 @@ wmn_install_pos_pwa_app_css();
             : (item.item_name || item.item_code);
         let svg = "";
         if (!value) {
-            svg = `<div style="font-size:8px;color:#b42318">${esc(__("No printable barcode for this item."))}</div>`;
+            svg = `<div class="wmn-barcode-error">${esc(__("No printable barcode for this item."))}</div>`;
         } else {
             try { svg = barcodeSvg(value, effectiveBarcodeFormat(item, options.format), options.dims); }
-            catch (error) { svg = `<div style="font-size:8px;color:#b42318">${esc(error?.message || __("Invalid barcode"))}</div>`; }
+            catch (error) { svg = `<div class="wmn-barcode-error">${esc(error?.message || __("Invalid barcode"))}</div>`; }
         }
         const canShowPrice = options.showPrice && (item.kind !== "manual" || item.has_manual_price);
         const price = canShowPrice ? `<div class="price">${esc(format_currency(Number(item.rate || 0), item.currency || undefined))}</div>` : "";
-        return `<div class="wmn-label-preview" style="width:${options.dims.width}mm;height:${options.dims.height}mm"><div class="name">${esc(title)}</div>${svg}${price}</div>`;
+        return `<div class="wmn-label-preview"><div class="name">${esc(title)}</div>${svg}${price}</div>`;
     }
 
     function validatePrintableItem(item, options) {
@@ -7347,6 +7271,8 @@ wmn_install_pos_pwa_app_css();
                 if (labels.length >= 12) break;
             }
             $preview.html(labels.slice(0, 12).join(""));
+            $preview[0]?.style?.setProperty("--wmn-label-width", `${opts.dims.width}mm`);
+            $preview[0]?.style?.setProperty("--wmn-label-height", `${opts.dims.height}mm`);
             $root.find(".wmn-barcode-count").text(`${total} ${__("label(s)")}`);
             updateLayoutControls();
         }
@@ -7358,8 +7284,8 @@ wmn_install_pos_pwa_app_css();
             }
             $results.html(state.results.map((item, index) => `
                 <button type="button" class="wmn-barcode-result" data-index="${index}">
-                    <span style="min-width:0"><strong>${esc(item.item_name || item.item_code)}</strong><small>${esc(item.item_code)}${item.barcodes?.length ? ` · ${item.barcodes.length} ${esc(__("barcode(s)"))}` : ""}</small></span>
-                    <span style="font-size:20px;color:var(--primary,#2490ef)">+</span>
+                    <span class="wmn-barcode-result-main"><strong>${esc(item.item_name || item.item_code)}</strong><small>${esc(item.item_code)}${item.barcodes?.length ? ` · ${item.barcodes.length} ${esc(__("barcode(s)"))}` : ""}</small></span>
+                    <span class="wmn-barcode-result-add">+</span>
                 </button>`).join(""));
         }
 
@@ -7602,20 +7528,21 @@ wmn_install_pos_pwa_app_css();
             const pages = ns.BarcodePrinting.PrintLayout.paginate(labels, layout.labelsPerPage);
             const pageHtml = pages.map((pageLabels) => `<section class="wmn-print-page">${pageLabels.join("")}</section>`).join("");
             const iframe = document.createElement("iframe");
-            iframe.style.position = "fixed";
-            iframe.style.width = "0";
-            iframe.style.height = "0";
-            iframe.style.border = "0";
-            iframe.style.right = "0";
-            iframe.style.bottom = "0";
+            iframe.className = "wmn-zero-print-frame";
             document.body.appendChild(iframe);
             const doc = iframe.contentDocument;
-            const sheetCss = mode === "sheet"
-                ? `.wmn-print-page{width:${layout.page.width}mm;height:${layout.page.height}mm;padding:${layout.margin}mm;display:grid;grid-template-columns:repeat(${layout.columns},${opts.dims.width}mm);grid-auto-rows:${opts.dims.height}mm;gap:${layout.gap}mm;align-content:start;justify-content:start;overflow:hidden;break-after:page;page-break-after:always}.wmn-print-page:last-child{break-after:auto;page-break-after:auto}`
-                : `.wmn-print-page{width:${opts.dims.width}mm;height:${opts.dims.height}mm;display:block;overflow:hidden;break-after:page;page-break-after:always}.wmn-print-page:last-child{break-after:auto;page-break-after:auto}`;
             doc.open();
-            doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(__("Barcode Labels"))}</title><style>@page{size:${layout.page.width}mm ${layout.page.height}mm;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:Arial,sans-serif}${sheetCss}.wmn-label-preview{width:${opts.dims.width}mm!important;height:${opts.dims.height}mm!important;padding:1.5mm;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;text-align:center}.name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;font-weight:800}.wmn-label-preview svg{max-width:95%;height:auto}.price{font-size:10px;font-weight:900}</style></head><body>${pageHtml}</body></html>`);
+            const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet";
+            const printClass = mode === "sheet" ? "wmn-print-sheet" : "wmn-print-single";
+            doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(__("Barcode Labels"))}</title><link rel="stylesheet" href="${stylesheet}"></head><body class="wmn-barcode-label-print ${printClass}">${pageHtml}</body></html>`);
             doc.close();
+            doc.body.style.setProperty("--wmn-label-width", `${opts.dims.width}mm`);
+            doc.body.style.setProperty("--wmn-label-height", `${opts.dims.height}mm`);
+            doc.body.style.setProperty("--wmn-print-page-width", `${layout.page.width}mm`);
+            doc.body.style.setProperty("--wmn-print-page-height", `${layout.page.height}mm`);
+            doc.body.style.setProperty("--wmn-print-columns", String(layout.columns || 1));
+            doc.body.style.setProperty("--wmn-print-gap", `${layout.gap}mm`);
+            doc.body.style.setProperty("--wmn-print-margin", `${layout.margin}mm`);
             setTimeout(() => {
                 try { iframe.contentWindow.focus(); iframe.contentWindow.print(); }
                 finally { setTimeout(() => iframe.remove(), 1200); }
@@ -7794,15 +7721,8 @@ wmn_install_pos_pwa_app_css();
     const feature = window.WMN_POS?.Features?.BarcodeScanQuantity;
     if (!feature) throw new Error("WMN BarcodeScanQuantity common owner must load before its UI owner.");
 
-    const STYLE_ID = "wmn-barcode-scan-quantity-style";
-    const STYLE_TEXT = ".wmn-category-search-row {\n    align-items: center;\n    gap: 8px;\n}\n\n.wmn-barcode-scan-actions {\n    display: flex;\n    align-items: center;\n    gap: 6px;\n    flex: 0 0 auto;\n}\n\n.wmn-barcode-scan-actions .btn {\n    min-height: 38px;\n    display: inline-flex;\n    align-items: center;\n    justify-content: center;\n    gap: 6px;\n    white-space: nowrap;\n}\n\n.wmn-barcode-scan-actions kbd {\n    min-width: 24px;\n    padding: 2px 5px;\n    border: 1px solid var(--gray-400, #c7c7c7);\n    border-radius: 5px;\n    background: var(--fg-color, #fff);\n    font-size: 11px;\n}\n\n.wmn-menu-search.wmn-qty-next-scan-armed {\n    border-width: 2px !important;\n    border-color: var(--orange-500, #f59e0b) !important;\n    background: var(--orange-50, #fff7ed) !important;\n    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18) !important;\n}\n\n.wmn-menu-search.wmn-qty-next-scan-armed .form-control {\n    background: var(--orange-50, #fff7ed) !important;\n}\n\n.wmn-qty-next-scan.is-armed {\n    border-width: 2px;\n    border-color: var(--orange-500, #f59e0b);\n    background: var(--orange-100, #ffedd5);\n    font-weight: 700;\n}\n\n.wmn-qty-next-scan-badge {\n    display: inline-flex;\n    align-items: center;\n    justify-content: center;\n    min-width: 30px;\n    padding: 1px 5px;\n    border-radius: 999px;\n    background: var(--orange-500, #f59e0b);\n    color: #fff;\n    font-size: 10px;\n    font-weight: 800;\n    letter-spacing: .04em;\n}\n\n@media (max-width: 860px) {\n    .wmn-category-search-row {\n        flex-wrap: wrap;\n    }\n\n    .wmn-menu-search {\n        flex: 1 1 190px !important;\n        width: auto !important;\n    }\n\n    .wmn-barcode-scan-actions {\n        flex: 1 1 auto;\n    }\n\n    .wmn-barcode-scan-actions .btn {\n        flex: 1 1 auto;\n    }\n\n    .wmn-camera-scan-label,\n    .wmn-qty-next-scan kbd {\n        display: none;\n    }\n}\n";
-
     function ensureStylesheet() {
-        if (document.getElementById(STYLE_ID)) return;
-        const style = document.createElement("style");
-        style.id = STYLE_ID;
-        style.textContent = STYLE_TEXT;
-        document.head.appendChild(style);
+        window.WMN_POS?.UI?.ensurePageStylesheet?.();
     }
 
     function getSearchShell(selector) {
@@ -8202,7 +8122,7 @@ wmn_install_pos_pwa_app_css();
         });
 
         const viewWidth = modules * moduleWidth;
-        return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewWidth} ${height}" width="${viewWidth}" height="${height}" style="max-width:100%;height:${height}px" preserveAspectRatio="xMidYMid meet" aria-label="${escapeHtml(value)}"><g fill="#000">${bars.join("")}</g></svg>`;
+        return `<svg class="wmn-invoice-barcode-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewWidth} ${height}" width="${viewWidth}" height="${height}" preserveAspectRatio="xMidYMid meet" aria-label="${escapeHtml(value)}"><g fill="#000">${bars.join("")}</g></svg>`;
     }
 
     function getPrintConfig() {
@@ -8224,10 +8144,10 @@ wmn_install_pos_pwa_app_css();
         const human = cint(config.invoice_barcode_human_readable === undefined ? 1 : config.invoice_barcode_human_readable) === 1;
         const svg = buildSvg(payload, { height });
         const label = human
-            ? `<div style="font:600 9px/1.2 monospace;letter-spacing:.15px;margin-top:3px;word-break:break-all">${escapeHtml(payload)}</div>`
+            ? `<div class="wmn-invoice-barcode-label">${escapeHtml(payload)}</div>`
             : "";
 
-        return `<div class="wmn-invoice-barcode" style="margin:10px auto 4px;text-align:center;max-width:360px;direction:ltr">${svg}${label}</div>`;
+        return `<div class="wmn-invoice-barcode">${svg}${label}</div>`;
     }
 
     function injectIntoHtml(html, doc, config) {
@@ -8304,7 +8224,7 @@ wmn_install_pos_pwa_app_css();
 
     function browserRawHtml(rawText, doc, config) {
         const escaped = escapeHtml(rawText).replace(/\n/g, "<br>");
-        return `<div style="font-family:monospace;white-space:pre-wrap;padding:4mm">${escaped}</div>${buildHtmlBlock(doc, config)}`;
+        return `<div class="wmn-print-raw-block">${escaped}</div>${buildHtmlBlock(doc, config)}`;
     }
 
     ns.Services.Barcode.InvoiceBarcode = {
@@ -8698,19 +8618,19 @@ function wmn_user_lang() {
                             fieldname: "batch_html",
                             options: `
                                 <div class="wmn-batch-select-dialog">
-                                    <div style="margin-bottom:10px;color:#6b7280;">
+                                    <div class="wmn-muted-block">
                                         ${frappe.utils.escape_html(item.item_name || item.item_code || "")}
                                     </div>
-                                    <div style="max-height:55vh;overflow:auto;border:1px solid #e5e7eb;border-radius:10px;">
-                                        <table class="table table-bordered table-hover" style="margin:0;">
-                                            <thead style="position:sticky;top:0;background:#f8fafc;z-index:1;">
+                                    <div class="wmn-table-scroll-panel">
+                                        <table class="table table-bordered table-hover wmn-table-flush">
+                                            <thead class="wmn-sticky-table-head">
                                                 <tr>
                                                     <th>${__("Batch No")}</th>
                                                     <th>${__("Warehouse")}</th>
                                                     <th>${__("Available Qty")}</th>
                                                     <th>${__("Expiry Date")}</th>
-                                                    <th style="width:130px;">${__("Qty")}</th>
-                                                    <th style="width:110px;">${__("Action")}</th>
+                                                    <th class="wmn-col-qty">${__("Qty")}</th>
+                                                    <th class="wmn-col-action">${__("Action")}</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -8720,7 +8640,7 @@ function wmn_user_lang() {
 
                                                     return `
                                                         <tr>
-                                                            <td style="font-weight:700;">${frappe.utils.escape_html(b.batch_no || "")}</td>
+                                                            <td class="wmn-font-bold">${frappe.utils.escape_html(b.batch_no || "")}</td>
                                                             <td>${frappe.utils.escape_html(b.warehouse || "")}</td>
                                                             <td>${availableQty}</td>
                                                             <td>${frappe.utils.escape_html(b.expiry_date || "")}</td>
@@ -9622,6 +9542,7 @@ function wmn_is_mobile_pos_device() {
     }
 
     ns.UI.ensurePageStylesheet = ensurePageStylesheet;
+    ns.UI.PAGE_STYLESHEET_HREF = PAGE_STYLE_HREF;
     ns.UI.Dialogs = { setup, decorate, closeTopDialog };
 })();
 /* END support:ui/dialog_manager.js */
@@ -11167,31 +11088,28 @@ function wmn_invoice_payment_total(doc) {
                             : wmn_t("Process Electronic Payment", "معالجة الدفع الإلكتروني");
                         gatewayHtml = `
                             <button type="button"
-                                    class="btn btn-default btn-xs wmn-offline-gateway-action"
+                                    class="btn btn-default btn-xs wmn-offline-gateway-action wmn-offline-payment-button"
                                     data-payment-index="${idx}"
-                                    ${approvedForCurrentAmount ? "disabled" : ""}
-                                    style="margin-top:6px;width:100%;font-weight:700;">
+                                    ${approvedForCurrentAmount ? "disabled" : ""}>
                                 ${gatewayLabel}
                             </button>
-                            <div class="wmn-offline-gateway-status" data-payment-index="${idx}"
-                                 style="margin-top:4px;font-size:12px;color:#6b7280;">
+                            <div class="wmn-offline-gateway-status wmn-offline-payment-account" data-payment-index="${idx}">
                                 ${approvedForCurrentAmount ? wmn_t("Payment approved", "تم اعتماد الدفع") : ""}
                             </div>
                         `;
                     } else {
                         gatewayHtml = `
-                            <div class="wmn-offline-gateway-note" style="margin-top:5px;font-size:12px;color:#b45309;">
+                            <div class="wmn-offline-gateway-note">
                                 ${frappe.utils.escape_html(availability?.reason || wmn_t("Electronic payment is unavailable", "الدفع الإلكتروني غير متاح"))}
                             </div>
                         `;
                     }
                 }
                 return `
-                    <div class="wmn-offline-payment-row" data-payment-index="${idx}"
-                         style="display:grid;grid-template-columns:1fr 160px;gap:10px;align-items:center;margin-bottom:10px;">
+                    <div class="wmn-offline-payment-row" data-payment-index="${idx}">
                         <div>
-                            <div style="font-weight:600;">${mode}</div>
-                            <div style="font-size:12px;color:#6b7280;">${frappe.utils.escape_html(p.account || "")}</div>
+                            <div class="wmn-font-bold">${mode}</div>
+                            <div class="wmn-offline-payment-account">${frappe.utils.escape_html(p.account || "")}</div>
                             ${gatewayHtml}
                         </div>
                         <input type="number" step="0.01" ${isReturn ? 'max="0"' : 'min="0"'}
@@ -11211,47 +11129,45 @@ function wmn_invoice_payment_total(doc) {
                             fieldtype: "HTML",
                             fieldname: "payment_html",
                             options: `
-                                <div class="wmn-offline-payment-dialog" style="direction:inherit;">
-                                    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">
-                                        <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:10px;">
-                                            <div style="font-size:12px;color:#6b7280;">${wmn_t("Grand Total", "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A")}</div>
-                                            <div style="font-weight:700;font-size:18px;">${format_currency(total, doc.currency || "YER")}</div>
+                                <div class="wmn-offline-payment-dialog">
+                                    <div class="wmn-offline-payment-summary">
+                                        <div class="wmn-offline-payment-card">
+                                            <div class="wmn-offline-payment-label">${wmn_t("Grand Total", "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A")}</div>
+                                            <div class="wmn-offline-payment-value large">${format_currency(total, doc.currency || "YER")}</div>
                                         </div>
-                                        <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:10px;">
-                                            <div style="font-size:12px;color:#6b7280;">${wmn_t("Customer", "\u0627\u0644\u0639\u0645\u064A\u0644")}</div>
-                                            <div style="font-weight:700;font-size:15px;">${frappe.utils.escape_html(doc.customer_name || doc.customer || "")}</div>
+                                        <div class="wmn-offline-payment-card">
+                                            <div class="wmn-offline-payment-label">${wmn_t("Customer", "\u0627\u0644\u0639\u0645\u064A\u0644")}</div>
+                                            <div class="wmn-offline-payment-value">${frappe.utils.escape_html(doc.customer_name || doc.customer || "")}</div>
                                         </div>
-                                        <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:10px;">
-                                            <div style="font-size:12px;color:#6b7280;">${wmn_t("Invoice", "\u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629")}</div>
-                                            <div style="font-weight:700;font-size:15px;">${frappe.utils.escape_html(doc.name || "")}</div>
+                                        <div class="wmn-offline-payment-card">
+                                            <div class="wmn-offline-payment-label">${wmn_t("Invoice", "\u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629")}</div>
+                                            <div class="wmn-offline-payment-value">${frappe.utils.escape_html(doc.name || "")}</div>
                                         </div>
                                     </div>
 
-                                    <div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px;">
+                                    <div class="wmn-offline-payment-method-list">
                                         ${rowsHtml || `<div class="text-muted">${wmn_t("No payment methods found", "\u0644\u0627 \u062A\u0648\u062C\u062F \u0637\u0631\u0642 \u062F\u0641\u0639")}</div>`}
                                     </div>
 
                                     ${canSellOnCredit ? `
-                                        <button type="button" class="btn btn-default wmn-offline-sell-on-credit-btn"
-                                                style="width:100%;margin-top:12px;font-weight:700;">
+                                        <button type="button" class="btn btn-default wmn-offline-sell-on-credit-btn wmn-offline-payment-button">
                                             ${__("Sell on Credit")}
                                         </button>
                                     ` : ""}
 
                                     ${(handoff?.canSendToCashier?.(doc) && ctrl?.__wmn_cashier_resume !== true) ? `
-                                        <button type="button" class="btn btn-default wmn-offline-send-to-cashier-btn"
-                                                style="width:100%;margin-top:12px;font-weight:700;">
+                                        <button type="button" class="btn btn-default wmn-offline-send-to-cashier-btn wmn-offline-payment-button">
                                             ${wmn_t("Send to Cashier", "إرسال إلى الكاشير")}
                                         </button>
                                     ` : ""}
 
-                                    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
-                                        <div style="font-size:13px;color:#6b7280;">
+                                    <div class="wmn-offline-payment-total-row">
+                                        <div class="wmn-offline-payment-label">
                                             ${isReturn
                                                 ? wmn_t("Complete Order will apply the refund to the offline return then save it offline.", "إكمال الطلب سيطبق الاسترداد على المرتجع ثم يحفظه أوفلاين.")
                                                 : wmn_t("Complete Order will apply payment to the offline invoice then save it offline.", "\u0625\u0643\u0645\u0627\u0644 \u0627\u0644\u0637\u0644\u0628 \u0633\u064A\u0636\u064A\u0641 \u0627\u0644\u062F\u0641\u0639 \u0644\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646 \u062B\u0645 \u064A\u062D\u0641\u0638\u0647\u0627 \u0623\u0648\u0641\u0644\u0627\u064A\u0646.")}
                                         </div>
-                                        <div style="font-weight:700;">
+                                        <div class="wmn-font-bold">
                                             ${isReturn ? wmn_t("Refund", "الاسترداد") : wmn_t("Paid", "\u0627\u0644\u0645\u062F\u0641\u0648\u0639")}: <span class="wmn-offline-paid-total">0</span>
                                         </div>
                                     </div>
@@ -12117,7 +12033,7 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
 
             if (!availability.available) {
                 $mode.append(
-                    `<div class="small text-muted wmn-gateway-note" style="margin-top:4px;">${__(availability.reason || "Electronic payment gateway is unavailable")}</div>`
+                    `<div class="small text-muted wmn-gateway-note">${__(availability.reason || "Electronic payment gateway is unavailable")}</div>`
                 );
                 return;
             }
@@ -12125,7 +12041,7 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
             const label = approvedForCurrentAmount
                 ? __("Approved")
                 : __("Process Electronic Payment");
-            const $button = $(`<button type="button" class="btn btn-xs btn-default wmn-gateway-action" style="margin-top:6px;width:100%;">${label}</button>`);
+            const $button = $(`<button type="button" class="btn btn-xs btn-default wmn-gateway-action">${label}</button>`);
             $mode.append($button);
             if (approvedForCurrentAmount) {
                 $button.prop("disabled", true);
@@ -13267,29 +13183,29 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                     const erpName = row.erpnext_name || row.server_name || "";
                     const pendingPaymentCount = pendingPaymentCounts.get(String(row.offline_id || "")) || 0;
                     const syncAction = status === "draft_synced"
-                        ? `<span class="text-muted" style="display:inline-block;padding:4px 8px;">${wmn_t("Draft Synced", "تمت مزامنة المسودة")}</span>`
+                        ? `<span class="text-muted wmn-offline-invoice-status">${wmn_t("Draft Synced", "تمت مزامنة المسودة")}</span>`
                         : status === "synced"
                             ? (pendingPaymentCount > 0
                                 ? `<button class="btn btn-xs btn-primary wmn-sync-one" data-idx="${idx}">${wmn_t("Sync Payment", "مزامنة الدفع")}</button>`
-                                : `<span class="text-muted" style="display:inline-block;padding:4px 8px;">${wmn_t("Synced", "تمت المزامنة")}</span>`)
+                                : `<span class="text-muted wmn-offline-invoice-status">${wmn_t("Synced", "تمت المزامنة")}</span>`)
                         : status === "syncing"
                             ? `<button class="btn btn-xs btn-primary wmn-sync-one" data-idx="${idx}" disabled>${wmn_t("Syncing...", "جاري المزامنة...")}</button>`
                             : `<button class="btn btn-xs btn-primary wmn-sync-one" data-idx="${idx}">${wmn_t("Sync", "مزامنة")}</button>`;
 
                     return `
                         <tr data-offline-id="${frappe.utils.escape_html(id)}">
-                            <td style="min-width:160px;">
-                                <div style="font-weight:700;">${frappe.utils.escape_html(id)}</div>
-                                ${erpName ? `<div style="font-size:12px;color:#16a34a;">ERP: ${frappe.utils.escape_html(erpName)}</div>` : ""}
+                            <td class="wmn-offline-invoice-id">
+                                <div class="wmn-font-bold">${frappe.utils.escape_html(id)}</div>
+                                ${erpName ? `<div class="wmn-offline-invoice-erp">ERP: ${frappe.utils.escape_html(erpName)}</div>` : ""}
                             </td>
                             <td>${frappe.utils.escape_html(customer)}</td>
-                            <td style="white-space:nowrap;">${frappe.utils.escape_html(money(total, currency))}</td>
-                            <td style="white-space:nowrap;">
+                            <td class="wmn-offline-invoice-nowrap">${frappe.utils.escape_html(money(total, currency))}</td>
+                            <td class="wmn-offline-invoice-nowrap">
                                 ${statusBadge(status)}
-                                ${pendingPaymentCount > 0 ? `<div style="margin-top:4px;font-size:11px;color:#b45309;">${wmn_t("Pending payment", "دفع معلق")}: ${pendingPaymentCount}</div>` : ""}
+                                ${pendingPaymentCount > 0 ? `<div class="wmn-offline-pending-payment">${wmn_t("Pending payment", "دفع معلق")}: ${pendingPaymentCount}</div>` : ""}
                             </td>
-                            <td style="white-space:nowrap;font-size:12px;color:#6b7280;">${frappe.utils.escape_html(created)}</td>
-                            <td style="white-space:nowrap;text-align:left;">
+                            <td class="wmn-offline-invoice-created">${frappe.utils.escape_html(created)}</td>
+                            <td class="wmn-offline-invoice-actions">
                                 ${syncAction}
                                 <button class="btn btn-xs btn-default wmn-edit-one" data-idx="${idx}">
                                     ${wmn_t("Edit", "تعديل")}
@@ -13302,7 +13218,7 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                     `;
                 }).join("") : `
                     <tr>
-                        <td colspan="6" style="text-align:center;color:#6b7280;padding:24px;">
+                        <td colspan="6" class="wmn-offline-invoice-empty">
                             ${wmn_t("No offline invoices saved", "\u0644\u0627 \u062A\u0648\u062C\u062F \u0641\u0648\u0627\u062A\u064A\u0631 \u0623\u0648\u0641\u0644\u0627\u064A\u0646 \u0645\u062D\u0641\u0648\u0638\u0629")}
                         </td>
                     </tr>
@@ -13323,31 +13239,31 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                             fieldtype: "HTML",
                             fieldname: "offline_invoices_html",
                             options: `
-                                <div class="wmn-offline-invoices-dialog" style="direction:inherit;">
-                                    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+                                <div class="wmn-offline-invoices-dialog">
+                                    <div class="wmn-offline-invoice-head">
                                         <div>
-                                            <div style="font-weight:700;font-size:16px;">${wmn_t("Invoices saved in IndexedDB", "\u0627\u0644\u0641\u0648\u0627\u062A\u064A\u0631 \u0627\u0644\u0645\u062D\u0641\u0648\u0638\u0629 \u0641\u064A IndexedDB")}</div>
-                                            <div style="color:#6b7280;font-size:13px;">
+                                            <div class="wmn-offline-invoice-title">${wmn_t("Invoices saved in IndexedDB", "\u0627\u0644\u0641\u0648\u0627\u062A\u064A\u0631 \u0627\u0644\u0645\u062D\u0641\u0648\u0638\u0629 \u0641\u064A IndexedDB")}</div>
+                                            <div class="wmn-offline-invoice-muted">
                                                 ${wmn_t("Count", "\u0627\u0644\u0639\u062F\u062F")}: <span class="wmn-offline-invoices-count">0</span>
                                             </div>
                                         </div>
-                                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                        <div class="wmn-inline-toolbar">
                                             <button class="btn btn-sm btn-default wmn-refresh-list">${wmn_t("Refresh", "\u062A\u062D\u062F\u064A\u062B")}</button>
                                             <button class="btn btn-sm btn-primary wmn-sync-all">${wmn_t("Sync All", "\u0645\u0632\u0627\u0645\u0646\u0629 \u0627\u0644\u0643\u0644")}</button>
                                             <button class="btn btn-sm btn-danger wmn-delete-all">${wmn_t("Delete All", "\u0645\u0633\u062D \u0627\u0644\u0643\u0644")}</button>
                                         </div>
                                     </div>
 
-                                    <div style="max-height:65vh;overflow:auto;border:1px solid #e5e7eb;border-radius:10px;">
-                                        <table class="table table-bordered table-hover" style="margin:0;">
-                                            <thead style="position:sticky;top:0;background:#f8fafc;z-index:1;">
+                                    <div class="wmn-table-scroll-panel tall">
+                                        <table class="table table-bordered table-hover wmn-table-flush">
+                                            <thead class="wmn-sticky-table-head">
                                                 <tr>
                                                     <th>${wmn_t("Offline ID", "\u0631\u0642\u0645 \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646")}</th>
                                                     <th>${wmn_t("Customer", "\u0627\u0644\u0639\u0645\u064A\u0644")}</th>
                                                     <th>${wmn_t("Total", "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A")}</th>
                                                     <th>${wmn_t("Status", "\u0627\u0644\u062D\u0627\u0644\u0629")}</th>
                                                     <th>${wmn_t("Created", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0625\u0646\u0634\u0627\u0621")}</th>
-                                                    <th style="text-align:left;">${wmn_t("Actions", "\u0627\u0644\u0625\u062C\u0631\u0627\u0621\u0627\u062A")}</th>
+                                                    <th class="text-left">${wmn_t("Actions", "\u0627\u0644\u0625\u062C\u0631\u0627\u0621\u0627\u062A")}</th>
                                                 </tr>
                                             </thead>
                                             <tbody class="wmn-offline-invoices-body"></tbody>
@@ -13527,7 +13443,7 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                     if ($target.find(".wmn-offline-invoices-btn").length) return true;
 
                     const $btn = $(`
-                        <button class="btn btn-sm btn-default wmn-offline-invoices-btn" style="margin-inline-start:6px;">
+                        <button class="btn btn-sm btn-default wmn-offline-invoices-btn wmn-btn-inline-start">
                             ${wmn_t("Offline Invoices", "\u0641\u0648\u0627\u062A\u064A\u0631 \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646")}
                         </button>
                     `);
@@ -13535,7 +13451,7 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                     $btn.on("click", () => openManagerDialog());
 
                     const $printerBtn = $(`
-                        <button class="btn btn-sm btn-default wmn-printer-settings-btn" style="margin-inline-start:6px;">
+                        <button class="btn btn-sm btn-default wmn-printer-settings-btn wmn-btn-inline-start">
                             ${wmn_t("Printer", "الطابعة")}
                         </button>
                     `);
@@ -13577,14 +13493,9 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                     <head>
                         <meta charset="utf-8">
                         <title>${frappe.utils.escape_html((doc && (doc.name || doc.custom_offline_id)) || "Offline Receipt")}</title>
-                        <style>
-                            body { font-family: Arial, sans-serif; direction: rtl; font-size: 12px; }
-                            table { width: 100%; border-collapse: collapse; }
-                            th, td { border-bottom: 1px solid #ddd; padding: 4px; text-align: right; }
-                            @media print { body { margin: 0; } }
-                        </style>
+                        <link rel="stylesheet" href="${window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet"}">
                     </head>
-                    <body>${html || ""}</body>
+                    <body class="wmn-pos-raw-receipt-print">${html || ""}</body>
                 </html>
             `;
         }
@@ -15140,7 +15051,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             }
 
             const holder = document.createElement("div");
-            holder.className = "wmn-print-capture-holder";
+            holder.className = "wmn-print-capture-holder wmn-pdf-render-holder";
 
             /*
              * Important:
@@ -15149,17 +15060,6 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
              * versions return a white canvas for very far offscreen nodes.
              * We render it visibly at 0,0 for a few frames, capture it, then remove it.
              */
-            holder.style.position = "fixed";
-            holder.style.left = "0";
-            holder.style.top = "0";
-            holder.style.background = "#ffffff";
-            holder.style.overflow = "visible";
-            holder.style.zIndex = "2147483647";
-            holder.style.pointerEvents = "none";
-            holder.style.opacity = "1";
-            holder.style.visibility = "visible";
-            holder.style.display = "block";
-
             holder.innerHTML = renderedHtml;
             document.body.appendChild(holder);
 
@@ -15553,24 +15453,16 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
     async function printHtml(html) {
         const iframe = document.createElement("iframe");
         iframe.setAttribute("aria-hidden", "true");
-        Object.assign(iframe.style, {
-            position: "fixed",
-            right: "0",
-            bottom: "0",
-            width: "1px",
-            height: "1px",
-            border: "0",
-            opacity: "0",
-            pointerEvents: "none",
-        });
+        iframe.className = "wmn-hidden-print-frame";
         document.body.appendChild(iframe);
 
         try {
             const doc = iframe.contentDocument;
+            const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet";
             doc.open();
             doc.write("<!doctype html><html><head><meta charset='utf-8'><title>WMN Receipt</title>" +
-                "<style>html,body{margin:0;padding:0;background:#fff} @media print{body{margin:0}}</style>" +
-                "</head><body>" + String(html || "") + "</body></html>");
+                "<link rel='stylesheet' href='" + stylesheet + "'>" +
+                "</head><body class='wmn-browser-print-body'>" + String(html || "") + "</body></html>");
             doc.close();
             await wait(120);
             iframe.contentWindow.focus();
@@ -15586,12 +15478,12 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         const escaped = window.frappe?.utils?.escape_html
             ? frappe.utils.escape_html(String(rawText || ""))
             : String(rawText || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-        return "<pre style='font-family:monospace;white-space:pre-wrap;margin:0;padding:4mm;font-size:11px'>" + escaped + "</pre>";
+        return "<pre class='wmn-browser-print-raw'>" + escaped + "</pre>";
     }
 
     async function printImage(base64) {
         const src = "data:image/png;base64," + String(base64 || "").replace(/^data:image\/[^;]+;base64,/, "");
-        return printHtml("<img alt='Receipt' src='" + src + "' style='display:block;max-width:100%;height:auto;margin:0 auto'>");
+        return printHtml("<img class='wmn-browser-print-image' alt='Receipt' src='" + src + "'>");
     }
 
     async function printPdf(base64) {
@@ -16305,7 +16197,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         const method = methodId(dialog.get_value("method"), false);
         const $wrap = field.$wrapper.empty();
         const button = (label, handler, primary) => {
-            const $btn = $("<button type='button' class='btn btn-sm " + (primary ? "btn-primary" : "btn-default") + "' style='margin-inline-end:6px;margin-bottom:6px'></button>");
+            const $btn = $("<button type='button' class='btn btn-sm wmn-print-action-btn " + (primary ? "btn-primary" : "btn-default") + "'></button>");
             $btn.text(label).on("click", async () => {
                 $btn.prop("disabled", true);
                 try { await handler(); } catch (e) { frappe.msgprint({ title: __("Printer"), indicator: "red", message: e.message || String(e) }); }
@@ -16442,7 +16334,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         if (statusField?.$wrapper) {
             const sourceText = status.has_local_override ? __("Browser override is active") : __("Using POS Profile defaults");
             const connectionText = status.online ? __("Online") : __("Offline - cached POS Profile defaults are used");
-            statusField.$wrapper.html(`<div class="alert alert-light border" style="margin:0;padding:10px 12px"><strong>${frappe.utils.escape_html(profile || __("POS Profile"))}</strong><br>${sourceText}<br>${connectionText}</div>`);
+            statusField.$wrapper.html(`<div class="alert alert-light border wmn-alert-compact"><strong>${frappe.utils.escape_html(profile || __("POS Profile"))}</strong><br>${sourceText}<br>${connectionText}</div>`);
         }
         dialog.set_value("method", methodLabel(cfg.method));
         dialog.set_value("fallback_method", cfg.fallback_method === "none" ? "No fallback" : methodLabel(cfg.fallback_method));
@@ -16749,7 +16641,8 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 }
 
                 win.document.open();
-                win.document.write("<!doctype html><html><head><meta charset='utf-8'><title>WMN Print Debug</title></head><body>" + (html || "<h3 style='color:red'>HTML IS EMPTY</h3>") + "</body></html>");
+                const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet";
+                win.document.write("<!doctype html><html><head><meta charset='utf-8'><title>WMN Print Debug</title><link rel='stylesheet' href='" + stylesheet + "'></head><body>" + (html || "<h3 class='wmn-print-debug-empty'>HTML IS EMPTY</h3>") + "</body></html>");
                 win.document.close();
             } catch (e) {
                 console.error("WMN DEBUG ERROR:", e);
@@ -16853,7 +16746,7 @@ function wmn_render_offline_print_template(template, doc) {
                 }
                 taxesHtml += `
                     <tr>
-                        <td class="text-right" style="width: 70%">${frappe.utils.escape_html(description)}</td>
+                        <td class="text-right wmn-col-wide-text">${frappe.utils.escape_html(description)}</td>
                         <td class="text-right">${format_currency(flt(row.tax_amount || 0), currency)}</td>
                     </tr>
                 `;
@@ -16867,7 +16760,7 @@ function wmn_render_offline_print_template(template, doc) {
         (doc.payments || []).forEach(row => {
             paymentsHtml += `
                 <tr>
-                    <td class="text-right" style="width: 70%">${frappe.utils.escape_html(row.mode_of_payment || "")}</td>
+                    <td class="text-right wmn-col-wide-text">${frappe.utils.escape_html(row.mode_of_payment || "")}</td>
                     <td class="text-right">${format_currency(flt(row.amount || 0), currency)}</td>
                 </tr>
             `;
@@ -17014,87 +16907,9 @@ function wmn_render_offline_print_template(template, doc) {
 <head>
 <meta charset="utf-8">
 <title>${wmn_escape_html(invoiceNo)}</title>
-<style>
-    @page { size: auto; margin: 10mm; }
-    body {
-        font-family: Arial, Tahoma, sans-serif;
-        color: #111827;
-        margin: 0;
-        padding: 0;
-        font-size: 13px;
-        direction: ${document.documentElement.dir === "rtl" ? "rtl" : "ltr"};
-    }
-    .receipt {
-        max-width: 760px;
-        margin: 0 auto;
-        padding: 16px;
-    }
-    .header {
-        text-align: center;
-        border-bottom: 2px solid #111827;
-        padding-bottom: 10px;
-        margin-bottom: 12px;
-    }
-    .company { font-size: 20px; font-weight: 800; margin-bottom: 4px; }
-    .title { font-size: 15px; font-weight: 700; color: #374151; }
-    .meta {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 6px 16px;
-        margin: 12px 0;
-        background: #f3f4f6;
-        border-radius: 10px;
-        padding: 10px;
-    }
-    .meta div { display: flex; justify-content: space-between; gap: 8px; }
-    .label { color: #6b7280; font-weight: 700; }
-    table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 10px;
-    }
-    th {
-        background: #111827;
-        color: #fff;
-        padding: 8px;
-        border: 1px solid #111827;
-        text-align: start;
-    }
-    td {
-        padding: 8px;
-        border: 1px solid #d1d5db;
-        vertical-align: top;
-    }
-    .num { width: 36px; text-align: center; }
-    .center { text-align: center; white-space: nowrap; }
-    .money { text-align: end; white-space: nowrap; }
-    .item-name { font-weight: 700; }
-    .muted { color: #6b7280; font-size: 11px; margin-top: 2px; }
-    .totals {
-        margin-top: 12px;
-        margin-inline-start: auto;
-        width: 320px;
-    }
-    .totals td { font-weight: 700; }
-    .grand td {
-        font-size: 16px;
-        background: #f3f4f6;
-    }
-    .footer {
-        text-align: center;
-        color: #6b7280;
-        margin-top: 18px;
-        border-top: 1px dashed #9ca3af;
-        padding-top: 10px;
-        font-size: 12px;
-    }
-    @media print {
-        .no-print { display: none !important; }
-        body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-    }
-</style>
+<link rel="stylesheet" href="${window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet"}">
 </head>
-<body>
+<body class="wmn-pos-offline-receipt-print">
 <div class="receipt">
     <div class="header">
         <div class="company">${wmn_escape_html(company)}</div>
@@ -19858,8 +19673,6 @@ function wmn_render_offline_print_template(template, doc) {
     ns.Features.PosCacheManager = ns.Features.PosCacheManager || {};
     ns.Features.PosCacheManager.Common = ns.Features.PosCacheManager.Common || {};
 
-    const STYLE_ID = "wmn-pos-cache-manager-style";
-
     function esc(value) {
         return frappe.utils?.escape_html ? frappe.utils.escape_html(String(value ?? "")) : String(value ?? "");
     }
@@ -19871,46 +19684,7 @@ function wmn_render_offline_print_template(template, doc) {
     }
 
     function ensureStyles() {
-        if (document.getElementById(STYLE_ID)) return;
-        const style = document.createElement("style");
-        style.id = STYLE_ID;
-        style.textContent = `
-            body.wmn-mamsek-pos-route .wmn-pos-cache-manager-dialog .modal-dialog,
-            body.wmn-mamsek-pos-route .wmn-pos-cache-source-dialog .modal-dialog {
-                width: min(1180px, 96vw) !important;
-                max-width: none !important;
-            }
-            .wmn-pos-cache-note { margin-bottom: 10px; padding: 9px 11px; border: 1px solid #f0d9a4; border-radius: 9px; background: #fff9ea; color: #795700; font-size: 11px; }
-            .wmn-pos-cache-source-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 9px; }
-            .wmn-pos-cache-source-card { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:72px; padding:11px 12px; border:1px solid var(--border-color,#d1d8dd); border-radius:10px; background:var(--card-bg,#fff); text-align:start; cursor:pointer; }
-            .wmn-pos-cache-source-card:hover { border-color:var(--primary,#2490ef); box-shadow:0 5px 16px rgba(15,23,42,.06); }
-            .wmn-pos-cache-source-card strong { display:block; color:var(--text-color,#1f2937); font-size:12px; }
-            .wmn-pos-cache-source-card small { display:block; margin-top:3px; color:var(--text-muted,#6c7680); font-size:10px; line-height:1.45; }
-            .wmn-pos-cache-source-count { flex:0 0 auto; min-width:44px; padding:5px 8px; border-radius:999px; background:#eef4fb; color:#1d4f91; text-align:center; font-size:11px; font-weight:800; }
-            .wmn-pos-cache-toolbar { display:flex; align-items:center; gap:7px; margin-bottom:9px; }
-            .wmn-pos-cache-toolbar .wmn-pos-cache-search { flex:1 1 auto; }
-            .wmn-pos-cache-list { max-height:62vh; overflow:auto; }
-            .wmn-pos-cache-row { display:grid; grid-template-columns:minmax(0,1fr) 190px auto; gap:10px; align-items:center; min-height:54px; margin-bottom:6px; padding:8px 10px; border:1px solid var(--border-color,#d1d8dd); border-radius:9px; background:var(--card-bg,#fff); }
-            .wmn-pos-cache-row:hover { border-color:var(--primary,#2490ef); }
-            .wmn-pos-cache-row-main { min-width:0; cursor:pointer; }
-            .wmn-pos-cache-row-main strong { display:block; overflow:hidden; color:var(--text-color,#1f2937); text-overflow:ellipsis; white-space:nowrap; }
-            .wmn-pos-cache-row-main small { display:block; overflow:hidden; margin-top:2px; color:var(--text-muted,#6c7680); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
-            .wmn-pos-cache-row-key { overflow:hidden; color:var(--text-muted,#6c7680); font-family:monospace; font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
-            .wmn-pos-cache-empty { display:grid; place-items:center; min-height:180px; color:var(--text-muted,#6c7680); text-align:center; }
-            .wmn-pos-cache-editor-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px 11px; max-height:68vh; overflow:auto; padding:2px; }
-            .wmn-pos-cache-field { min-width:0; padding:8px 9px; border:1px solid #edf1f5; border-radius:9px; background:#fbfcfd; }
-            .wmn-pos-cache-field.wmn-wide { grid-column:1/-1; }
-            .wmn-pos-cache-field label { display:block; margin-bottom:4px; color:#334155; font-size:11px; font-weight:800; }
-            .wmn-pos-cache-field label .reqd { color:#d92d20; }
-            .wmn-pos-cache-field .form-control { width:100%; min-height:34px; }
-            .wmn-pos-cache-field textarea.form-control { min-height:92px; resize:vertical; font-family:inherit; }
-            .wmn-pos-cache-field textarea.wmn-json { min-height:130px; direction:ltr; text-align:left; font-family:monospace; font-size:11px; }
-            .wmn-pos-cache-field .wmn-pos-cache-check-wrap { display:flex; align-items:center; gap:8px; min-height:34px; }
-            .wmn-pos-cache-field .wmn-pos-cache-readonly { background:#f3f4f6 !important; color:#6b7280; }
-            @media(max-width:900px){ .wmn-pos-cache-source-grid{grid-template-columns:repeat(2,minmax(0,1fr));} }
-            @media(max-width:650px){ .wmn-pos-cache-source-grid{grid-template-columns:1fr;} .wmn-pos-cache-row{grid-template-columns:1fr;} .wmn-pos-cache-editor-grid{grid-template-columns:1fr;} .wmn-pos-cache-field.wmn-wide{grid-column:auto;} .wmn-pos-cache-toolbar{flex-wrap:wrap;} .wmn-pos-cache-toolbar .wmn-pos-cache-search{flex-basis:100%; order:3;} }
-        `;
-        document.head.appendChild(style);
+        window.WMN_POS?.UI?.ensurePageStylesheet?.();
     }
 
     function sourceManagerHtml(sources) {
@@ -20066,7 +19840,7 @@ function wmn_render_offline_print_template(template, doc) {
             control = `<input type="${inputType}" class="form-control${readonly ? " wmn-pos-cache-readonly" : ""}" ${commonAttrs} value="${esc(serializeForInput(value, field.type))}">`;
         }
 
-        return `<div class="wmn-pos-cache-field${wide}"><label>${esc(field.label || field.fieldname)} ${required}<small style="font-weight:400;color:#94a3b8">${esc(field.fieldname)}</small></label>${control}</div>`;
+        return `<div class="wmn-pos-cache-field${wide}"><label>${esc(field.label || field.fieldname)} ${required}<small class="wmn-fieldname-hint">${esc(field.fieldname)}</small></label>${control}</div>`;
     }
 
     function collectEditorRecord(dialog, originalRow) {
@@ -24933,10 +24707,10 @@ function wmn_render_offline_print_template(template, doc) {
             : [];
         const modeRows = byMode.length
             ? `
-                <div style="grid-column:1/-1;margin-top:4px;border-top:1px solid var(--border-color);padding-top:8px;">
+                <div class="wmn-cash-movement-wide wmn-cash-movement-section">
                     <strong>${__("By Mode of Payment")}</strong>
                     ${byMode.map((row) => `
-                        <div style="display:flex;justify-content:space-between;gap:8px;margin-top:4px;">
+                        <div class="wmn-cash-movement-row">
                             <span>${escapeText(row.mode_of_payment || "")}</span>
                             <span>${escapeText(amountText(row.net_cash_movement, currency))}</span>
                         </div>`).join("")}
@@ -24944,13 +24718,13 @@ function wmn_render_offline_print_template(template, doc) {
             : "";
 
         return `
-            <div class="wmn-cash-movement-summary" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;padding:10px 0;">
+            <div class="wmn-cash-movement-summary">
                 <div><strong>${__("Cash In")}</strong><br>${escapeText(amountText(data.cash_in, currency))}</div>
                 <div><strong>${__("Cash Expense")}</strong><br>${escapeText(amountText(data.cash_expense, currency))}</div>
                 <div><strong>${__("Cash Withdrawal")}</strong><br>${escapeText(amountText(data.cash_withdrawal, currency))}</div>
                 <div><strong>${__("Net Cash Movement")}</strong><br>${escapeText(amountText(data.net_cash_movement, currency))}</div>
                 ${modeRows}
-                <div style="grid-column:1/-1"><strong>${__("Pending Offline")}</strong>: ${cint(pendingCount || 0)}</div>
+                <div class="wmn-cash-movement-wide"><strong>${__("Pending Offline")}</strong>: ${cint(pendingCount || 0)}</div>
             </div>`;
     }
 
@@ -25254,7 +25028,6 @@ function wmn_render_offline_print_template(template, doc) {
     const ns = window.WMN_POS;
     ns.Features.DoctypeManager = ns.Features.DoctypeManager || {};
 
-    const STYLE_ID = "wmn-pos-doctype-manager-style";
     const FORM_WATCH_INTERVAL = 350;
     const LIST_LIMIT = 50;
     const dialogScriptCache = new Map();
@@ -25301,168 +25074,7 @@ function wmn_render_offline_print_template(template, doc) {
     }
 
     function ensureStyles() {
-        if (document.getElementById(STYLE_ID)) return;
-        const style = document.createElement("style");
-        style.id = STYLE_ID;
-        style.textContent = `
-            body.wmn-mamsek-pos-route .wmn-pos-management-menu-dialog .modal-dialog { max-width: 980px; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-dialog {
-                width: calc(100vw - 60px) !important;
-                max-width: none !important;
-                height: 94vh;
-                margin: 3vh auto;
-            }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-content {
-                display: flex;
-                flex-direction: column;
-                width: 100%;
-                height: 94vh;
-                max-height: 94vh;
-            }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-header,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-footer { flex: 0 0 auto; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body {
-                display: flex;
-                flex: 1 1 auto;
-                width: 100%;
-                min-height: 0;
-                overflow: hidden;
-                padding: 0;
-            }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body > .form-layout,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .form-page,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .form-section,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .section-body,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .row,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .form-column,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .column-break,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .frappe-control,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .control-input-wrapper,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .control-input,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog [data-fieldname="doctype_html"] {
-                box-sizing: border-box;
-                width: 100% !important;
-                max-width: none !important;
-                height: 100% !important;
-                min-height: 0 !important;
-                margin: 0 !important;
-                padding: 0 !important;
-            }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .form-column,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .column-break {
-                flex: 1 1 100% !important;
-                max-width: 100% !important;
-            }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .form-section,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .section-body,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .form-page,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body > .form-layout {
-                display: flex;
-                flex: 1 1 auto;
-                flex-direction: column;
-            }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .section-body,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .row {
-                flex: 1 1 auto;
-                min-height: 0;
-            }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-shell { direction: rtl; display: grid; gap: 16px; }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-section { display: grid; gap: 9px; }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-section-head h4 { margin: 0; font-size: 14px; font-weight: 800; }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-section-head span { color: var(--text-muted, #6c7680); font-size: 11px; }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-button { display: flex; align-items: center; gap: 9px; min-height: 48px; padding: 9px 11px; border: 1px solid var(--border-color, #d1d8dd); border-radius: 10px; background: var(--card-bg, #fff); color: var(--text-color, #1f2937); text-align: start; cursor: pointer; }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-button:hover { border-color: var(--primary, #2490ef); background: var(--subtle-fg, #f8fafc); }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-button small { display: block; margin-top: 2px; color: var(--wmn-pos-menu-text, var(--text-muted, #6c7680)); font-size: 10px; opacity: .82; }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-button.wmn-pos-manager-colored { background: var(--wmn-pos-menu-bg, var(--card-bg, #fff)); color: var(--wmn-pos-menu-text, var(--text-color, #1f2937)); border-color: var(--wmn-pos-menu-bg, var(--border-color, #d1d8dd)); }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-button.wmn-pos-manager-colored:hover { background: var(--wmn-pos-menu-bg, var(--card-bg, #fff)); color: var(--wmn-pos-menu-text, var(--text-color, #1f2937)); filter: brightness(.96); }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-button .wmn-pos-manager-icon { flex: 0 0 auto; }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-offline-note { padding: 12px; border: 1px solid #f2d6a2; border-radius: 10px; background: #fff8e8; color: #8a5a00; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-shell {
-                display: flex;
-                flex: 1 1 100%;
-                flex-direction: column;
-                box-sizing: border-box;
-                width: 100% !important;
-                max-width: none !important;
-                min-width: 0;
-                height: 100%;
-                min-height: 0;
-                background: var(--subtle-fg, #f8fafc);
-            }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-toolbar { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; padding: 10px 12px; border-bottom: 1px solid var(--border-color, #d1d8dd); background: var(--card-bg, #fff); }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-toolbar .wmn-pos-doctype-search { flex: 1 1 auto; min-width: 120px; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-toolbar .btn { min-height: 34px; white-space: nowrap; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-cache-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; flex: 0 0 auto; padding: 8px 12px; border-bottom: 1px solid var(--border-color, #d1d8dd); background: var(--card-bg, #fff); }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-cache-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 4px 9px; border: 1px solid var(--border-color, #d1d8dd); border-radius: 999px; background: var(--subtle-fg, #f8fafc); color: var(--text-muted, #6c7680); font-size: 10px; font-weight: 700; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-cache-chip strong { color: var(--text-color, #1f2937); font-size: 11px; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-cache-chip[data-kind="pending"] { border-color: #f2d6a2; background: #fff8e8; color: #8a5a00; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-cache-chip[data-kind="conflict"] { border-color: #f3c4bf; background: #fff1f0; color: #b42318; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-list { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 10px; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-row { display: grid; grid-template-columns: minmax(0, 1fr) 180px 170px auto; gap: 10px; align-items: center; width: 100%; min-height: 56px; margin-bottom: 6px; padding: 8px 11px; border: 1px solid var(--border-color, #d1d8dd); border-radius: 9px; background: var(--card-bg, #fff); color: var(--text-color, #1f2937); text-align: start; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-row:hover { border-color: var(--primary, #2490ef); }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-row-main { min-width: 0; cursor: pointer; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-row span { overflow: hidden; color: var(--text-muted, #6c7680); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; white-space: nowrap; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-row-actions .btn { min-height: 30px; padding: 4px 8px; font-size: 10px; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-sync-state { display: inline-flex; align-items: center; justify-content: center; min-width: 76px; padding: 3px 7px; border-radius: 999px; font-size: 10px !important; font-weight: 800; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-sync-state[data-state="clean"] { background: #ecfdf3; color: #027a48; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-sync-state[data-state="pending_create"],
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-sync-state[data-state="pending_update"] { background: #fff7e6; color: #9a6700; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-sync-state[data-state="conflict"] { background: #fff1f0; color: #b42318; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-sync-state[data-state="error"] { background: #fff1f0; color: #b42318; }
-            body.wmn-mamsek-pos-route .wmn-pos-offline-form { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 14px; }
-            body.wmn-mamsek-pos-route .wmn-pos-offline-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
-            body.wmn-mamsek-pos-route .wmn-pos-offline-field { display: grid; gap: 5px; min-width: 0; padding: 10px; border: 1px solid var(--border-color, #d1d8dd); border-radius: 10px; background: var(--card-bg, #fff); }
-            body.wmn-mamsek-pos-route .wmn-pos-offline-field.wide { grid-column: 1 / -1; }
-            body.wmn-mamsek-pos-route .wmn-pos-offline-field label { margin: 0; color: var(--text-color, #1f2937); font-size: 11px; font-weight: 800; }
-            body.wmn-mamsek-pos-route .wmn-pos-offline-field small { color: var(--text-muted, #6c7680); font-size: 9px; }
-            body.wmn-mamsek-pos-route .wmn-pos-offline-field input[type="checkbox"] { width: 18px; height: 18px; }
-            body.wmn-mamsek-pos-route .wmn-pos-offline-readonly { min-height: 34px; padding: 7px 9px; border-radius: 7px; background: var(--subtle-fg, #f8fafc); color: var(--text-muted, #6c7680); overflow-wrap: anywhere; }
-            body.wmn-mamsek-pos-route .wmn-pos-offline-banner { flex: 0 0 auto; margin: 10px 12px 0; padding: 8px 10px; border: 1px solid #f2d6a2; border-radius: 8px; background: #fff8e8; color: #8a5a00; font-size: 11px; }
-            body.wmn-mamsek-pos-route .wmn-pos-sync-list { display: grid; gap: 7px; max-height: 62vh; overflow: auto; }
-            body.wmn-mamsek-pos-route .wmn-pos-sync-row { display: grid; grid-template-columns: minmax(0,1fr) 130px 110px auto; gap: 8px; align-items: center; padding: 9px; border: 1px solid var(--border-color, #d1d8dd); border-radius: 9px; }
-            body.wmn-mamsek-pos-route .wmn-pos-sync-row small { display: block; margin-top: 2px; color: var(--text-muted, #6c7680); }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-empty { display: grid; place-items: center; min-height: 220px; color: var(--text-muted, #6c7680); text-align: center; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-frame-wrap {
-                position: relative;
-                flex: 1 1 auto;
-                box-sizing: border-box;
-                width: 100% !important;
-                max-width: none !important;
-                min-width: 0;
-                min-height: 0;
-                overflow: hidden;
-                background: #f4f6f8;
-            }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-frame {
-                position: absolute;
-                inset: 0;
-                display: block;
-                box-sizing: border-box;
-                width: 100% !important;
-                max-width: none !important;
-                min-width: 0;
-                height: 100% !important;
-                border: 0;
-                background: #fff;
-            }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-loading { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; background: #fff; color: var(--text-muted, #6c7680); }
-            @media (max-width: 720px) {
-                body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-dialog { width: 98vw; height: 96vh; margin: 2vh auto; }
-                body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-content { height: 96vh; max-height: 96vh; }
-                body.wmn-mamsek-pos-route .wmn-pos-doctype-row { grid-template-columns: 1fr; gap: 5px; }
-                body.wmn-mamsek-pos-route .wmn-pos-doctype-row-actions { justify-content: flex-start; flex-wrap: wrap; }
-                body.wmn-mamsek-pos-route .wmn-pos-doctype-toolbar { flex-wrap: wrap; }
-                body.wmn-mamsek-pos-route .wmn-pos-doctype-toolbar .wmn-pos-doctype-search { flex-basis: 100%; order: 3; }
-                body.wmn-mamsek-pos-route .wmn-pos-offline-form-grid { grid-template-columns: 1fr; }
-                body.wmn-mamsek-pos-route .wmn-pos-offline-field.wide { grid-column: auto; }
-                body.wmn-mamsek-pos-route .wmn-pos-sync-row { grid-template-columns: 1fr; }
-            }
-        `;
-        document.head.appendChild(style);
+        window.WMN_POS?.UI?.ensurePageStylesheet?.();
     }
 
     function isOffline() {
@@ -25555,24 +25167,13 @@ function wmn_render_offline_print_template(template, doc) {
         return icon("form");
     }
 
-    function safeMenuColor(value) {
-        const color = String(value || "").trim();
-        return /^#[0-9a-f]{3,8}$/i.test(color) ? color : "";
-    }
-
     function managerButtonHtml(item) {
         const permissionText = item.can_write || item.can_create
             ? __("Open list, add or edit")
             : __("Read only");
-        const buttonColor = safeMenuColor(item.button_color);
-        const textColor = safeMenuColor(item.text_color);
-        const hasCustomAppearance = Boolean(buttonColor || textColor);
-        const style = [
-            buttonColor ? `--wmn-pos-menu-bg:${buttonColor}` : "",
-            textColor ? `--wmn-pos-menu-text:${textColor}` : "",
-        ].filter(Boolean).join(";");
+        const hasCustomAppearance = Boolean(item.button_color || item.text_color);
         return `
-            <button type="button" class="wmn-pos-manager-button wmn-pos-manager-doctype${hasCustomAppearance ? " wmn-pos-manager-colored" : ""}" data-doctype="${escapeHtml(item.doctype)}"${style ? ` style="${style}"` : ""}>
+            <button type="button" class="wmn-pos-manager-button wmn-pos-manager-doctype${hasCustomAppearance ? " wmn-pos-manager-colored" : ""}" data-doctype="${escapeHtml(item.doctype)}">
                 ${configuredIcon(item)}
                 <span><strong>${escapeHtml(item.label || item.doctype)}</strong><small>${escapeHtml(permissionText)}</small></span>
             </button>`;
@@ -25808,7 +25409,7 @@ function wmn_render_offline_print_template(template, doc) {
             <div class="wmn-pos-doctype-row" role="group" data-name="${escapeHtml(row.name)}" data-sync-status="${escapeHtml(syncState.state)}" data-local-record="${row.__wmn_local_record ? "1" : "0"}" data-cached-record="${syncState.isCached ? "1" : "0"}">
                 <div class="wmn-pos-doctype-row-main" role="button" tabindex="0">
                     <strong>${escapeHtml(rowTitle(row, config))}</strong>
-                    ${rowListDetails(row, config) ? `<small style="display:block;margin-top:2px;color:var(--text-muted,#6c7680);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(rowListDetails(row, config))}</small>` : ""}
+                    ${rowListDetails(row, config) ? `<small class="wmn-pos-doctype-row-detail">${escapeHtml(rowListDetails(row, config))}</small>` : ""}
                 </div>
                 <span>${escapeHtml(row.name)}</span>
                 <span>${escapeHtml(formatModified(modified))}${stateLabel ? ` <em class="wmn-pos-doctype-sync-state" data-state="${escapeHtml(syncState.state)}">${escapeHtml(stateLabel)}</em>` : ""}</span>
@@ -26002,86 +25603,26 @@ function wmn_render_offline_print_template(template, doc) {
         return `${url.pathname}${url.search}${url.hash}`;
     }
 
-    function injectFrameStyles(frameDocument) {
+    function installFrameStylesheet(frameDocument, bodyClass) {
         if (!frameDocument?.head) return;
-
-        let style = frameDocument.getElementById("wmn-pos-doctype-frame-style");
-        if (!style) {
-            style = frameDocument.createElement("style");
-            style.id = "wmn-pos-doctype-frame-style";
-            frameDocument.head.appendChild(style);
+        if (bodyClass && frameDocument.body) {
+            frameDocument.body.classList.add(bodyClass);
         }
 
-        style.textContent = `
-            html, body {
-                width: 100% !important;
-                min-width: 0 !important;
-                min-height: 100% !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                overflow-x: hidden !important;
-                background: #f4f6f8 !important;
-            }
+        if (frameDocument.getElementById("wmn-pos-page-stylesheet")) {
+            return;
+        }
 
-            body > header,
-            body > nav,
-            header.navbar,
-            nav.navbar,
-            .navbar,
-            [role="navigation"],
-            .page-head,
-            .page-head-content,
-            .page-title,
-            .layout-side-section,
-            .form-sidebar,
-            .desk-sidebar,
-            .desk-sidebar-container,
-            .standard-sidebar,
-            .sidebar-section,
-            .sidebar-toggle-btn,
-            .app-sidebar,
-            .app-switcher,
-            .app-switcher-menu,
-            .workspace-sidebar,
-            .wmn-global-workspace-header,
-            .form-footer {
-                display: none !important;
-            }
+        const link = frameDocument.createElement("link");
+        link.id = "wmn-pos-page-stylesheet";
+        link.rel = "stylesheet";
+        link.href = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF
+            || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet";
+        frameDocument.head.appendChild(link);
+    }
 
-            .main-section,
-            .page-container,
-            .page-body,
-            .layout-main,
-            .layout-main-section-wrapper,
-            .layout-main-section,
-            .form-layout,
-            .form-page {
-                box-sizing: border-box !important;
-                width: 100% !important;
-                max-width: none !important;
-                min-width: 0 !important;
-                margin: 0 !important;
-            }
-
-            .layout-main-section-wrapper,
-            .layout-main-section {
-                flex: 1 1 100% !important;
-            }
-
-            .page-container,
-            .page-body,
-            .form-layout,
-            .form-page {
-                padding: 4px 8px 12px !important;
-            }
-
-            .container,
-            .container-fluid {
-                width: 100% !important;
-                max-width: none !important;
-                margin: 0 !important;
-            }
-        `;
+    function injectFrameStyles(frameDocument) {
+        installFrameStylesheet(frameDocument, "wmn-pos-doctype-frame-body");
     }
 
     function hideFrameChrome(frameDocument) {
@@ -26113,7 +25654,7 @@ function wmn_render_offline_print_template(template, doc) {
 
         for (const selector of selectors) {
             frameDocument.querySelectorAll(selector).forEach((element) => {
-                element.style.setProperty("display", "none", "important");
+                element.classList.add("wmn-force-hidden");
             });
         }
     }
@@ -26578,7 +26119,7 @@ function wmn_render_offline_print_template(template, doc) {
     function offlineFieldControl(field, value, formEditable = true) {
         const fieldname = escapeHtml(field.fieldname);
         const label = escapeHtml(field.label || field.fieldname);
-        const required = cint(field.required_offline || 0) ? `<span style="color:#b42318"> *</span>` : "";
+        const required = cint(field.required_offline || 0) ? `<span class="wmn-required-mark"> *</span>` : "";
         const editable = formEditable && cint(field.editable_offline || 0) === 1;
         const type = String(field.fieldtype || "Data");
         const normalized = offlineInputValue(field, value);
@@ -26668,12 +26209,12 @@ function wmn_render_offline_print_template(template, doc) {
             <div class="wmn-pos-doctype-shell">
                 <div class="wmn-pos-doctype-toolbar">
                     ${!cint(config.is_single || 0) ? `<button type="button" class="btn btn-default wmn-pos-doctype-back">${icon("back")}<span>${escapeHtml(__("Back to list"))}</span></button>` : ""}
-                    <div style="flex:1 1 auto;min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(__(config.label || config.doctype))}</div>
+                    <div class="wmn-ellipsis-title">${escapeHtml(__(config.label || config.doctype))}</div>
                     ${canSave ? `<button type="button" class="btn btn-primary wmn-pos-offline-save">${icon("save")}<span>${escapeHtml(__("Save Offline"))}</span></button>` : ""}
                 </div>
                 <div class="wmn-pos-offline-banner">${escapeHtml(state.isNew ? __("This document will be stored locally and created on the server during synchronization.") : __("Offline edits are stored locally. Server changes are conflict-checked during synchronization."))}</div>
                 <div class="wmn-pos-offline-form">
-                    ${documentName ? `<div style="margin-bottom:10px;font-size:11px;color:var(--text-muted,#6c7680);">${escapeHtml(__("Document"))}: <strong>${escapeHtml(documentName)}</strong></div>` : ""}
+                    ${documentName ? `<div class="wmn-document-note">${escapeHtml(__("Document"))}: <strong>${escapeHtml(documentName)}</strong></div>` : ""}
                     <div class="wmn-pos-offline-form-grid">${fieldsHtml || `<div class="wmn-pos-doctype-empty">${escapeHtml(__("No offline fields are configured for this DocType."))}</div>`}</div>
                 </div>
             </div>`);
@@ -26852,10 +26393,10 @@ function wmn_render_offline_print_template(template, doc) {
             }
             $wrapper.html(`<div class="wmn-pos-sync-list">${rows.map((row) => `
                 <div class="wmn-pos-sync-row" data-key="${escapeHtml(row.key)}">
-                    <div><strong>${escapeHtml(row.doctype)}</strong><small>${escapeHtml(row.name)}</small>${row.last_error ? `<small style="color:#b42318">${escapeHtml(row.last_error)}</small>` : ""}</div>
+                    <div><strong>${escapeHtml(row.doctype)}</strong><small>${escapeHtml(row.name)}</small>${row.last_error ? `<small class="wmn-danger-text">${escapeHtml(row.last_error)}</small>` : ""}</div>
                     <span class="wmn-pos-doctype-sync-state" data-state="${escapeHtml(row.sync_status)}">${escapeHtml(syncStatusLabel(row.sync_status))}</span>
                     <span>${escapeHtml(formatModified(row.local_updated_at))}</span>
-                    <div style="display:flex;gap:5px;justify-content:flex-end;">
+                    <div class="wmn-row-actions-end">
                         ${!isOffline() && row.sync_status !== "conflict" ? `<button type="button" class="btn btn-xs btn-primary wmn-pos-sync-one">${escapeHtml(__("Sync"))}</button>` : ""}
                         ${row.sync_status === "conflict" && row.server_document ? `<button type="button" class="btn btn-xs btn-default wmn-pos-use-server">${escapeHtml(__("Use Server"))}</button>` : ""}
                     </div>
@@ -26926,68 +26467,7 @@ function wmn_render_offline_print_template(template, doc) {
     }
 
     function injectReportFrameStyles(frameDocument) {
-        if (!frameDocument?.head) return;
-
-        let style = frameDocument.getElementById("wmn-pos-report-frame-style");
-        if (!style) {
-            style = frameDocument.createElement("style");
-            style.id = "wmn-pos-report-frame-style";
-            frameDocument.head.appendChild(style);
-        }
-
-        style.textContent = `
-            html, body {
-                width: 100% !important;
-                min-width: 0 !important;
-                min-height: 100% !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                overflow-x: hidden !important;
-                background: var(--bg-color, #f4f6f8) !important;
-            }
-            body > header,
-            body > nav,
-            header.navbar,
-            nav.navbar,
-            .navbar,
-            [role="navigation"],
-            .layout-side-section,
-            .desk-sidebar,
-            .desk-sidebar-container,
-            .standard-sidebar,
-            .sidebar-section,
-            .sidebar-toggle-btn,
-            .app-sidebar,
-            .app-switcher,
-            .app-switcher-menu,
-            .workspace-sidebar,
-            .wmn-global-workspace-header,
-            #wmn-native-sidebar-topnav-host {
-                display: none !important;
-            }
-            .main-section,
-            .page-container,
-            .page-body,
-            .layout-main,
-            .layout-main-section-wrapper,
-            .layout-main-section {
-                box-sizing: border-box !important;
-                width: 100% !important;
-                max-width: none !important;
-                min-width: 0 !important;
-                margin: 0 !important;
-            }
-            .layout-main-section-wrapper,
-            .layout-main-section {
-                flex: 1 1 100% !important;
-            }
-            .container,
-            .container-fluid {
-                width: 100% !important;
-                max-width: none !important;
-                margin: 0 !important;
-            }
-        `;
+        installFrameStylesheet(frameDocument, "wmn-pos-report-frame-body");
     }
 
     function hideReportFrameChrome(frameDocument) {
@@ -27014,7 +26494,7 @@ function wmn_render_offline_print_template(template, doc) {
         ];
         for (const selector of selectors) {
             frameDocument.querySelectorAll(selector).forEach((element) => {
-                element.style.setProperty("display", "none", "important");
+                element.classList.add("wmn-force-hidden");
             });
         }
     }
@@ -27023,7 +26503,7 @@ function wmn_render_offline_print_template(template, doc) {
         return `
             <div class="wmn-pos-doctype-toolbar">
                 <button type="button" class="btn btn-default wmn-pos-doctype-back">${icon("back")}<span>${escapeHtml(__("Back to reports"))}</span></button>
-                <div style="flex:1 1 auto;min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(__(report?.name || "Report"))}</div>
+                <div class="wmn-ellipsis-title">${escapeHtml(__(report?.name || "Report"))}</div>
             </div>`;
     }
 
@@ -27085,7 +26565,7 @@ function wmn_render_offline_print_template(template, doc) {
         return `
             <div class="wmn-pos-doctype-toolbar">
                 ${!cint(config.is_single || 0) ? `<button type="button" class="btn btn-default wmn-pos-doctype-back">${icon("back")}<span>${escapeHtml(__("Back to list"))}</span></button>` : ""}
-                <div style="flex:1 1 auto;min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(__(config.label || config.doctype))}</div>
+                <div class="wmn-ellipsis-title">${escapeHtml(__(config.label || config.doctype))}</div>
                 ${canSave ? `<button type="button" class="btn btn-primary wmn-pos-doctype-save">${icon("save")}<span>${escapeHtml(__("Save"))}</span></button>` : ""}
             </div>`;
     }
@@ -28064,9 +27544,8 @@ window.WMN_POS.Source.ItemDetails = class {
             this.$item_image.html(
                 `<img
                     onerror="cur_pos.item_details.handle_broken_image(this)"
-                    class="h-full" src="${frappe.utils.escape_html(image)}"
-                    alt="${frappe.utils.escape_html(frappe.get_abbr(item_name))}"
-                    style="object-fit: cover;">`
+                    class="h-full wmn-object-fit-cover" src="${frappe.utils.escape_html(image)}"
+                    alt="${frappe.utils.escape_html(frappe.get_abbr(item_name))}">`
             );
         } else {
             this.$item_image.html(
@@ -29818,7 +29297,7 @@ window.WMN_POS.Source.ItemSelector = class {
         );
 
         this.item_group_field.$wrapper.find(".link-btn").append(
-            `<a class="btn-clear" tabindex="-1" style="display: inline-block;" title="${__("Clear Link")}">
+            `<a class="btn-clear wmn-inline-block" tabindex="-1" title="${__("Clear Link")}">
                 ${frappe.utils.icon("close", "xs", "es-icon")}
             </a>`
         );
@@ -32996,7 +32475,7 @@ window.WMN_POS.Source.Controller = class {
                     let $button = this.$component.find(".wmn-send-to-cashier-btn").first();
                     if (!$button.length) {
                         $button = $(
-                            `<button type="button" class="btn btn-default wmn-send-to-cashier-btn" style="margin-inline-end:8px;font-weight:700;">${wmn_t("Send to Cashier", "إرسال إلى الكاشير")}</button>`
+                            `<button type="button" class="btn btn-default wmn-send-to-cashier-btn wmn-action-btn-spaced">${wmn_t("Send to Cashier", "إرسال إلى الكاشير")}</button>`
                         );
                         $button.insertBefore($submit);
                     }
@@ -33039,7 +32518,7 @@ window.WMN_POS.Source.Controller = class {
                     let $button = this.$component.find(".wmn-payment-back-to-recent-btn").first();
                     if (!$button.length) {
                         $button = $(
-                            `<button type="button" class="btn btn-default wmn-payment-back-to-recent-btn" style="margin-inline-end:8px;font-weight:700;">${wmn_t("Back to Recent Orders", "العودة للطلبات الأخيرة")}</button>`
+                            `<button type="button" class="btn btn-default wmn-payment-back-to-recent-btn wmn-action-btn-spaced">${wmn_t("Back to Recent Orders", "العودة للطلبات الأخيرة")}</button>`
                         );
                         $button.insertBefore($submit);
                     }
@@ -34077,10 +33556,10 @@ window.WMN_POS.Source.Controller = class {
                     }
 
                     const receiptHtml = receiptNo
-                        ? `<div class="wmn-summary-receipt-number" style="display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;font-weight:600;direction:ltr"><span>R NO :</span><strong style="font-family:monospace">${frappe.utils.escape_html(receiptNo)}</strong></div>`
+                        ? `<div class="wmn-summary-receipt-number"><span>R NO :</span><strong>${frappe.utils.escape_html(receiptNo)}</strong></div>`
                         : "";
 
-                    return `<div class="wmn-summary-receipt-identity" style="flex:0 1 230px;min-width:150px;max-width:230px;text-align:center;align-self:center;padding:0 10px;box-sizing:border-box;direction:ltr">${receiptHtml}<div class="wmn-summary-barcode-wrap" style="margin:4px auto 0;max-width:220px">${barcodeHtml}</div></div>`;
+                    return `<div class="wmn-summary-receipt-identity">${receiptHtml}<div class="wmn-summary-barcode-wrap">${barcodeHtml}</div></div>`;
                 },
 
         bind_events() {
@@ -35069,22 +34548,9 @@ window.WMN_POS.Source.Controller = class {
                             if (!groups.length) return;
 
                             const html = `
-                                <div class="wmn-item-group-buttons" style="
-                                    grid-column: 1 / -1;
-                                    display:flex;
-                                    gap:8px;
-                                    overflow-x:auto;
-                                    overflow-y:hidden;
-                                    padding:8px 2px 4px 2px;
-                                    margin-top:6px;
-                                    min-height:42px;
-                                    white-space:nowrap;
-                                    align-items:center;
-                                    scrollbar-width:thin;
-                                ">
+                                <div class="wmn-item-group-buttons">
                                     <button type="button"
                                         class="btn btn-xs btn-primary wmn-item-group-btn active"
-                                        style="flex:0 0 auto; height:28px;"
                                         data-item-group="">
                                         ${__("All")}
                                     </button>
@@ -35092,7 +34558,6 @@ window.WMN_POS.Source.Controller = class {
                                     ${groups.map(g => `
                                         <button type="button"
                                             class="btn btn-xs btn-default wmn-item-group-btn"
-                                            style="flex:0 0 auto; height:28px;"
                                             data-item-group="${frappe.utils.escape_html(g)}">
                                             ${frappe.utils.escape_html(__(g))}
                                         </button>
@@ -36550,7 +36015,7 @@ window.WMN_POS.Source.Controller = class {
                         if (statusField?.$wrapper) {
                             const profileName = repo?.resolveProfile?.() || "";
                             const source = status.has_local_override ? __("Browser preference is active") : __("Using POS Profile defaults");
-                            statusField.$wrapper.html(`<div class="alert alert-light border" style="margin:0;padding:10px 12px"><strong>${frappe.utils.escape_html(profileName || __("POS Profile"))}</strong><br>${source}</div>`);
+                            statusField.$wrapper.html(`<div class="alert alert-light border wmn-alert-compact"><strong>${frappe.utils.escape_html(profileName || __("POS Profile"))}</strong><br>${source}</div>`);
                         }
                         return dialog;
                     },
@@ -37213,75 +36678,6 @@ window.WMN_POS.Source.Controller = class {
         if (initializeCore) initializeCore.apply(instance, args);
         if (initializeUI) initializeUI.apply(instance, args);
     }
-
-    const styleId = 'wmn-button-mode-styles';
-            if (!document.getElementById(styleId)) {
-                const style = document.createElement('style');
-                style.id = styleId;
-                style.textContent = `
-
-
-                    .items-container.wmn-button-mode .item-wrapper {
-                        cursor: pointer;
-                        transition: all 0.2s ease;
-                        text-align: center;
-                    }
-
-                    .items-container.wmn-button-mode .item-wrapper:hover {
-                        transform: translateY(-2px);
-                        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-                        border-color: var(--primary-color);
-                    }
-
-
-                    .items-container.wmn-button-mode .item-wrapper .item-display,
-                    .items-container.wmn-button-mode .item-wrapper .indicator-pill {
-                        display: none !important;
-                    }
-
-
-                    .items-container.wmn-button-mode .item-wrapper .item-detail .item-rate {
-                        display: block;
-                        margin-top: 2px;
-                        font-size: 11px;
-                        line-height: 14px;
-                    }
-    .items-container.wmn-button-mode .item-wrapper {
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
-        justify-content: center !important;
-        text-align: center !important;
-    }
-    .items-container.wmn-button-mode {
-        display: grid;
-        grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
-        gap: 1px;
-        padding: 2px;
-        padding-top: 1px;
-        overflow-y: scroll;
-        overflow-x: hidden;
-        white-space: normal !important;
-        font-weight: 600 !important;
-        overflow: auto;
-        text-overflow: ellipsis;
-        max-width: 100%;
-        vertical-align: middle;
-    }
-
-                    .items-container.wmn-button-mode .item-wrapper .item-name {
-                        white-space: normal !important;
-                        text-align: center !important;
-                        font-weight: 600 !important;
-                    }
-
-
-                    .items-container.wmn-button-mode .item-wrapper .flex.items-center {
-                        display: none !important;
-                    }
-                `;
-                document.head.appendChild(style);
-            }
 
     ns.ClassMethods.ItemSelector = { CoreMethods, UIMethods, FinalMethods, initialize };
 })();
@@ -39110,16 +38506,16 @@ window.WMN_POS.Source.Controller = class {
                                 fieldtype: "HTML",
                                 fieldname: "batch_html",
                                 options: `
-                                    <div style="max-height:55vh;overflow:auto;border:1px solid #e5e7eb;border-radius:10px;">
-                                        <table class="table table-bordered table-hover" style="margin:0;">
-                                            <thead style="position:sticky;top:0;background:#f8fafc;z-index:1;">
+                                    <div class="wmn-table-scroll-panel">
+                                        <table class="table table-bordered table-hover wmn-table-flush">
+                                            <thead class="wmn-sticky-table-head">
                                                 <tr>
                                                     <th>${__("Batch No")}</th>
                                                     <th>${__("Available Qty")}</th>
                                                     <th>${__("Rate")}</th>
                                                     <th>${__("Expiry Date")}</th>
-                                                    <th style="width:130px;">${__("Qty")}</th>
-                                                    <th style="width:110px;">${__("Action")}</th>
+                                                    <th class="wmn-col-qty">${__("Qty")}</th>
+                                                    <th class="wmn-col-action">${__("Action")}</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -39131,7 +38527,7 @@ window.WMN_POS.Source.Controller = class {
 
                                                     return `
                                                         <tr>
-                                                            <td style="font-weight:700;">${frappe.utils.escape_html(b.batch_no || "")}</td>
+                                                            <td class="wmn-font-bold">${frappe.utils.escape_html(b.batch_no || "")}</td>
                                                             <td>${availableQty}</td>
                                                             <td>${format_currency(rate, currency)}</td>
                                                             <td>${frappe.utils.escape_html(b.expiry_date || "")}</td>

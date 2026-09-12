@@ -206,7 +206,7 @@
 
             if (!availability.available) {
                 $mode.append(
-                    `<div class="small text-muted wmn-gateway-note" style="margin-top:4px;">${__(availability.reason || "Electronic payment gateway is unavailable")}</div>`
+                    `<div class="small text-muted wmn-gateway-note">${__(availability.reason || "Electronic payment gateway is unavailable")}</div>`
                 );
                 return;
             }
@@ -214,7 +214,7 @@
             const label = approvedForCurrentAmount
                 ? __("Approved")
                 : __("Process Electronic Payment");
-            const $button = $(`<button type="button" class="btn btn-xs btn-default wmn-gateway-action" style="margin-top:6px;width:100%;">${label}</button>`);
+            const $button = $(`<button type="button" class="btn btn-xs btn-default wmn-gateway-action">${label}</button>`);
             $mode.append($button);
             if (approvedForCurrentAmount) {
                 $button.prop("disabled", true);

@@ -5,7 +5,6 @@
     const ns = window.WMN_POS;
     ns.Features.DoctypeManager = ns.Features.DoctypeManager || {};
 
-    const STYLE_ID = "wmn-pos-doctype-manager-style";
     const FORM_WATCH_INTERVAL = 350;
     const LIST_LIMIT = 50;
     const dialogScriptCache = new Map();
@@ -52,168 +51,7 @@
     }
 
     function ensureStyles() {
-        if (document.getElementById(STYLE_ID)) return;
-        const style = document.createElement("style");
-        style.id = STYLE_ID;
-        style.textContent = `
-            body.wmn-mamsek-pos-route .wmn-pos-management-menu-dialog .modal-dialog { max-width: 980px; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-dialog {
-                width: calc(100vw - 60px) !important;
-                max-width: none !important;
-                height: 94vh;
-                margin: 3vh auto;
-            }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-content {
-                display: flex;
-                flex-direction: column;
-                width: 100%;
-                height: 94vh;
-                max-height: 94vh;
-            }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-header,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-footer { flex: 0 0 auto; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body {
-                display: flex;
-                flex: 1 1 auto;
-                width: 100%;
-                min-height: 0;
-                overflow: hidden;
-                padding: 0;
-            }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body > .form-layout,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .form-page,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .form-section,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .section-body,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .row,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .form-column,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .column-break,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .frappe-control,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .control-input-wrapper,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .control-input,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog [data-fieldname="doctype_html"] {
-                box-sizing: border-box;
-                width: 100% !important;
-                max-width: none !important;
-                height: 100% !important;
-                min-height: 0 !important;
-                margin: 0 !important;
-                padding: 0 !important;
-            }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .form-column,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .column-break {
-                flex: 1 1 100% !important;
-                max-width: 100% !important;
-            }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .form-section,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .section-body,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .form-page,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body > .form-layout {
-                display: flex;
-                flex: 1 1 auto;
-                flex-direction: column;
-            }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .section-body,
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-body .row {
-                flex: 1 1 auto;
-                min-height: 0;
-            }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-shell { direction: rtl; display: grid; gap: 16px; }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-section { display: grid; gap: 9px; }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-section-head h4 { margin: 0; font-size: 14px; font-weight: 800; }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-section-head span { color: var(--text-muted, #6c7680); font-size: 11px; }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-button { display: flex; align-items: center; gap: 9px; min-height: 48px; padding: 9px 11px; border: 1px solid var(--border-color, #d1d8dd); border-radius: 10px; background: var(--card-bg, #fff); color: var(--text-color, #1f2937); text-align: start; cursor: pointer; }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-button:hover { border-color: var(--primary, #2490ef); background: var(--subtle-fg, #f8fafc); }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-button small { display: block; margin-top: 2px; color: var(--wmn-pos-menu-text, var(--text-muted, #6c7680)); font-size: 10px; opacity: .82; }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-button.wmn-pos-manager-colored { background: var(--wmn-pos-menu-bg, var(--card-bg, #fff)); color: var(--wmn-pos-menu-text, var(--text-color, #1f2937)); border-color: var(--wmn-pos-menu-bg, var(--border-color, #d1d8dd)); }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-button.wmn-pos-manager-colored:hover { background: var(--wmn-pos-menu-bg, var(--card-bg, #fff)); color: var(--wmn-pos-menu-text, var(--text-color, #1f2937)); filter: brightness(.96); }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-button .wmn-pos-manager-icon { flex: 0 0 auto; }
-            body.wmn-mamsek-pos-route .wmn-pos-manager-offline-note { padding: 12px; border: 1px solid #f2d6a2; border-radius: 10px; background: #fff8e8; color: #8a5a00; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-shell {
-                display: flex;
-                flex: 1 1 100%;
-                flex-direction: column;
-                box-sizing: border-box;
-                width: 100% !important;
-                max-width: none !important;
-                min-width: 0;
-                height: 100%;
-                min-height: 0;
-                background: var(--subtle-fg, #f8fafc);
-            }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-toolbar { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; padding: 10px 12px; border-bottom: 1px solid var(--border-color, #d1d8dd); background: var(--card-bg, #fff); }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-toolbar .wmn-pos-doctype-search { flex: 1 1 auto; min-width: 120px; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-toolbar .btn { min-height: 34px; white-space: nowrap; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-cache-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; flex: 0 0 auto; padding: 8px 12px; border-bottom: 1px solid var(--border-color, #d1d8dd); background: var(--card-bg, #fff); }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-cache-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 4px 9px; border: 1px solid var(--border-color, #d1d8dd); border-radius: 999px; background: var(--subtle-fg, #f8fafc); color: var(--text-muted, #6c7680); font-size: 10px; font-weight: 700; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-cache-chip strong { color: var(--text-color, #1f2937); font-size: 11px; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-cache-chip[data-kind="pending"] { border-color: #f2d6a2; background: #fff8e8; color: #8a5a00; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-cache-chip[data-kind="conflict"] { border-color: #f3c4bf; background: #fff1f0; color: #b42318; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-list { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 10px; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-row { display: grid; grid-template-columns: minmax(0, 1fr) 180px 170px auto; gap: 10px; align-items: center; width: 100%; min-height: 56px; margin-bottom: 6px; padding: 8px 11px; border: 1px solid var(--border-color, #d1d8dd); border-radius: 9px; background: var(--card-bg, #fff); color: var(--text-color, #1f2937); text-align: start; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-row:hover { border-color: var(--primary, #2490ef); }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-row-main { min-width: 0; cursor: pointer; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-row span { overflow: hidden; color: var(--text-muted, #6c7680); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; white-space: nowrap; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-row-actions .btn { min-height: 30px; padding: 4px 8px; font-size: 10px; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-sync-state { display: inline-flex; align-items: center; justify-content: center; min-width: 76px; padding: 3px 7px; border-radius: 999px; font-size: 10px !important; font-weight: 800; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-sync-state[data-state="clean"] { background: #ecfdf3; color: #027a48; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-sync-state[data-state="pending_create"],
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-sync-state[data-state="pending_update"] { background: #fff7e6; color: #9a6700; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-sync-state[data-state="conflict"] { background: #fff1f0; color: #b42318; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-sync-state[data-state="error"] { background: #fff1f0; color: #b42318; }
-            body.wmn-mamsek-pos-route .wmn-pos-offline-form { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 14px; }
-            body.wmn-mamsek-pos-route .wmn-pos-offline-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
-            body.wmn-mamsek-pos-route .wmn-pos-offline-field { display: grid; gap: 5px; min-width: 0; padding: 10px; border: 1px solid var(--border-color, #d1d8dd); border-radius: 10px; background: var(--card-bg, #fff); }
-            body.wmn-mamsek-pos-route .wmn-pos-offline-field.wide { grid-column: 1 / -1; }
-            body.wmn-mamsek-pos-route .wmn-pos-offline-field label { margin: 0; color: var(--text-color, #1f2937); font-size: 11px; font-weight: 800; }
-            body.wmn-mamsek-pos-route .wmn-pos-offline-field small { color: var(--text-muted, #6c7680); font-size: 9px; }
-            body.wmn-mamsek-pos-route .wmn-pos-offline-field input[type="checkbox"] { width: 18px; height: 18px; }
-            body.wmn-mamsek-pos-route .wmn-pos-offline-readonly { min-height: 34px; padding: 7px 9px; border-radius: 7px; background: var(--subtle-fg, #f8fafc); color: var(--text-muted, #6c7680); overflow-wrap: anywhere; }
-            body.wmn-mamsek-pos-route .wmn-pos-offline-banner { flex: 0 0 auto; margin: 10px 12px 0; padding: 8px 10px; border: 1px solid #f2d6a2; border-radius: 8px; background: #fff8e8; color: #8a5a00; font-size: 11px; }
-            body.wmn-mamsek-pos-route .wmn-pos-sync-list { display: grid; gap: 7px; max-height: 62vh; overflow: auto; }
-            body.wmn-mamsek-pos-route .wmn-pos-sync-row { display: grid; grid-template-columns: minmax(0,1fr) 130px 110px auto; gap: 8px; align-items: center; padding: 9px; border: 1px solid var(--border-color, #d1d8dd); border-radius: 9px; }
-            body.wmn-mamsek-pos-route .wmn-pos-sync-row small { display: block; margin-top: 2px; color: var(--text-muted, #6c7680); }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-empty { display: grid; place-items: center; min-height: 220px; color: var(--text-muted, #6c7680); text-align: center; }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-frame-wrap {
-                position: relative;
-                flex: 1 1 auto;
-                box-sizing: border-box;
-                width: 100% !important;
-                max-width: none !important;
-                min-width: 0;
-                min-height: 0;
-                overflow: hidden;
-                background: #f4f6f8;
-            }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-frame {
-                position: absolute;
-                inset: 0;
-                display: block;
-                box-sizing: border-box;
-                width: 100% !important;
-                max-width: none !important;
-                min-width: 0;
-                height: 100% !important;
-                border: 0;
-                background: #fff;
-            }
-            body.wmn-mamsek-pos-route .wmn-pos-doctype-loading { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; background: #fff; color: var(--text-muted, #6c7680); }
-            @media (max-width: 720px) {
-                body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-dialog { width: 98vw; height: 96vh; margin: 2vh auto; }
-                body.wmn-mamsek-pos-route .wmn-pos-doctype-dialog .modal-content { height: 96vh; max-height: 96vh; }
-                body.wmn-mamsek-pos-route .wmn-pos-doctype-row { grid-template-columns: 1fr; gap: 5px; }
-                body.wmn-mamsek-pos-route .wmn-pos-doctype-row-actions { justify-content: flex-start; flex-wrap: wrap; }
-                body.wmn-mamsek-pos-route .wmn-pos-doctype-toolbar { flex-wrap: wrap; }
-                body.wmn-mamsek-pos-route .wmn-pos-doctype-toolbar .wmn-pos-doctype-search { flex-basis: 100%; order: 3; }
-                body.wmn-mamsek-pos-route .wmn-pos-offline-form-grid { grid-template-columns: 1fr; }
-                body.wmn-mamsek-pos-route .wmn-pos-offline-field.wide { grid-column: auto; }
-                body.wmn-mamsek-pos-route .wmn-pos-sync-row { grid-template-columns: 1fr; }
-            }
-        `;
-        document.head.appendChild(style);
+        window.WMN_POS?.UI?.ensurePageStylesheet?.();
     }
 
     function isOffline() {
@@ -306,24 +144,13 @@
         return icon("form");
     }
 
-    function safeMenuColor(value) {
-        const color = String(value || "").trim();
-        return /^#[0-9a-f]{3,8}$/i.test(color) ? color : "";
-    }
-
     function managerButtonHtml(item) {
         const permissionText = item.can_write || item.can_create
             ? __("Open list, add or edit")
             : __("Read only");
-        const buttonColor = safeMenuColor(item.button_color);
-        const textColor = safeMenuColor(item.text_color);
-        const hasCustomAppearance = Boolean(buttonColor || textColor);
-        const style = [
-            buttonColor ? `--wmn-pos-menu-bg:${buttonColor}` : "",
-            textColor ? `--wmn-pos-menu-text:${textColor}` : "",
-        ].filter(Boolean).join(";");
+        const hasCustomAppearance = Boolean(item.button_color || item.text_color);
         return `
-            <button type="button" class="wmn-pos-manager-button wmn-pos-manager-doctype${hasCustomAppearance ? " wmn-pos-manager-colored" : ""}" data-doctype="${escapeHtml(item.doctype)}"${style ? ` style="${style}"` : ""}>
+            <button type="button" class="wmn-pos-manager-button wmn-pos-manager-doctype${hasCustomAppearance ? " wmn-pos-manager-colored" : ""}" data-doctype="${escapeHtml(item.doctype)}">
                 ${configuredIcon(item)}
                 <span><strong>${escapeHtml(item.label || item.doctype)}</strong><small>${escapeHtml(permissionText)}</small></span>
             </button>`;
@@ -559,7 +386,7 @@
             <div class="wmn-pos-doctype-row" role="group" data-name="${escapeHtml(row.name)}" data-sync-status="${escapeHtml(syncState.state)}" data-local-record="${row.__wmn_local_record ? "1" : "0"}" data-cached-record="${syncState.isCached ? "1" : "0"}">
                 <div class="wmn-pos-doctype-row-main" role="button" tabindex="0">
                     <strong>${escapeHtml(rowTitle(row, config))}</strong>
-                    ${rowListDetails(row, config) ? `<small style="display:block;margin-top:2px;color:var(--text-muted,#6c7680);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(rowListDetails(row, config))}</small>` : ""}
+                    ${rowListDetails(row, config) ? `<small class="wmn-pos-doctype-row-detail">${escapeHtml(rowListDetails(row, config))}</small>` : ""}
                 </div>
                 <span>${escapeHtml(row.name)}</span>
                 <span>${escapeHtml(formatModified(modified))}${stateLabel ? ` <em class="wmn-pos-doctype-sync-state" data-state="${escapeHtml(syncState.state)}">${escapeHtml(stateLabel)}</em>` : ""}</span>
@@ -753,86 +580,26 @@
         return `${url.pathname}${url.search}${url.hash}`;
     }
 
-    function injectFrameStyles(frameDocument) {
+    function installFrameStylesheet(frameDocument, bodyClass) {
         if (!frameDocument?.head) return;
-
-        let style = frameDocument.getElementById("wmn-pos-doctype-frame-style");
-        if (!style) {
-            style = frameDocument.createElement("style");
-            style.id = "wmn-pos-doctype-frame-style";
-            frameDocument.head.appendChild(style);
+        if (bodyClass && frameDocument.body) {
+            frameDocument.body.classList.add(bodyClass);
         }
 
-        style.textContent = `
-            html, body {
-                width: 100% !important;
-                min-width: 0 !important;
-                min-height: 100% !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                overflow-x: hidden !important;
-                background: #f4f6f8 !important;
-            }
+        if (frameDocument.getElementById("wmn-pos-page-stylesheet")) {
+            return;
+        }
 
-            body > header,
-            body > nav,
-            header.navbar,
-            nav.navbar,
-            .navbar,
-            [role="navigation"],
-            .page-head,
-            .page-head-content,
-            .page-title,
-            .layout-side-section,
-            .form-sidebar,
-            .desk-sidebar,
-            .desk-sidebar-container,
-            .standard-sidebar,
-            .sidebar-section,
-            .sidebar-toggle-btn,
-            .app-sidebar,
-            .app-switcher,
-            .app-switcher-menu,
-            .workspace-sidebar,
-            .wmn-global-workspace-header,
-            .form-footer {
-                display: none !important;
-            }
+        const link = frameDocument.createElement("link");
+        link.id = "wmn-pos-page-stylesheet";
+        link.rel = "stylesheet";
+        link.href = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF
+            || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet";
+        frameDocument.head.appendChild(link);
+    }
 
-            .main-section,
-            .page-container,
-            .page-body,
-            .layout-main,
-            .layout-main-section-wrapper,
-            .layout-main-section,
-            .form-layout,
-            .form-page {
-                box-sizing: border-box !important;
-                width: 100% !important;
-                max-width: none !important;
-                min-width: 0 !important;
-                margin: 0 !important;
-            }
-
-            .layout-main-section-wrapper,
-            .layout-main-section {
-                flex: 1 1 100% !important;
-            }
-
-            .page-container,
-            .page-body,
-            .form-layout,
-            .form-page {
-                padding: 4px 8px 12px !important;
-            }
-
-            .container,
-            .container-fluid {
-                width: 100% !important;
-                max-width: none !important;
-                margin: 0 !important;
-            }
-        `;
+    function injectFrameStyles(frameDocument) {
+        installFrameStylesheet(frameDocument, "wmn-pos-doctype-frame-body");
     }
 
     function hideFrameChrome(frameDocument) {
@@ -864,7 +631,7 @@
 
         for (const selector of selectors) {
             frameDocument.querySelectorAll(selector).forEach((element) => {
-                element.style.setProperty("display", "none", "important");
+                element.classList.add("wmn-force-hidden");
             });
         }
     }
@@ -1329,7 +1096,7 @@
     function offlineFieldControl(field, value, formEditable = true) {
         const fieldname = escapeHtml(field.fieldname);
         const label = escapeHtml(field.label || field.fieldname);
-        const required = cint(field.required_offline || 0) ? `<span style="color:#b42318"> *</span>` : "";
+        const required = cint(field.required_offline || 0) ? `<span class="wmn-required-mark"> *</span>` : "";
         const editable = formEditable && cint(field.editable_offline || 0) === 1;
         const type = String(field.fieldtype || "Data");
         const normalized = offlineInputValue(field, value);
@@ -1419,12 +1186,12 @@
             <div class="wmn-pos-doctype-shell">
                 <div class="wmn-pos-doctype-toolbar">
                     ${!cint(config.is_single || 0) ? `<button type="button" class="btn btn-default wmn-pos-doctype-back">${icon("back")}<span>${escapeHtml(__("Back to list"))}</span></button>` : ""}
-                    <div style="flex:1 1 auto;min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(__(config.label || config.doctype))}</div>
+                    <div class="wmn-ellipsis-title">${escapeHtml(__(config.label || config.doctype))}</div>
                     ${canSave ? `<button type="button" class="btn btn-primary wmn-pos-offline-save">${icon("save")}<span>${escapeHtml(__("Save Offline"))}</span></button>` : ""}
                 </div>
                 <div class="wmn-pos-offline-banner">${escapeHtml(state.isNew ? __("This document will be stored locally and created on the server during synchronization.") : __("Offline edits are stored locally. Server changes are conflict-checked during synchronization."))}</div>
                 <div class="wmn-pos-offline-form">
-                    ${documentName ? `<div style="margin-bottom:10px;font-size:11px;color:var(--text-muted,#6c7680);">${escapeHtml(__("Document"))}: <strong>${escapeHtml(documentName)}</strong></div>` : ""}
+                    ${documentName ? `<div class="wmn-document-note">${escapeHtml(__("Document"))}: <strong>${escapeHtml(documentName)}</strong></div>` : ""}
                     <div class="wmn-pos-offline-form-grid">${fieldsHtml || `<div class="wmn-pos-doctype-empty">${escapeHtml(__("No offline fields are configured for this DocType."))}</div>`}</div>
                 </div>
             </div>`);
@@ -1603,10 +1370,10 @@
             }
             $wrapper.html(`<div class="wmn-pos-sync-list">${rows.map((row) => `
                 <div class="wmn-pos-sync-row" data-key="${escapeHtml(row.key)}">
-                    <div><strong>${escapeHtml(row.doctype)}</strong><small>${escapeHtml(row.name)}</small>${row.last_error ? `<small style="color:#b42318">${escapeHtml(row.last_error)}</small>` : ""}</div>
+                    <div><strong>${escapeHtml(row.doctype)}</strong><small>${escapeHtml(row.name)}</small>${row.last_error ? `<small class="wmn-danger-text">${escapeHtml(row.last_error)}</small>` : ""}</div>
                     <span class="wmn-pos-doctype-sync-state" data-state="${escapeHtml(row.sync_status)}">${escapeHtml(syncStatusLabel(row.sync_status))}</span>
                     <span>${escapeHtml(formatModified(row.local_updated_at))}</span>
-                    <div style="display:flex;gap:5px;justify-content:flex-end;">
+                    <div class="wmn-row-actions-end">
                         ${!isOffline() && row.sync_status !== "conflict" ? `<button type="button" class="btn btn-xs btn-primary wmn-pos-sync-one">${escapeHtml(__("Sync"))}</button>` : ""}
                         ${row.sync_status === "conflict" && row.server_document ? `<button type="button" class="btn btn-xs btn-default wmn-pos-use-server">${escapeHtml(__("Use Server"))}</button>` : ""}
                     </div>
@@ -1677,68 +1444,7 @@
     }
 
     function injectReportFrameStyles(frameDocument) {
-        if (!frameDocument?.head) return;
-
-        let style = frameDocument.getElementById("wmn-pos-report-frame-style");
-        if (!style) {
-            style = frameDocument.createElement("style");
-            style.id = "wmn-pos-report-frame-style";
-            frameDocument.head.appendChild(style);
-        }
-
-        style.textContent = `
-            html, body {
-                width: 100% !important;
-                min-width: 0 !important;
-                min-height: 100% !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                overflow-x: hidden !important;
-                background: var(--bg-color, #f4f6f8) !important;
-            }
-            body > header,
-            body > nav,
-            header.navbar,
-            nav.navbar,
-            .navbar,
-            [role="navigation"],
-            .layout-side-section,
-            .desk-sidebar,
-            .desk-sidebar-container,
-            .standard-sidebar,
-            .sidebar-section,
-            .sidebar-toggle-btn,
-            .app-sidebar,
-            .app-switcher,
-            .app-switcher-menu,
-            .workspace-sidebar,
-            .wmn-global-workspace-header,
-            #wmn-native-sidebar-topnav-host {
-                display: none !important;
-            }
-            .main-section,
-            .page-container,
-            .page-body,
-            .layout-main,
-            .layout-main-section-wrapper,
-            .layout-main-section {
-                box-sizing: border-box !important;
-                width: 100% !important;
-                max-width: none !important;
-                min-width: 0 !important;
-                margin: 0 !important;
-            }
-            .layout-main-section-wrapper,
-            .layout-main-section {
-                flex: 1 1 100% !important;
-            }
-            .container,
-            .container-fluid {
-                width: 100% !important;
-                max-width: none !important;
-                margin: 0 !important;
-            }
-        `;
+        installFrameStylesheet(frameDocument, "wmn-pos-report-frame-body");
     }
 
     function hideReportFrameChrome(frameDocument) {
@@ -1765,7 +1471,7 @@
         ];
         for (const selector of selectors) {
             frameDocument.querySelectorAll(selector).forEach((element) => {
-                element.style.setProperty("display", "none", "important");
+                element.classList.add("wmn-force-hidden");
             });
         }
     }
@@ -1774,7 +1480,7 @@
         return `
             <div class="wmn-pos-doctype-toolbar">
                 <button type="button" class="btn btn-default wmn-pos-doctype-back">${icon("back")}<span>${escapeHtml(__("Back to reports"))}</span></button>
-                <div style="flex:1 1 auto;min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(__(report?.name || "Report"))}</div>
+                <div class="wmn-ellipsis-title">${escapeHtml(__(report?.name || "Report"))}</div>
             </div>`;
     }
 
@@ -1836,7 +1542,7 @@
         return `
             <div class="wmn-pos-doctype-toolbar">
                 ${!cint(config.is_single || 0) ? `<button type="button" class="btn btn-default wmn-pos-doctype-back">${icon("back")}<span>${escapeHtml(__("Back to list"))}</span></button>` : ""}
-                <div style="flex:1 1 auto;min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(__(config.label || config.doctype))}</div>
+                <div class="wmn-ellipsis-title">${escapeHtml(__(config.label || config.doctype))}</div>
                 ${canSave ? `<button type="button" class="btn btn-primary wmn-pos-doctype-save">${icon("save")}<span>${escapeHtml(__("Save"))}</span></button>` : ""}
             </div>`;
     }
