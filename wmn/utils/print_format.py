@@ -42,25 +42,18 @@ def xpos_barcode(value, barcode_type="Code128"):
     )
 
 
-def _read_linked_wmn_pos_css(html):
-    if "/assets/wmn/css/wmn_pos.css" not in str(html or ""):
-        return ""
-    try:
-        with open(frappe.get_app_path("wmn", "public", "css", "wmn_pos.css"), encoding="utf-8") as css_file:
-            return css_file.read()
-    except OSError:
-        return ""
+def _uses_wmn_pos_css(html):
+    return "/assets/wmn/css/wmn_pos.css" in str(html or "")
 
 
-def _inline_local_stylesheets(html):
+def _strip_wmn_pos_stylesheet_link(html):
     html = str(html or "")
-    css = _read_linked_wmn_pos_css(html)
-    if not css:
+    if not _uses_wmn_pos_css(html):
         return html
 
     return re.sub(
         r"<link\b[^>]*\bhref=[\"']/assets/wmn/css/wmn_pos\.css(?:\?[^\"']*)?[\"'][^>]*>",
-        "<style>\n" + css + "\n</style>",
+        "",
         html,
         flags=re.IGNORECASE,
     )
@@ -74,35 +67,17 @@ def _ensure_pdf_runtime_cache():
     os.environ.setdefault("FONTCONFIG_CACHE", font_cache)
 
 
-def _extract_pdf_options_from_css(css):
-    css = str(css or "")
-    options = {}
-
-    size_match = re.search(
-        r"@page\s*{[^}]*\bsize\s*:\s*([0-9]+(?:\.[0-9]+)?)\s*(mm|cm|in|px)",
-        css,
-        flags=re.IGNORECASE,
-    )
-    if size_match:
-        options["page-width"] = f"{size_match.group(1)}{size_match.group(2)}"
-
-    margin_match = re.search(r"@page\s*{[^}]*\bmargin\s*:\s*([^;]+)", css, flags=re.IGNORECASE)
-    if margin_match and margin_match.group(1).strip() in {"0", "0mm", "0px", "0in", "0cm"}:
-        options.update({
-            "margin-top": "0mm",
-            "margin-right": "0mm",
-            "margin-bottom": "0mm",
-            "margin-left": "0mm",
-        })
-
-    options.setdefault("load-error-handling", "ignore")
-    options.setdefault("load-media-error-handling", "ignore")
-    return options
-
-
 def _get_pdf_options(print_format, html):
-    combined_css = str(html or "") + "\n" + _read_linked_wmn_pos_css(html)
-    options = _extract_pdf_options_from_css(combined_css)
+    options = {
+        "load-error-handling": "ignore",
+        "load-media-error-handling": "ignore",
+    }
+
+    if _uses_wmn_pos_css(html):
+        options.update({
+            "user-style-sheet": frappe.get_app_path("wmn", "public", "css", "wmn_pos.css"),
+            "enable-local-file-access": None,
+        })
 
     try:
         format_doc = frappe.get_doc("Print Format", print_format)
@@ -139,9 +114,10 @@ def create_pdf(doctype=None, name=None, print_format=None, doc=None, no_letterhe
         doc=doc,
         no_letterhead=cint(no_letterhead),
     )
-    html = _inline_local_stylesheets(html)
+    pdf_options = _get_pdf_options(selected_format, html)
+    html = _strip_wmn_pos_stylesheet_link(html)
     _ensure_pdf_runtime_cache()
-    pdf = get_pdf(html, options=_get_pdf_options(selected_format, html))
+    pdf = get_pdf(html, options=pdf_options)
     return {
         "pdf_base64": base64.b64encode(pdf).decode(),
         "print_format": selected_format,
