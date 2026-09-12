@@ -3342,8 +3342,9 @@ body.rtl-mode .wmn-item-details-numpad-host {
 
 /* Keep ERPNext in control of display state; only restyle the component while it is open. */
 
+.wmn-item-details-layer.is-open
 .wmn-item-details-modal
-.item-details-container[style*="display: flex"] {
+.item-details-container {
     display: grid !important;
 
     grid-template-columns: minmax(0, 1fr) !important;
