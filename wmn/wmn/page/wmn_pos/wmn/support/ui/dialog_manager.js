@@ -152,5 +152,6 @@
     }
 
     ns.UI.ensurePageStylesheet = ensurePageStylesheet;
+    ns.UI.PAGE_STYLESHEET_HREF = PAGE_STYLE_HREF;
     ns.UI.Dialogs = { setup, decorate, closeTopDialog };
 })();

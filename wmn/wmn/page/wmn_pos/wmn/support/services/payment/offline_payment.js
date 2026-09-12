@@ -263,31 +263,28 @@ function wmn_invoice_payment_total(doc) {
                             : wmn_t("Process Electronic Payment", "معالجة الدفع الإلكتروني");
                         gatewayHtml = `
                             <button type="button"
-                                    class="btn btn-default btn-xs wmn-offline-gateway-action"
+                                    class="btn btn-default btn-xs wmn-offline-gateway-action wmn-offline-payment-button"
                                     data-payment-index="${idx}"
-                                    ${approvedForCurrentAmount ? "disabled" : ""}
-                                    style="margin-top:6px;width:100%;font-weight:700;">
+                                    ${approvedForCurrentAmount ? "disabled" : ""}>
                                 ${gatewayLabel}
                             </button>
-                            <div class="wmn-offline-gateway-status" data-payment-index="${idx}"
-                                 style="margin-top:4px;font-size:12px;color:#6b7280;">
+                            <div class="wmn-offline-gateway-status wmn-offline-payment-account" data-payment-index="${idx}">
                                 ${approvedForCurrentAmount ? wmn_t("Payment approved", "تم اعتماد الدفع") : ""}
                             </div>
                         `;
                     } else {
                         gatewayHtml = `
-                            <div class="wmn-offline-gateway-note" style="margin-top:5px;font-size:12px;color:#b45309;">
+                            <div class="wmn-offline-gateway-note">
                                 ${frappe.utils.escape_html(availability?.reason || wmn_t("Electronic payment is unavailable", "الدفع الإلكتروني غير متاح"))}
                             </div>
                         `;
                     }
                 }
                 return `
-                    <div class="wmn-offline-payment-row" data-payment-index="${idx}"
-                         style="display:grid;grid-template-columns:1fr 160px;gap:10px;align-items:center;margin-bottom:10px;">
+                    <div class="wmn-offline-payment-row" data-payment-index="${idx}">
                         <div>
-                            <div style="font-weight:600;">${mode}</div>
-                            <div style="font-size:12px;color:#6b7280;">${frappe.utils.escape_html(p.account || "")}</div>
+                            <div class="wmn-font-bold">${mode}</div>
+                            <div class="wmn-offline-payment-account">${frappe.utils.escape_html(p.account || "")}</div>
                             ${gatewayHtml}
                         </div>
                         <input type="number" step="0.01" ${isReturn ? 'max="0"' : 'min="0"'}
@@ -307,47 +304,45 @@ function wmn_invoice_payment_total(doc) {
                             fieldtype: "HTML",
                             fieldname: "payment_html",
                             options: `
-                                <div class="wmn-offline-payment-dialog" style="direction:inherit;">
-                                    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">
-                                        <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:10px;">
-                                            <div style="font-size:12px;color:#6b7280;">${wmn_t("Grand Total", "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A")}</div>
-                                            <div style="font-weight:700;font-size:18px;">${format_currency(total, doc.currency || "YER")}</div>
+                                <div class="wmn-offline-payment-dialog">
+                                    <div class="wmn-offline-payment-summary">
+                                        <div class="wmn-offline-payment-card">
+                                            <div class="wmn-offline-payment-label">${wmn_t("Grand Total", "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A")}</div>
+                                            <div class="wmn-offline-payment-value large">${format_currency(total, doc.currency || "YER")}</div>
                                         </div>
-                                        <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:10px;">
-                                            <div style="font-size:12px;color:#6b7280;">${wmn_t("Customer", "\u0627\u0644\u0639\u0645\u064A\u0644")}</div>
-                                            <div style="font-weight:700;font-size:15px;">${frappe.utils.escape_html(doc.customer_name || doc.customer || "")}</div>
+                                        <div class="wmn-offline-payment-card">
+                                            <div class="wmn-offline-payment-label">${wmn_t("Customer", "\u0627\u0644\u0639\u0645\u064A\u0644")}</div>
+                                            <div class="wmn-offline-payment-value">${frappe.utils.escape_html(doc.customer_name || doc.customer || "")}</div>
                                         </div>
-                                        <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:10px;">
-                                            <div style="font-size:12px;color:#6b7280;">${wmn_t("Invoice", "\u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629")}</div>
-                                            <div style="font-weight:700;font-size:15px;">${frappe.utils.escape_html(doc.name || "")}</div>
+                                        <div class="wmn-offline-payment-card">
+                                            <div class="wmn-offline-payment-label">${wmn_t("Invoice", "\u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629")}</div>
+                                            <div class="wmn-offline-payment-value">${frappe.utils.escape_html(doc.name || "")}</div>
                                         </div>
                                     </div>
 
-                                    <div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px;">
+                                    <div class="wmn-offline-payment-method-list">
                                         ${rowsHtml || `<div class="text-muted">${wmn_t("No payment methods found", "\u0644\u0627 \u062A\u0648\u062C\u062F \u0637\u0631\u0642 \u062F\u0641\u0639")}</div>`}
                                     </div>
 
                                     ${canSellOnCredit ? `
-                                        <button type="button" class="btn btn-default wmn-offline-sell-on-credit-btn"
-                                                style="width:100%;margin-top:12px;font-weight:700;">
+                                        <button type="button" class="btn btn-default wmn-offline-sell-on-credit-btn wmn-offline-payment-button">
                                             ${__("Sell on Credit")}
                                         </button>
                                     ` : ""}
 
                                     ${(handoff?.canSendToCashier?.(doc) && ctrl?.__wmn_cashier_resume !== true) ? `
-                                        <button type="button" class="btn btn-default wmn-offline-send-to-cashier-btn"
-                                                style="width:100%;margin-top:12px;font-weight:700;">
+                                        <button type="button" class="btn btn-default wmn-offline-send-to-cashier-btn wmn-offline-payment-button">
                                             ${wmn_t("Send to Cashier", "إرسال إلى الكاشير")}
                                         </button>
                                     ` : ""}
 
-                                    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
-                                        <div style="font-size:13px;color:#6b7280;">
+                                    <div class="wmn-offline-payment-total-row">
+                                        <div class="wmn-offline-payment-label">
                                             ${isReturn
                                                 ? wmn_t("Complete Order will apply the refund to the offline return then save it offline.", "إكمال الطلب سيطبق الاسترداد على المرتجع ثم يحفظه أوفلاين.")
                                                 : wmn_t("Complete Order will apply payment to the offline invoice then save it offline.", "\u0625\u0643\u0645\u0627\u0644 \u0627\u0644\u0637\u0644\u0628 \u0633\u064A\u0636\u064A\u0641 \u0627\u0644\u062F\u0641\u0639 \u0644\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646 \u062B\u0645 \u064A\u062D\u0641\u0638\u0647\u0627 \u0623\u0648\u0641\u0644\u0627\u064A\u0646.")}
                                         </div>
-                                        <div style="font-weight:700;">
+                                        <div class="wmn-font-bold">
                                             ${isReturn ? wmn_t("Refund", "الاسترداد") : wmn_t("Paid", "\u0627\u0644\u0645\u062F\u0641\u0648\u0639")}: <span class="wmn-offline-paid-total">0</span>
                                         </div>
                                     </div>

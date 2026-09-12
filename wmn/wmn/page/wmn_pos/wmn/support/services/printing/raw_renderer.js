@@ -6,14 +6,9 @@
                     <head>
                         <meta charset="utf-8">
                         <title>${frappe.utils.escape_html((doc && (doc.name || doc.custom_offline_id)) || "Offline Receipt")}</title>
-                        <style>
-                            body { font-family: Arial, sans-serif; direction: rtl; font-size: 12px; }
-                            table { width: 100%; border-collapse: collapse; }
-                            th, td { border-bottom: 1px solid #ddd; padding: 4px; text-align: right; }
-                            @media print { body { margin: 0; } }
-                        </style>
+                        <link rel="stylesheet" href="${window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet"}">
                     </head>
-                    <body>${html || ""}</body>
+                    <body class="wmn-pos-raw-receipt-print">${html || ""}</body>
                 </html>
             `;
         }

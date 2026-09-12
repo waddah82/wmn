@@ -72,19 +72,19 @@ function wmn_user_lang() {
                             fieldname: "batch_html",
                             options: `
                                 <div class="wmn-batch-select-dialog">
-                                    <div style="margin-bottom:10px;color:#6b7280;">
+                                    <div class="wmn-muted-block">
                                         ${frappe.utils.escape_html(item.item_name || item.item_code || "")}
                                     </div>
-                                    <div style="max-height:55vh;overflow:auto;border:1px solid #e5e7eb;border-radius:10px;">
-                                        <table class="table table-bordered table-hover" style="margin:0;">
-                                            <thead style="position:sticky;top:0;background:#f8fafc;z-index:1;">
+                                    <div class="wmn-table-scroll-panel">
+                                        <table class="table table-bordered table-hover wmn-table-flush">
+                                            <thead class="wmn-sticky-table-head">
                                                 <tr>
                                                     <th>${__("Batch No")}</th>
                                                     <th>${__("Warehouse")}</th>
                                                     <th>${__("Available Qty")}</th>
                                                     <th>${__("Expiry Date")}</th>
-                                                    <th style="width:130px;">${__("Qty")}</th>
-                                                    <th style="width:110px;">${__("Action")}</th>
+                                                    <th class="wmn-col-qty">${__("Qty")}</th>
+                                                    <th class="wmn-col-action">${__("Action")}</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -94,7 +94,7 @@ function wmn_user_lang() {
 
                                                     return `
                                                         <tr>
-                                                            <td style="font-weight:700;">${frappe.utils.escape_html(b.batch_no || "")}</td>
+                                                            <td class="wmn-font-bold">${frappe.utils.escape_html(b.batch_no || "")}</td>
                                                             <td>${frappe.utils.escape_html(b.warehouse || "")}</td>
                                                             <td>${availableQty}</td>
                                                             <td>${frappe.utils.escape_html(b.expiry_date || "")}</td>

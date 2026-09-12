@@ -131,7 +131,7 @@
                     let $button = this.$component.find(".wmn-send-to-cashier-btn").first();
                     if (!$button.length) {
                         $button = $(
-                            `<button type="button" class="btn btn-default wmn-send-to-cashier-btn" style="margin-inline-end:8px;font-weight:700;">${wmn_t("Send to Cashier", "إرسال إلى الكاشير")}</button>`
+                            `<button type="button" class="btn btn-default wmn-send-to-cashier-btn wmn-action-btn-spaced">${wmn_t("Send to Cashier", "إرسال إلى الكاشير")}</button>`
                         );
                         $button.insertBefore($submit);
                     }
@@ -174,7 +174,7 @@
                     let $button = this.$component.find(".wmn-payment-back-to-recent-btn").first();
                     if (!$button.length) {
                         $button = $(
-                            `<button type="button" class="btn btn-default wmn-payment-back-to-recent-btn" style="margin-inline-end:8px;font-weight:700;">${wmn_t("Back to Recent Orders", "العودة للطلبات الأخيرة")}</button>`
+                            `<button type="button" class="btn btn-default wmn-payment-back-to-recent-btn wmn-action-btn-spaced">${wmn_t("Back to Recent Orders", "العودة للطلبات الأخيرة")}</button>`
                         );
                         $button.insertBefore($submit);
                     }

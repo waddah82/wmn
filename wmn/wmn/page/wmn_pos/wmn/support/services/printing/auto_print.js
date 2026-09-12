@@ -84,7 +84,8 @@
                 }
 
                 win.document.open();
-                win.document.write("<!doctype html><html><head><meta charset='utf-8'><title>WMN Print Debug</title></head><body>" + (html || "<h3 style='color:red'>HTML IS EMPTY</h3>") + "</body></html>");
+                const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet";
+                win.document.write("<!doctype html><html><head><meta charset='utf-8'><title>WMN Print Debug</title><link rel='stylesheet' href='" + stylesheet + "'></head><body>" + (html || "<h3 class='wmn-print-debug-empty'>HTML IS EMPTY</h3>") + "</body></html>");
                 win.document.close();
             } catch (e) {
                 console.error("WMN DEBUG ERROR:", e);
@@ -188,7 +189,7 @@ function wmn_render_offline_print_template(template, doc) {
                 }
                 taxesHtml += `
                     <tr>
-                        <td class="text-right" style="width: 70%">${frappe.utils.escape_html(description)}</td>
+                        <td class="text-right wmn-col-wide-text">${frappe.utils.escape_html(description)}</td>
                         <td class="text-right">${format_currency(flt(row.tax_amount || 0), currency)}</td>
                     </tr>
                 `;
@@ -202,7 +203,7 @@ function wmn_render_offline_print_template(template, doc) {
         (doc.payments || []).forEach(row => {
             paymentsHtml += `
                 <tr>
-                    <td class="text-right" style="width: 70%">${frappe.utils.escape_html(row.mode_of_payment || "")}</td>
+                    <td class="text-right wmn-col-wide-text">${frappe.utils.escape_html(row.mode_of_payment || "")}</td>
                     <td class="text-right">${format_currency(flt(row.amount || 0), currency)}</td>
                 </tr>
             `;
@@ -349,87 +350,9 @@ function wmn_render_offline_print_template(template, doc) {
 <head>
 <meta charset="utf-8">
 <title>${wmn_escape_html(invoiceNo)}</title>
-<style>
-    @page { size: auto; margin: 10mm; }
-    body {
-        font-family: Arial, Tahoma, sans-serif;
-        color: #111827;
-        margin: 0;
-        padding: 0;
-        font-size: 13px;
-        direction: ${document.documentElement.dir === "rtl" ? "rtl" : "ltr"};
-    }
-    .receipt {
-        max-width: 760px;
-        margin: 0 auto;
-        padding: 16px;
-    }
-    .header {
-        text-align: center;
-        border-bottom: 2px solid #111827;
-        padding-bottom: 10px;
-        margin-bottom: 12px;
-    }
-    .company { font-size: 20px; font-weight: 800; margin-bottom: 4px; }
-    .title { font-size: 15px; font-weight: 700; color: #374151; }
-    .meta {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 6px 16px;
-        margin: 12px 0;
-        background: #f3f4f6;
-        border-radius: 10px;
-        padding: 10px;
-    }
-    .meta div { display: flex; justify-content: space-between; gap: 8px; }
-    .label { color: #6b7280; font-weight: 700; }
-    table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 10px;
-    }
-    th {
-        background: #111827;
-        color: #fff;
-        padding: 8px;
-        border: 1px solid #111827;
-        text-align: start;
-    }
-    td {
-        padding: 8px;
-        border: 1px solid #d1d5db;
-        vertical-align: top;
-    }
-    .num { width: 36px; text-align: center; }
-    .center { text-align: center; white-space: nowrap; }
-    .money { text-align: end; white-space: nowrap; }
-    .item-name { font-weight: 700; }
-    .muted { color: #6b7280; font-size: 11px; margin-top: 2px; }
-    .totals {
-        margin-top: 12px;
-        margin-inline-start: auto;
-        width: 320px;
-    }
-    .totals td { font-weight: 700; }
-    .grand td {
-        font-size: 16px;
-        background: #f3f4f6;
-    }
-    .footer {
-        text-align: center;
-        color: #6b7280;
-        margin-top: 18px;
-        border-top: 1px dashed #9ca3af;
-        padding-top: 10px;
-        font-size: 12px;
-    }
-    @media print {
-        .no-print { display: none !important; }
-        body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-    }
-</style>
+<link rel="stylesheet" href="${window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet"}">
 </head>
-<body>
+<body class="wmn-pos-offline-receipt-print">
 <div class="receipt">
     <div class="header">
         <div class="company">${wmn_escape_html(company)}</div>

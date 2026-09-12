@@ -7,8 +7,6 @@
     ns.Features.PosCacheManager = ns.Features.PosCacheManager || {};
     ns.Features.PosCacheManager.Common = ns.Features.PosCacheManager.Common || {};
 
-    const STYLE_ID = "wmn-pos-cache-manager-style";
-
     function esc(value) {
         return frappe.utils?.escape_html ? frappe.utils.escape_html(String(value ?? "")) : String(value ?? "");
     }
@@ -20,46 +18,7 @@
     }
 
     function ensureStyles() {
-        if (document.getElementById(STYLE_ID)) return;
-        const style = document.createElement("style");
-        style.id = STYLE_ID;
-        style.textContent = `
-            body.wmn-mamsek-pos-route .wmn-pos-cache-manager-dialog .modal-dialog,
-            body.wmn-mamsek-pos-route .wmn-pos-cache-source-dialog .modal-dialog {
-                width: min(1180px, 96vw) !important;
-                max-width: none !important;
-            }
-            .wmn-pos-cache-note { margin-bottom: 10px; padding: 9px 11px; border: 1px solid #f0d9a4; border-radius: 9px; background: #fff9ea; color: #795700; font-size: 11px; }
-            .wmn-pos-cache-source-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 9px; }
-            .wmn-pos-cache-source-card { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:72px; padding:11px 12px; border:1px solid var(--border-color,#d1d8dd); border-radius:10px; background:var(--card-bg,#fff); text-align:start; cursor:pointer; }
-            .wmn-pos-cache-source-card:hover { border-color:var(--primary,#2490ef); box-shadow:0 5px 16px rgba(15,23,42,.06); }
-            .wmn-pos-cache-source-card strong { display:block; color:var(--text-color,#1f2937); font-size:12px; }
-            .wmn-pos-cache-source-card small { display:block; margin-top:3px; color:var(--text-muted,#6c7680); font-size:10px; line-height:1.45; }
-            .wmn-pos-cache-source-count { flex:0 0 auto; min-width:44px; padding:5px 8px; border-radius:999px; background:#eef4fb; color:#1d4f91; text-align:center; font-size:11px; font-weight:800; }
-            .wmn-pos-cache-toolbar { display:flex; align-items:center; gap:7px; margin-bottom:9px; }
-            .wmn-pos-cache-toolbar .wmn-pos-cache-search { flex:1 1 auto; }
-            .wmn-pos-cache-list { max-height:62vh; overflow:auto; }
-            .wmn-pos-cache-row { display:grid; grid-template-columns:minmax(0,1fr) 190px auto; gap:10px; align-items:center; min-height:54px; margin-bottom:6px; padding:8px 10px; border:1px solid var(--border-color,#d1d8dd); border-radius:9px; background:var(--card-bg,#fff); }
-            .wmn-pos-cache-row:hover { border-color:var(--primary,#2490ef); }
-            .wmn-pos-cache-row-main { min-width:0; cursor:pointer; }
-            .wmn-pos-cache-row-main strong { display:block; overflow:hidden; color:var(--text-color,#1f2937); text-overflow:ellipsis; white-space:nowrap; }
-            .wmn-pos-cache-row-main small { display:block; overflow:hidden; margin-top:2px; color:var(--text-muted,#6c7680); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
-            .wmn-pos-cache-row-key { overflow:hidden; color:var(--text-muted,#6c7680); font-family:monospace; font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
-            .wmn-pos-cache-empty { display:grid; place-items:center; min-height:180px; color:var(--text-muted,#6c7680); text-align:center; }
-            .wmn-pos-cache-editor-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px 11px; max-height:68vh; overflow:auto; padding:2px; }
-            .wmn-pos-cache-field { min-width:0; padding:8px 9px; border:1px solid #edf1f5; border-radius:9px; background:#fbfcfd; }
-            .wmn-pos-cache-field.wmn-wide { grid-column:1/-1; }
-            .wmn-pos-cache-field label { display:block; margin-bottom:4px; color:#334155; font-size:11px; font-weight:800; }
-            .wmn-pos-cache-field label .reqd { color:#d92d20; }
-            .wmn-pos-cache-field .form-control { width:100%; min-height:34px; }
-            .wmn-pos-cache-field textarea.form-control { min-height:92px; resize:vertical; font-family:inherit; }
-            .wmn-pos-cache-field textarea.wmn-json { min-height:130px; direction:ltr; text-align:left; font-family:monospace; font-size:11px; }
-            .wmn-pos-cache-field .wmn-pos-cache-check-wrap { display:flex; align-items:center; gap:8px; min-height:34px; }
-            .wmn-pos-cache-field .wmn-pos-cache-readonly { background:#f3f4f6 !important; color:#6b7280; }
-            @media(max-width:900px){ .wmn-pos-cache-source-grid{grid-template-columns:repeat(2,minmax(0,1fr));} }
-            @media(max-width:650px){ .wmn-pos-cache-source-grid{grid-template-columns:1fr;} .wmn-pos-cache-row{grid-template-columns:1fr;} .wmn-pos-cache-editor-grid{grid-template-columns:1fr;} .wmn-pos-cache-field.wmn-wide{grid-column:auto;} .wmn-pos-cache-toolbar{flex-wrap:wrap;} .wmn-pos-cache-toolbar .wmn-pos-cache-search{flex-basis:100%; order:3;} }
-        `;
-        document.head.appendChild(style);
+        window.WMN_POS?.UI?.ensurePageStylesheet?.();
     }
 
     function sourceManagerHtml(sources) {
@@ -215,7 +174,7 @@
             control = `<input type="${inputType}" class="form-control${readonly ? " wmn-pos-cache-readonly" : ""}" ${commonAttrs} value="${esc(serializeForInput(value, field.type))}">`;
         }
 
-        return `<div class="wmn-pos-cache-field${wide}"><label>${esc(field.label || field.fieldname)} ${required}<small style="font-weight:400;color:#94a3b8">${esc(field.fieldname)}</small></label>${control}</div>`;
+        return `<div class="wmn-pos-cache-field${wide}"><label>${esc(field.label || field.fieldname)} ${required}<small class="wmn-fieldname-hint">${esc(field.fieldname)}</small></label>${control}</div>`;
     }
 
     function collectEditorRecord(dialog, originalRow) {

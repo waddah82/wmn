@@ -6,7 +6,6 @@
     const ns = window.WMN_RETAIL_TOOLS;
     ns.BarcodePrinting = ns.BarcodePrinting || {};
 
-    const STYLE_ID = "wmn-barcode-printing-style";
     const FRAPPE_AUTO = "__frappe_auto__";
     const FORMATS = [
         { value: FRAPPE_AUTO, label: "Frappe (Auto)" },
@@ -31,24 +30,7 @@
     }
 
     function ensureStyles() {
-        if (document.getElementById(STYLE_ID)) return;
-        const style = document.createElement("style");
-        style.id = STYLE_ID;
-        style.textContent = `
-            .wmn-barcode-page{display:grid;grid-template-columns:minmax(300px,390px) minmax(0,1fr);min-height:calc(100vh - 150px);border:1px solid var(--border-color,#d8dce2);border-radius:12px;overflow:hidden;background:var(--card-bg,#fff)}
-            .wmn-barcode-left{display:flex;flex-direction:column;min-width:0;border-inline-end:1px solid var(--border-color,#d8dce2);background:var(--bg-color,#f8fafc)}
-            .wmn-barcode-controls{padding:14px;border-bottom:1px solid var(--border-color,#d8dce2);display:grid;gap:9px}
-            .wmn-barcode-options{display:grid;grid-template-columns:1fr 1fr;gap:8px}.wmn-barcode-options .wide{grid-column:1/-1}
-            .wmn-barcode-page-custom{display:none;grid-template-columns:1fr 1fr;gap:8px}.wmn-barcode-page-custom.show{display:grid}.wmn-barcode-layout-summary{padding:7px 9px;border-radius:7px;background:var(--control-bg,#f3f5f7);line-height:1.55}
-            .wmn-barcode-results{flex:1;overflow:auto;padding:10px}.wmn-barcode-result{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;margin-bottom:6px;padding:9px 10px;border:1px solid var(--border-color,#d8dce2);border-radius:9px;background:#fff;text-align:start}.wmn-barcode-result:hover{border-color:var(--primary,#2490ef)}
-            .wmn-barcode-result strong,.wmn-barcode-row strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wmn-barcode-result small,.wmn-barcode-row small{color:var(--text-muted,#687386)}
-            .wmn-barcode-right{display:flex;flex-direction:column;min-width:0}.wmn-barcode-toolbar{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border-color,#d8dce2);flex-wrap:wrap}.wmn-barcode-toolbar .spacer{flex:1}
-            .wmn-barcode-selected{max-height:42vh;overflow:auto;padding:12px}.wmn-barcode-row{display:grid;grid-template-columns:minmax(180px,1fr) minmax(150px,260px) 90px 42px;gap:8px;align-items:center;margin-bottom:7px;padding:9px;border:1px solid var(--border-color,#d8dce2);border-radius:9px}
-            .wmn-barcode-preview-wrap{flex:1;min-height:260px;overflow:auto;padding:14px;background:var(--bg-color,#f8fafc);border-top:1px solid var(--border-color,#d8dce2)}.wmn-barcode-preview{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}.wmn-label-preview{display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;padding:1.5mm;border:1px dashed #b8c1cc;background:#fff;color:#111;text-align:center}.wmn-label-preview .name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;font-weight:800}.wmn-label-preview svg{max-width:95%;height:auto}.wmn-label-preview .price{font-size:10px;font-weight:900}
-            .wmn-barcode-empty{display:grid;place-items:center;min-height:180px;color:var(--text-muted,#687386);text-align:center}.wmn-barcode-custom{display:none;grid-template-columns:1fr 1fr;gap:8px}.wmn-barcode-custom.show{display:grid}
-            @media(max-width:900px){.wmn-barcode-page{grid-template-columns:1fr}.wmn-barcode-left{border-inline-end:0;border-bottom:1px solid var(--border-color,#d8dce2);max-height:48vh}.wmn-barcode-row{grid-template-columns:1fr}.wmn-barcode-toolbar{flex-wrap:wrap}}
-        `;
-        document.head.appendChild(style);
+        window.WMN_POS?.UI?.ensurePageStylesheet?.();
     }
 
     function shell() {
@@ -65,7 +47,7 @@
                             <select class="form-control wmn-barcode-print-mode"><option value="sheet" selected>${esc(__("Sheet / Grid"))}</option><option value="one_per_page">${esc(__("One Label Per Page"))}</option></select>
                             <select class="form-control wmn-barcode-page-size"><option value="A4" selected>A4</option><option value="A5">A5</option><option value="LETTER">Letter</option><option value="CUSTOM">${esc(__("Custom page"))}</option></select>
                             <div class="wmn-barcode-page-custom wide"><input type="number" min="20" max="1000" value="210" class="form-control wmn-barcode-page-width" placeholder="${esc(__("Page width mm"))}"><input type="number" min="20" max="1000" value="297" class="form-control wmn-barcode-page-height" placeholder="${esc(__("Page height mm"))}"></div>
-                            <label class="wide" style="display:flex;align-items:center;gap:7px;margin:0"><input type="checkbox" class="wmn-barcode-show-price" checked> ${esc(__("Show price on label"))}</label>
+                            <label class="wide wmn-barcode-show-price-label"><input type="checkbox" class="wmn-barcode-show-price" checked> ${esc(__("Show price on label"))}</label>
                             <div class="wmn-barcode-layout-summary wide small text-muted"></div>
                         </div>
                     </div>
@@ -190,14 +172,14 @@
             : (item.item_name || item.item_code);
         let svg = "";
         if (!value) {
-            svg = `<div style="font-size:8px;color:#b42318">${esc(__("No printable barcode for this item."))}</div>`;
+            svg = `<div class="wmn-barcode-error">${esc(__("No printable barcode for this item."))}</div>`;
         } else {
             try { svg = barcodeSvg(value, effectiveBarcodeFormat(item, options.format), options.dims); }
-            catch (error) { svg = `<div style="font-size:8px;color:#b42318">${esc(error?.message || __("Invalid barcode"))}</div>`; }
+            catch (error) { svg = `<div class="wmn-barcode-error">${esc(error?.message || __("Invalid barcode"))}</div>`; }
         }
         const canShowPrice = options.showPrice && (item.kind !== "manual" || item.has_manual_price);
         const price = canShowPrice ? `<div class="price">${esc(format_currency(Number(item.rate || 0), item.currency || undefined))}</div>` : "";
-        return `<div class="wmn-label-preview" style="width:${options.dims.width}mm;height:${options.dims.height}mm"><div class="name">${esc(title)}</div>${svg}${price}</div>`;
+        return `<div class="wmn-label-preview"><div class="name">${esc(title)}</div>${svg}${price}</div>`;
     }
 
     function validatePrintableItem(item, options) {
@@ -360,6 +342,8 @@
                 if (labels.length >= 12) break;
             }
             $preview.html(labels.slice(0, 12).join(""));
+            $preview[0]?.style?.setProperty("--wmn-label-width", `${opts.dims.width}mm`);
+            $preview[0]?.style?.setProperty("--wmn-label-height", `${opts.dims.height}mm`);
             $root.find(".wmn-barcode-count").text(`${total} ${__("label(s)")}`);
             updateLayoutControls();
         }
@@ -371,8 +355,8 @@
             }
             $results.html(state.results.map((item, index) => `
                 <button type="button" class="wmn-barcode-result" data-index="${index}">
-                    <span style="min-width:0"><strong>${esc(item.item_name || item.item_code)}</strong><small>${esc(item.item_code)}${item.barcodes?.length ? ` · ${item.barcodes.length} ${esc(__("barcode(s)"))}` : ""}</small></span>
-                    <span style="font-size:20px;color:var(--primary,#2490ef)">+</span>
+                    <span class="wmn-barcode-result-main"><strong>${esc(item.item_name || item.item_code)}</strong><small>${esc(item.item_code)}${item.barcodes?.length ? ` · ${item.barcodes.length} ${esc(__("barcode(s)"))}` : ""}</small></span>
+                    <span class="wmn-barcode-result-add">+</span>
                 </button>`).join(""));
         }
 
@@ -615,20 +599,21 @@
             const pages = ns.BarcodePrinting.PrintLayout.paginate(labels, layout.labelsPerPage);
             const pageHtml = pages.map((pageLabels) => `<section class="wmn-print-page">${pageLabels.join("")}</section>`).join("");
             const iframe = document.createElement("iframe");
-            iframe.style.position = "fixed";
-            iframe.style.width = "0";
-            iframe.style.height = "0";
-            iframe.style.border = "0";
-            iframe.style.right = "0";
-            iframe.style.bottom = "0";
+            iframe.className = "wmn-zero-print-frame";
             document.body.appendChild(iframe);
             const doc = iframe.contentDocument;
-            const sheetCss = mode === "sheet"
-                ? `.wmn-print-page{width:${layout.page.width}mm;height:${layout.page.height}mm;padding:${layout.margin}mm;display:grid;grid-template-columns:repeat(${layout.columns},${opts.dims.width}mm);grid-auto-rows:${opts.dims.height}mm;gap:${layout.gap}mm;align-content:start;justify-content:start;overflow:hidden;break-after:page;page-break-after:always}.wmn-print-page:last-child{break-after:auto;page-break-after:auto}`
-                : `.wmn-print-page{width:${opts.dims.width}mm;height:${opts.dims.height}mm;display:block;overflow:hidden;break-after:page;page-break-after:always}.wmn-print-page:last-child{break-after:auto;page-break-after:auto}`;
             doc.open();
-            doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(__("Barcode Labels"))}</title><style>@page{size:${layout.page.width}mm ${layout.page.height}mm;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:Arial,sans-serif}${sheetCss}.wmn-label-preview{width:${opts.dims.width}mm!important;height:${opts.dims.height}mm!important;padding:1.5mm;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;text-align:center}.name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;font-weight:800}.wmn-label-preview svg{max-width:95%;height:auto}.price{font-size:10px;font-weight:900}</style></head><body>${pageHtml}</body></html>`);
+            const stylesheet = window.WMN_POS?.UI?.PAGE_STYLESHEET_HREF || "/api/method/wmn.wmn.page.wmn_pos.wmn_pos.get_wmn_pos_stylesheet";
+            const printClass = mode === "sheet" ? "wmn-print-sheet" : "wmn-print-single";
+            doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(__("Barcode Labels"))}</title><link rel="stylesheet" href="${stylesheet}"></head><body class="wmn-barcode-label-print ${printClass}">${pageHtml}</body></html>`);
             doc.close();
+            doc.body.style.setProperty("--wmn-label-width", `${opts.dims.width}mm`);
+            doc.body.style.setProperty("--wmn-label-height", `${opts.dims.height}mm`);
+            doc.body.style.setProperty("--wmn-print-page-width", `${layout.page.width}mm`);
+            doc.body.style.setProperty("--wmn-print-page-height", `${layout.page.height}mm`);
+            doc.body.style.setProperty("--wmn-print-columns", String(layout.columns || 1));
+            doc.body.style.setProperty("--wmn-print-gap", `${layout.gap}mm`);
+            doc.body.style.setProperty("--wmn-print-margin", `${layout.margin}mm`);
             setTimeout(() => {
                 try { iframe.contentWindow.focus(); iframe.contentWindow.print(); }
                 finally { setTimeout(() => iframe.remove(), 1200); }

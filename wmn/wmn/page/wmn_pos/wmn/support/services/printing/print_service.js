@@ -277,7 +277,7 @@
         const method = methodId(dialog.get_value("method"), false);
         const $wrap = field.$wrapper.empty();
         const button = (label, handler, primary) => {
-            const $btn = $("<button type='button' class='btn btn-sm " + (primary ? "btn-primary" : "btn-default") + "' style='margin-inline-end:6px;margin-bottom:6px'></button>");
+            const $btn = $("<button type='button' class='btn btn-sm wmn-print-action-btn " + (primary ? "btn-primary" : "btn-default") + "'></button>");
             $btn.text(label).on("click", async () => {
                 $btn.prop("disabled", true);
                 try { await handler(); } catch (e) { frappe.msgprint({ title: __("Printer"), indicator: "red", message: e.message || String(e) }); }
@@ -414,7 +414,7 @@
         if (statusField?.$wrapper) {
             const sourceText = status.has_local_override ? __("Browser override is active") : __("Using POS Profile defaults");
             const connectionText = status.online ? __("Online") : __("Offline - cached POS Profile defaults are used");
-            statusField.$wrapper.html(`<div class="alert alert-light border" style="margin:0;padding:10px 12px"><strong>${frappe.utils.escape_html(profile || __("POS Profile"))}</strong><br>${sourceText}<br>${connectionText}</div>`);
+            statusField.$wrapper.html(`<div class="alert alert-light border wmn-alert-compact"><strong>${frappe.utils.escape_html(profile || __("POS Profile"))}</strong><br>${sourceText}<br>${connectionText}</div>`);
         }
         dialog.set_value("method", methodLabel(cfg.method));
         dialog.set_value("fallback_method", cfg.fallback_method === "none" ? "No fallback" : methodLabel(cfg.fallback_method));
