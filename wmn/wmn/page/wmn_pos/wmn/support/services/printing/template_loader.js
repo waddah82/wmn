@@ -111,7 +111,7 @@
             }
 
 
-            const template =
+            const printFormatHtml =
                 (printFormatDoc && (
                     printFormatDoc.html ||
                     printFormatDoc.custom_html ||
@@ -119,6 +119,10 @@
                     printFormatDoc.format_data
                 )) ||
                 "";
+            const printFormatCss = printFormatDoc && printFormatDoc.css
+                ? "<style>\n" + String(printFormatDoc.css || "") + "\n</style>\n"
+                : "";
+            const template = printFormatCss + printFormatHtml;
 
             return {
                 printFormat: printFormatDoc && printFormatDoc.name
