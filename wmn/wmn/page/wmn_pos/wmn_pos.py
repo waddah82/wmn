@@ -9,6 +9,13 @@ def _wmn_api(method, *args, **kwargs):
     return _call(f"wmn.api.{method}", *args, **kwargs)
 
 
+@frappe.whitelist()
+def get_wmn_pos_stylesheet():
+    css_path = frappe.get_app_path("wmn", "wmn", "page", "wmn_pos", "wmn_pos.css")
+    with open(css_path, encoding="utf-8") as css_file:
+        return css_file.read()
+
+
 @frappe.whitelist(allow_guest=False)
 def pos_health_check(ts=None, source=None):
     return _wmn_api("pos_health_check", ts=ts, source=source or "wmn-pos")

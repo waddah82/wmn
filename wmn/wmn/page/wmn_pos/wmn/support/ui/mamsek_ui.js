@@ -33,11 +33,11 @@ frappe.provide("wmn.MamsekPOS");
     }
 
     function ensure_stylesheet() {
-        // Kept for callers; page-owned CSS lives in wmn_pos.css.
+        window.WMN_POS.UI.ensurePageStylesheet?.();
     }
 
     function ensure_extension_styles() {
-        // Kept for callers; page-owned CSS lives in wmn_pos.css.
+        window.WMN_POS.UI.ensurePageStylesheet?.();
     }
 
     function icon(name, size = 20) {
