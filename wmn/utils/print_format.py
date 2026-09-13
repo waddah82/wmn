@@ -69,6 +69,31 @@ def xpos_barcode(value, barcode_type="Code128"):
     return Markup(svg)
 
 
+def invoice_barcode_payload(doc):
+    from wmn.invoice_barcode import build_receipt_barcode, normalize_invoice_uid
+
+    doc = doc or {}
+    opening = (
+        doc.get("wmn_receipt_opening_entry")
+        or doc.get("pos_opening_entry")
+        or doc.get("pos_opening")
+        or ""
+    )
+    receipt_no = doc.get("wmn_receipt_no") or doc.get("__wmn_receipt_no") or ""
+    payload = build_receipt_barcode(opening, receipt_no)
+    if payload:
+        return payload
+
+    uid = normalize_invoice_uid(doc.get("wmn_invoice_uid"))
+    if uid:
+        return uid
+    return str(doc.get("name") or "").strip()
+
+
+def xpos_invoice_barcode(doc):
+    return xpos_barcode(invoice_barcode_payload(doc))
+
+
 def _code128_codes(value):
     if value.isdigit() and len(value) % 2 == 0:
         codes = [105]
@@ -155,6 +180,25 @@ def _get_pdf_options(print_format):
                 options[option_name] = f"{value}mm"
 
     return options
+
+
+def _ensure_invoice_barcode_html(html, doctype, name, doc=None):
+    html = str(html or "")
+    if "xpos-barcode-img" in html or "wmn-invoice-barcode" in html:
+        return html
+
+    document = doc
+    if document is None or isinstance(document, str):
+        document = frappe.get_doc(doctype, name)
+    barcode = str(xpos_invoice_barcode(document) or "").strip()
+    if not barcode:
+        return html
+    return (
+        html
+        + '<div class="barcode-section"><span class="invoice-barcode">'
+        + barcode
+        + "</span></div>"
+    )
 
 
 def _strip_pdf_network_dependencies(html):
@@ -261,6 +305,8 @@ def render_raw(doctype=None, name=None, print_format=None, doc=None, print_type=
             "frappe": frappe,
             "_": _,
             "xpos_barcode": xpos_barcode,
+            "xpos_invoice_barcode": xpos_invoice_barcode,
+            "invoice_barcode_payload": invoice_barcode_payload,
         },
     )
     return {
@@ -287,6 +333,7 @@ def create_pdf(doctype=None, name=None, print_format=None, doc=None, no_letterhe
         doc=doc,
         no_letterhead=cint(no_letterhead),
     )
+    html = _ensure_invoice_barcode_html(html, doctype, name, doc)
     html = _strip_pdf_network_dependencies(html)
     pdf_options = _get_pdf_options(selected_format)
     _ensure_pdf_runtime_cache()
