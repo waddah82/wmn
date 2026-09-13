@@ -56,7 +56,10 @@ doc_events = {
         "validate": "wmn.features.cash_movement.pos_closing.apply_cash_movement_to_closing",
     },
     "POS Profile": {
-        "validate": "wmn.features.pricing_rule.pricing_rule.force_native_pricing_rule_engine_disabled",
+        "validate": [
+            "wmn.features.pricing_rule.pricing_rule.force_native_pricing_rule_engine_disabled",
+            "wmn.setup.pos_profile_settings.sync_receipt_source_from_pos_profile",
+        ],
     },
 }
 override_whitelisted_methods = {

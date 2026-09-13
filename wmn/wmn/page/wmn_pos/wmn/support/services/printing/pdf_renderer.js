@@ -388,13 +388,24 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
 
             try { console.info("WMN POS print method:", method); } catch(e) {}
 
+            const barcodeService = window.WMN_POS?.Services?.Barcode?.InvoiceBarcode;
+
             if (usesWmnRaw) {
                 const raw = await wmn_get_wmn_raw_print_text(doc, cfg);
-                return await wmn_send_raw_text_to_printer(raw.rawText, raw.printType || printType);
+                const rawText = barcodeService?.decorateRawText
+                    ? barcodeService.decorateRawText(raw.rawText, doc, printConfig)
+                    : raw.rawText;
+                return await wmn_send_raw_text_to_printer(rawText, raw.printType || printType);
             }
 
             if (method === "browser") {
-                const html = await wmn_get_print_format_browser_html(doc, cfg);
+                const html = barcodeService?.injectIntoHtml
+                    ? barcodeService.injectIntoHtml(
+                        await wmn_get_print_format_browser_html(doc, cfg),
+                        doc,
+                        printConfig
+                    )
+                    : await wmn_get_print_format_browser_html(doc, cfg);
                 if (printService?.sendHtml) {
                     return await printService.sendHtml(html, { printType: printType || "RECEIPT" });
                 }

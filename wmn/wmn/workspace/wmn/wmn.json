@@ -26,6 +26,16 @@
     {
       "hidden": 0,
       "is_query_report": 0,
+      "label": "WMN POS Profile Settings",
+      "link_count": 0,
+      "link_to": "WMN POS Profile Settings",
+      "link_type": "DocType",
+      "onboard": 0,
+      "type": "Link"
+    },
+    {
+      "hidden": 0,
+      "is_query_report": 0,
       "label": "POS Opening Entry",
       "link_count": 0,
       "link_to": "POS Opening Entry",
@@ -44,7 +54,7 @@
       "type": "Link"
     }
   ],
-  "modified": "2026-09-10 00:00:00.000000",
+  "modified": "2026-09-13 21:10:00.000000",
   "modified_by": "Administrator",
   "module": "Wmn",
   "name": "WMN",

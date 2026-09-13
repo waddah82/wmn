@@ -262,7 +262,14 @@
     function injectIntoHtml(html, doc, config) {
         html = String(html || "");
         const block = buildHtmlBlock(doc, config);
-        if (!block || html.includes("wmn-invoice-barcode")) return html;
+        if (
+            !block
+            || html.includes("wmn-invoice-barcode")
+            || html.includes("xpos-barcode-img")
+            || /data:image\/(?:png|svg\+xml|gif|jpeg);base64,/i.test(html)
+        ) {
+            return html;
+        }
 
         if (/<\/body\s*>/i.test(html)) return html.replace(/<\/body\s*>/i, block + "</body>");
         return html + block;
