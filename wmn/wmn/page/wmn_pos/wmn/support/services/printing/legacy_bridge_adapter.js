@@ -31,7 +31,21 @@
         capabilities: { raw: true, png: true, pdf: true, html: false },
         isSupported() { return true; },
         sendRaw(rawText, settings, context) {
-            const encoded = btoa(unescape(encodeURIComponent(String(rawText || ""))));
+            const EscPos = ns.Services.Printing.EscPos;
+            const bytes = EscPos?.buildRawJob
+                ? EscPos.buildRawJob(rawText, settings)
+                : null;
+            let encoded;
+            if (bytes && bytes.length) {
+                let binary = "";
+                const chunk = 0x8000;
+                for (let i = 0; i < bytes.length; i += chunk) {
+                    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+                }
+                encoded = btoa(binary);
+            } else {
+                encoded = btoa(unescape(encodeURIComponent(String(rawText || ""))));
+            }
             return submit({ raw_content: encoded }, settings, context);
         },
         sendPng(base64, settings, context) {

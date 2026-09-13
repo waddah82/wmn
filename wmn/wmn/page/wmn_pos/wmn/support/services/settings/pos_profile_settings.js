@@ -16,7 +16,7 @@
         show_item_cart_counter: 0,
         enable_auto_silent_print: 0,
         print_after_cashier_completion: 0,
-        receipt_print_format_source: "ERPNext Print Format",
+        receipt_print_format_source: "WMN Raw Print Format",
         printing_method: "legacy_bridge",
         fallback_method: "none",
         copies: 1,

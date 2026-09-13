@@ -28,15 +28,32 @@
             );
         }
 
+        function wmn_escpos_print_method(method) {
+            method = String(method || "").trim();
+            return method === "legacy_bridge" || method === "webusb" || method === "webserial";
+        }
+
         function wmn_get_receipt_print_format_source(printConfig, printFormat) {
             const settings = (window.cur_pos && window.cur_pos.settings) || {};
+            const method = String(
+                (printConfig && printConfig.method) ||
+                settings.printing_method ||
+                "legacy_bridge"
+            ).trim();
+            const formatName = String(
+                (printFormat && (printFormat.name || printFormat.print_format || printFormat.print_format_name)) ||
+                settings.print_format ||
+                ""
+            ).toLowerCase();
             const value = String(
                 (printConfig && printConfig.receipt_print_format_source) ||
                 settings.receipt_print_format_source ||
                 (printFormat && printFormat.receipt_print_format_source) ||
-                "ERPNext Print Format"
+                "WMN Raw Print Format"
             ).trim().toLowerCase();
 
+            if (wmn_escpos_print_method(method)) return "wmn_raw";
+            if (formatName.indexOf("raw") !== -1) return "wmn_raw";
             return value.indexOf("raw") !== -1 ? "wmn_raw" : "erpnext_print_format";
         }
 
