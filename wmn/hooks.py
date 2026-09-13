@@ -117,6 +117,8 @@ after_migrate = "wmn.setup.migrate.after_migrate"
 jinja = {
     "methods": [
         "wmn.utils.print_format.xpos_barcode",
+        "wmn.utils.print_format.xpos_invoice_barcode",
+        "wmn.utils.print_format.invoice_barcode_payload",
     ],
 }
 
