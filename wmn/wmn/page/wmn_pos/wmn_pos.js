@@ -9032,7 +9032,7 @@ function wmn_is_mobile_pos_device() {
         show_item_cart_counter: 0,
         enable_auto_silent_print: 0,
         print_after_cashier_completion: 0,
-        receipt_print_format_source: "ERPNext Print Format",
+        receipt_print_format_source: "WMN Raw Print Format",
         printing_method: "legacy_bridge",
         fallback_method: "none",
         copies: 1,
@@ -13980,15 +13980,32 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
             );
         }
 
+        function wmn_escpos_print_method(method) {
+            method = String(method || "").trim();
+            return method === "legacy_bridge" || method === "webusb" || method === "webserial";
+        }
+
         function wmn_get_receipt_print_format_source(printConfig, printFormat) {
             const settings = (window.cur_pos && window.cur_pos.settings) || {};
+            const method = String(
+                (printConfig && printConfig.method) ||
+                settings.printing_method ||
+                "legacy_bridge"
+            ).trim();
+            const formatName = String(
+                (printFormat && (printFormat.name || printFormat.print_format || printFormat.print_format_name)) ||
+                settings.print_format ||
+                ""
+            ).toLowerCase();
             const value = String(
                 (printConfig && printConfig.receipt_print_format_source) ||
                 settings.receipt_print_format_source ||
                 (printFormat && printFormat.receipt_print_format_source) ||
-                "ERPNext Print Format"
+                "WMN Raw Print Format"
             ).trim().toLowerCase();
 
+            if (wmn_escpos_print_method(method)) return "wmn_raw";
+            if (formatName.indexOf("raw") !== -1) return "wmn_raw";
             return value.indexOf("raw") !== -1 ? "wmn_raw" : "erpnext_print_format";
         }
 
@@ -14505,7 +14522,21 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         capabilities: { raw: true, png: true, pdf: true, html: false },
         isSupported() { return true; },
         sendRaw(rawText, settings, context) {
-            const encoded = btoa(unescape(encodeURIComponent(String(rawText || ""))));
+            const EscPos = ns.Services.Printing.EscPos;
+            const bytes = EscPos?.buildRawJob
+                ? EscPos.buildRawJob(rawText, settings)
+                : null;
+            let encoded;
+            if (bytes && bytes.length) {
+                let binary = "";
+                const chunk = 0x8000;
+                for (let i = 0; i < bytes.length; i += chunk) {
+                    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+                }
+                encoded = btoa(binary);
+            } else {
+                encoded = btoa(unescape(encodeURIComponent(String(rawText || ""))));
+            }
             return submit({ raw_content: encoded }, settings, context);
         },
         sendPng(base64, settings, context) {
@@ -15050,7 +15081,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         invoice_barcode_human_readable: 1,
         enable_auto_silent_print: 0,
         print_after_cashier_completion: 0,
-        receipt_print_format_source: "ERPNext Print Format",
+        receipt_print_format_source: "WMN Raw Print Format",
     };
 
     function devicePreferences() {
@@ -15350,7 +15381,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 { fieldtype: "Section Break", label: __("Receipt Lifecycle") },
                 { fieldname: "enable_auto_silent_print", label: __("Enable Auto Silent Print"), fieldtype: "Check", default: cfg.enable_auto_silent_print, description: __("Automatically prints the final receipt after a normal Complete Order.") },
                 { fieldname: "print_after_cashier_completion", label: __("Print Again After Cashier Completion"), fieldtype: "Check", default: cfg.print_after_cashier_completion, description: __("Controls the second print after a cashier completes an Awaiting Cashier invoice. The handoff print remains unchanged.") },
-                { fieldname: "receipt_print_format_source", label: __("Receipt Print Format Source"), fieldtype: "Select", reqd: 1, options: "ERPNext Print Format\nWMN Raw Print Format", default: cfg.receipt_print_format_source, description: __("ERPNext Print Format renders the selected Print Format. WMN Raw Print Format sends the linked WMN Print Format RAW template directly to the printer.") },
+                { fieldname: "receipt_print_format_source", label: __("Receipt Print Format Source"), fieldtype: "Select", reqd: 1, options: "ERPNext Print Format\nWMN Raw Print Format", default: cfg.receipt_print_format_source, description: __("WMN Windows Bridge and direct ESC/POS printers always receive RAW text. ERPNext Print Format is used for Browser Print and optional QZ PDF output.") },
                 { fieldtype: "Section Break", label: __("ESC/POS Receipt") },
                 { fieldname: "cut_paper", label: __("Cut Paper"), fieldtype: "Check", default: cfg.cut_paper },
                 { fieldname: "feed_lines", label: __("Feed Lines"), fieldtype: "Int", default: cfg.feed_lines },
@@ -15739,7 +15770,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 return;
             }
 
-            if (typeof wmn_uses_wmn_raw_receipt === "function" && wmn_uses_wmn_raw_receipt()) {
+            if (typeof wmn_print_raw_receipt === "function") {
                 return await wmn_print_raw_receipt(doc);
             }
 

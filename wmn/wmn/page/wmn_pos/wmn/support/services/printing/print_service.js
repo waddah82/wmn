@@ -51,7 +51,7 @@
         invoice_barcode_human_readable: 1,
         enable_auto_silent_print: 0,
         print_after_cashier_completion: 0,
-        receipt_print_format_source: "ERPNext Print Format",
+        receipt_print_format_source: "WMN Raw Print Format",
     };
 
     function devicePreferences() {
@@ -351,7 +351,7 @@
                 { fieldtype: "Section Break", label: __("Receipt Lifecycle") },
                 { fieldname: "enable_auto_silent_print", label: __("Enable Auto Silent Print"), fieldtype: "Check", default: cfg.enable_auto_silent_print, description: __("Automatically prints the final receipt after a normal Complete Order.") },
                 { fieldname: "print_after_cashier_completion", label: __("Print Again After Cashier Completion"), fieldtype: "Check", default: cfg.print_after_cashier_completion, description: __("Controls the second print after a cashier completes an Awaiting Cashier invoice. The handoff print remains unchanged.") },
-                { fieldname: "receipt_print_format_source", label: __("Receipt Print Format Source"), fieldtype: "Select", reqd: 1, options: "ERPNext Print Format\nWMN Raw Print Format", default: cfg.receipt_print_format_source, description: __("ERPNext Print Format renders the selected Print Format. WMN Raw Print Format sends the linked WMN Print Format RAW template directly to the printer.") },
+                { fieldname: "receipt_print_format_source", label: __("Receipt Print Format Source"), fieldtype: "Select", reqd: 1, options: "ERPNext Print Format\nWMN Raw Print Format", default: cfg.receipt_print_format_source, description: __("WMN Windows Bridge and direct ESC/POS printers always receive RAW text. ERPNext Print Format is used for Browser Print and optional QZ PDF output.") },
                 { fieldtype: "Section Break", label: __("ESC/POS Receipt") },
                 { fieldname: "cut_paper", label: __("Cut Paper"), fieldtype: "Check", default: cfg.cut_paper },
                 { fieldname: "feed_lines", label: __("Feed Lines"), fieldtype: "Int", default: cfg.feed_lines },

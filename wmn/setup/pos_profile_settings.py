@@ -6,7 +6,7 @@ from frappe.utils import cint
 
 SETTINGS_DOCTYPE = "WMN POS Profile Settings"
 PROFILE_RECEIPT_SOURCE_FIELD = "wmn_receipt_print_format_source"
-DEFAULT_RECEIPT_SOURCE = "ERPNext Print Format"
+DEFAULT_RECEIPT_SOURCE = "WMN Raw Print Format"
 LEGACY_PROFILE_FIELDS = (
     "enable_auto_silent_print",
 )
@@ -170,8 +170,8 @@ def _receipt_source_custom_fields():
                 "default": DEFAULT_RECEIPT_SOURCE,
                 "insert_after": "print_format",
                 "description": (
-                    "ERPNext Print Format renders the selected Print Format. "
-                    "WMN Raw Print Format sends the linked WMN Print Format RAW template directly to the printer."
+                    "WMN Windows Bridge and direct ESC/POS printers always receive RAW text. "
+                    "ERPNext Print Format is used for Browser Print and optional QZ PDF output."
                 ),
             }
         ]

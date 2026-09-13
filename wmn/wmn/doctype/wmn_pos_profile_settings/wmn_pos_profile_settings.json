@@ -166,8 +166,8 @@
    "label": "Receipt Print Format Source",
    "fieldtype": "Select",
    "options": "ERPNext Print Format\nWMN Raw Print Format",
-   "default": "ERPNext Print Format",
-   "description": "Choose whether POS receipts are rendered by the selected ERPNext Print Format or by the linked WMN Print Format RAW template."
+   "default": "WMN Raw Print Format",
+   "description": "WMN Windows Bridge and direct ESC/POS printers always receive RAW text. ERPNext Print Format is used for Browser Print and optional QZ PDF output."
   },
   {
    "fieldname": "printing_method",
@@ -360,7 +360,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-13 21:10:00.000000",
+ "modified": "2026-09-13 22:10:00.000000",
  "module": "Wmn",
  "name": "WMN POS Profile Settings",
  "permissions": [
