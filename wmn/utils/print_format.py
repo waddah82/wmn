@@ -62,11 +62,11 @@ def xpos_barcode(value, barcode_type="Code128"):
     if not value:
         return Markup("")
 
-    svg = _code128_svg(value)
-    if not svg:
+    html = _code128_html(value)
+    if not html:
         return Markup('<span class="xpos-barcode-text">{0}</span>'.format(frappe.utils.escape_html(value)))
 
-    return Markup(svg)
+    return Markup(html)
 
 
 def invoice_barcode_payload(doc):
@@ -110,43 +110,56 @@ def _code128_codes(value):
     return codes
 
 
-def _code128_svg(value, height=44, module_width=1.4, quiet=10):
+def _code128_modules(value):
     codes = _code128_codes(value)
     if not codes:
-        return ""
+        return []
 
     checksum = codes[0]
     for index, code in enumerate(codes[1:], start=1):
         checksum += code * index
     codes.extend((checksum % 103, 106))
 
-    modules = quiet * 2
-    for code in codes:
-        for digit in _CODE128_PATTERNS[code]:
-            modules += int(digit)
-
-    x = quiet
-    bars = []
+    modules = []
     for code in codes:
         for index, digit in enumerate(_CODE128_PATTERNS[code]):
-            width = int(digit)
-            if index % 2 == 0:
-                bars.append(
-                    '<rect x="{0}" y="0" width="{1}" height="{2}"/>'.format(
-                        round(x * module_width, 2),
-                        round(width * module_width, 2),
-                        height,
-                    )
-                )
-            x += width
+            modules.append((index % 2 == 0, int(digit)))
+    return modules
 
-    view_width = round(modules * module_width, 2)
+
+def _code128_html(value, height=44, module_width=1.2, quiet=10):
+    modules = _code128_modules(value)
+    if not modules:
+        return ""
+
+    label = frappe.utils.escape_html(value)
+    spans = [
+        '<span style="display:inline-block;height:{0}px;width:{1}px;background:#fff;"></span>'.format(
+            height,
+            round(quiet * module_width, 2),
+        )
+    ]
+    for is_bar, width in modules:
+        spans.append(
+            '<span style="display:inline-block;height:{0}px;width:{1}px;background:{2};"></span>'.format(
+                height,
+                round(width * module_width, 2),
+                "#000" if is_bar else "#fff",
+            )
+        )
+    spans.append(
+        '<span style="display:inline-block;height:{0}px;width:{1}px;background:#fff;"></span>'.format(
+            height,
+            round(quiet * module_width, 2),
+        )
+    )
     return (
-        '<svg class="xpos-barcode-img" xmlns="http://www.w3.org/2000/svg" '
-        'viewBox="0 0 {0} {1}" width="{0}" height="{1}" '
-        'preserveAspectRatio="xMidYMid meet" aria-label="{2}">'
-        '<g fill="#000">{3}</g></svg>'
-    ).format(view_width, height, frappe.utils.escape_html(value), "".join(bars))
+        '<div class="xpos-barcode-img" role="img" aria-label="{0}">'
+        '<div class="xpos-barcode-bars" style="height:{1}px;font-size:0;line-height:0;'
+        'white-space:nowrap;text-align:center;overflow:hidden;">{2}</div>'
+        '<div class="xpos-barcode-text">{0}</div>'
+        "</div>"
+    ).format(label, height, "".join(spans))
 
 
 def _ensure_pdf_runtime_cache():
@@ -182,9 +195,13 @@ def _get_pdf_options(print_format):
     return options
 
 
+def _has_printable_invoice_barcode(html):
+    return "xpos-barcode-bars" in html or "wmn-invoice-barcode" in html
+
+
 def _ensure_invoice_barcode_html(html, doctype, name, doc=None):
     html = str(html or "")
-    if "xpos-barcode-img" in html or "wmn-invoice-barcode" in html:
+    if _has_printable_invoice_barcode(html):
         return html
 
     document = doc
@@ -193,12 +210,18 @@ def _ensure_invoice_barcode_html(html, doctype, name, doc=None):
     barcode = str(xpos_invoice_barcode(document) or "").strip()
     if not barcode:
         return html
-    return (
-        html
-        + '<div class="barcode-section"><span class="invoice-barcode">'
-        + barcode
-        + "</span></div>"
-    )
+
+    replacement = '<div class="barcode-section"><span class="invoice-barcode">{0}</span></div>'.format(barcode)
+    if "barcode-section" in html:
+        updated, count = re.subn(
+            r'<div class="barcode-section">[\s\S]*?</div>',
+            replacement,
+            html,
+            count=1,
+        )
+        if count:
+            return updated
+    return html + replacement
 
 
 def _strip_pdf_network_dependencies(html):

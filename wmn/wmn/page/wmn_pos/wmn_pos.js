@@ -8086,6 +8086,32 @@ wmn_install_pos_pwa_app_css();
         return `<svg class="wmn-invoice-barcode-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewWidth} ${height}" width="${viewWidth}" height="${height}" preserveAspectRatio="xMidYMid meet" aria-label="${escapeHtml(value)}"><g fill="#000">${bars.join("")}</g></svg>`;
     }
 
+    function buildBarsHtml(value, options) {
+        options = options || {};
+        const codes = encodeCode128(value);
+        const quiet = Math.max(8, parseInt(options.quiet_modules || "10", 10) || 10);
+        const moduleWidth = Math.max(1, parseFloat(options.module_width || 1.2));
+        const height = Math.max(28, parseInt(options.height || "44", 10) || 44);
+        const label = escapeHtml(value);
+        const span = (width, color) =>
+            `<span style="display:inline-block;height:${height}px;width:${Math.round(width * moduleWidth * 100) / 100}px;background:${color};"></span>`;
+
+        const parts = [span(quiet, "#fff")];
+        codes.forEach((code) => {
+            const pattern = CODE128_PATTERNS[code];
+            for (let i = 0; i < pattern.length; i += 1) {
+                parts.push(span(parseInt(pattern[i], 10), i % 2 === 0 ? "#000" : "#fff"));
+            }
+        });
+        parts.push(span(quiet, "#fff"));
+
+        return (
+            `<div class="xpos-barcode-img wmn-invoice-barcode" role="img" aria-label="${label}">` +
+            `<div class="xpos-barcode-bars" style="height:${height}px;font-size:0;line-height:0;white-space:nowrap;text-align:center;overflow:hidden;">${parts.join("")}</div>` +
+            `</div>`
+        );
+    }
+
     function getPrintConfig() {
         return ns.Services?.Printing?.PrintService?.getConfig?.() || {};
     }
@@ -8103,26 +8129,29 @@ wmn_install_pos_pwa_app_css();
 
         const height = Math.max(28, parseInt(config.invoice_barcode_height || "56", 10) || 56);
         const human = cint(config.invoice_barcode_human_readable === undefined ? 1 : config.invoice_barcode_human_readable) === 1;
-        const svg = buildSvg(payload, { height });
+        const bars = buildBarsHtml(payload, { height });
         const label = human
-            ? `<div class="wmn-invoice-barcode-label">${escapeHtml(payload)}</div>`
+            ? `<div class="wmn-invoice-barcode-label xpos-barcode-text">${escapeHtml(payload)}</div>`
             : "";
 
-        return `<div class="wmn-invoice-barcode">${svg}${label}</div>`;
+        return `<div class="wmn-invoice-barcode">${bars}${label}</div>`;
+    }
+
+    function hasPrintableBarcode(html) {
+        return html.includes("xpos-barcode-bars") || html.includes("wmn-invoice-barcode");
     }
 
     function injectIntoHtml(html, doc, config) {
         html = String(html || "");
         const block = buildHtmlBlock(doc, config);
-        if (
-            !block
-            || html.includes("wmn-invoice-barcode")
-            || html.includes("xpos-barcode-img")
-            || /data:image\/(?:png|svg\+xml|gif|jpeg);base64,/i.test(html)
-        ) {
-            return html;
-        }
+        if (!block || hasPrintableBarcode(html)) return html;
 
+        if (/<div class="barcode-section">[\s\S]*?<\/div>/.test(html)) {
+            return html.replace(/<div class="barcode-section">[\s\S]*?<\/div>/, `<div class="barcode-section">${block}</div>`);
+        }
+        if (/<div class="receipt-footer"/.test(html)) {
+            return html.replace(/<div class="receipt-footer"/, `${block}<div class="receipt-footer"`);
+        }
         if (/<\/body\s*>/i.test(html)) return html.replace(/<\/body\s*>/i, block + "</body>");
         return html + block;
     }
@@ -8217,6 +8246,7 @@ wmn_install_pos_pwa_app_css();
         isInvoiceBarcode,
         extractUID,
         buildSvg,
+        buildBarsHtml,
         buildHtmlBlock,
         injectIntoHtml,
         decoratePdfDefinition,

@@ -6926,15 +6926,23 @@ body.wmn-pos-report-frame-body .container-fluid {
 	text-align: center;
 }
 
-.wmn-invoice-barcode svg {
+.wmn-invoice-barcode svg,
+.wmn-invoice-barcode-svg,
+.wmn-invoice-barcode .xpos-barcode-bars {
 	max-width: 100%;
 }
 
-.wmn-invoice-barcode-svg {
-	max-width: 100%;
+.xpos-barcode-bars {
+	display: block;
+	font-size: 0;
+	line-height: 0;
+	white-space: nowrap;
+	text-align: center;
+	overflow: hidden;
 }
 
-.wmn-invoice-barcode-label {
+.wmn-invoice-barcode-label,
+.xpos-barcode-text {
 	margin-top: 3px;
 	font: 600 9px/1.2 monospace;
 	letter-spacing: .15px;
