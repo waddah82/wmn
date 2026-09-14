@@ -20,6 +20,7 @@ ALLOWED_FIELDS = {
     "combined_discount_representation",
     "default_item_view",
     "show_item_cart_counter",
+    "search_row_nav",
     "enable_auto_silent_print",
     "print_after_cashier_completion",
     "receipt_print_format_source",
@@ -56,6 +57,7 @@ ALLOWED_FIELDS = {
 CHECK_FIELDS = {
     "ignore_pricing_rule",
     "show_item_cart_counter",
+    "search_row_nav",
     "enable_auto_silent_print",
     "print_after_cashier_completion",
     "cut_paper",

@@ -17,6 +17,29 @@
         return selector?.$component?.find?.(".wmn-category-search-row")?.first?.() || null;
     }
 
+    function iconSvg(paths) {
+        return `<svg class="wmn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+    }
+
+    function cameraIcon() {
+        try {
+            if (frappe?.utils?.icon) return frappe.utils.icon("scan-barcode", "sm");
+        } catch (error) {}
+        return iconSvg('<path d="M4 7V5a1 1 0 0 1 1-1h2M4 17v2a1 1 0 0 0 1 1h2M20 7V5a1 1 0 0 0-1-1h-2M20 17v2a1 1 0 0 1-1 1h-2"/><rect x="7" y="8" width="10" height="8" rx="1"/>');
+    }
+
+    function qtyIcon() {
+        return iconSvg('<path d="M8 7h8M8 12h8M8 17h5"/><rect x="3" y="4" width="18" height="16" rx="2"/>');
+    }
+
+    function gridIcon() {
+        return iconSvg('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>');
+    }
+
+    function buttonViewIcon() {
+        return iconSvg('<rect x="3" y="5" width="18" height="6" rx="1"/><rect x="3" y="13" width="18" height="6" rx="1"/>');
+    }
+
     function sync(selector) {
         const armed = feature.isArmed(selector);
         const $shell = getSearchShell(selector);
@@ -24,10 +47,12 @@
         $shell?.toggleClass?.("wmn-qty-next-scan-armed", armed);
         $button?.toggleClass?.("is-armed", armed);
         $button?.attr?.("aria-pressed", String(armed));
-        $button?.find?.(".wmn-qty-next-scan-label")?.text?.(
-            armed ? __("Qty Next Scan: ON") : __("Qty Next Scan")
+        $button?.attr?.(
+            "title",
+            armed
+                ? __("Qty Next Scan is on (F8)")
+                : __("Quantity dialog for next ordinary barcode scan (F8)")
         );
-        $button?.find?.(".wmn-qty-next-scan-badge")?.toggle?.(armed);
         return armed;
     }
 
@@ -86,26 +111,69 @@
         });
     }
 
+    function openCamera(selector) {
+        try {
+            const scanner = window.WMN?.Features?.MobileBarcodeScanner;
+            if (scanner?.open) {
+                scanner.open({
+                    multiple: false,
+                    onScan(text) {
+                        if (selector?.wmn_submit_scanned_barcode) {
+                            selector.wmn_submit_scanned_barcode(text, {
+                                source: "camera",
+                                focus: false,
+                            });
+                        } else {
+                            selector.barcode_scanned = true;
+                            selector.set_search_value?.(text);
+                        }
+                    },
+                });
+                return;
+            }
+            scanner?.openForPOS?.(selector);
+        } catch (error) {
+            frappe.msgprint({
+                title: __("Camera Scanner"),
+                indicator: "red",
+                message: error?.message || String(error),
+            });
+        }
+    }
+
     function install(selector) {
         ensureStylesheet();
+        const $shell = getSearchShell(selector);
         const $row = getActionRow(selector);
-        if (!$row?.length) return;
+        if (!$shell?.length || !$row?.length) return;
 
-        if (!$row.find(".wmn-barcode-scan-actions").length) {
+        $shell.find(".wmn-search-shortcut").prop("hidden", true);
+        if (!$shell.find(".wmn-camera-scan").length) {
+            $shell.append(`
+                <button type="button" class="wmn-search-icon-btn wmn-camera-scan" title="${__("Scan with Camera")}" aria-label="${__("Scan with Camera")}">
+                    <span class="wmn-camera-scan-icon">${cameraIcon()}</span>
+                </button>
+            `);
+        }
+
+        if (!$row.children(".wmn-search-actions").length) {
             $row.append(`
-                <div class="wmn-barcode-scan-actions">
-                    <button type="button" class="btn btn-default wmn-camera-scan" title="${__("Scan with Camera")}" aria-label="${__("Scan with Camera")}">
-                        <span class="wmn-camera-scan-icon">${frappe.utils.icon("scan-barcode", "sm")}</span>
-                        <span class="wmn-camera-scan-label">${__("Camera")}</span>
+                <div class="wmn-search-actions" role="group" aria-label="${__("Item search actions")}">
+                    <button type="button" class="wmn-search-icon-btn wmn-qty-next-scan" aria-pressed="false" title="${__("Quantity dialog for next ordinary barcode scan (F8)")}" aria-label="${__("Qty Next Scan")}">
+                        ${qtyIcon()}
                     </button>
-                    <button type="button" class="btn btn-default wmn-qty-next-scan" aria-pressed="false" title="${__("Quantity dialog for next ordinary barcode scan (F8)")}">
-                        <span class="wmn-qty-next-scan-label">${__("Qty Next Scan")}</span>
-                        <span class="wmn-qty-next-scan-badge" hidden>QTY</span>
-                        <kbd>F8</kbd>
+                    <button type="button" class="wmn-search-icon-btn wmn-grid-view-btn" title="${__("Grid View")}" aria-label="${__("Grid View")}">
+                        ${gridIcon()}
+                    </button>
+                    <button type="button" class="wmn-search-icon-btn wmn-button-view-btn" title="${__("Button View")}" aria-label="${__("Button View")}">
+                        ${buttonViewIcon()}
                     </button>
                 </div>
             `);
         }
+
+        selector.$gridBtn = selector.$component.find(".wmn-grid-view-btn");
+        selector.$listBtn = selector.$component.find(".wmn-button-view-btn");
 
         selector.$component
             .off("click.wmnBarcodeScanQty", ".wmn-qty-next-scan")
@@ -120,33 +188,20 @@
             .on("click.wmnCameraScan", ".wmn-camera-scan", (event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                try {
-                    const scanner = window.WMN?.Features?.MobileBarcodeScanner;
-                    if (scanner?.open) {
-                        scanner.open({
-                            multiple: false,
-                            onScan(text) {
-                                if (selector?.wmn_submit_scanned_barcode) {
-                                    selector.wmn_submit_scanned_barcode(text, {
-                                        source: "camera",
-                                        focus: false,
-                                    });
-                                } else {
-                                    selector.barcode_scanned = true;
-                                    selector.set_search_value?.(text);
-                                }
-                            },
-                        });
-                    } else {
-                        scanner?.openForPOS?.(selector);
-                    }
-                } catch (error) {
-                    frappe.msgprint({
-                        title: __("Camera Scanner"),
-                        indicator: "red",
-                        message: error?.message || String(error),
-                    });
-                }
+                openCamera(selector);
+            });
+
+        selector.$component
+            .off("click.wmnSearchView", ".wmn-grid-view-btn, .wmn-button-view-btn")
+            .on("click.wmnSearchView", ".wmn-grid-view-btn", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                selector.setCardMode?.();
+            })
+            .on("click.wmnSearchView", ".wmn-button-view-btn", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                selector.setButtonMode?.();
             });
 
         $(document)
@@ -161,6 +216,9 @@
             });
 
         sync(selector);
+        selector.updateActiveButton?.();
+        selector.apply_search_row_nav?.();
+        selector.sync_offline_nav_actions?.();
     }
 
     window.WMN_POS.Features.BarcodeScanQuantityUI = {

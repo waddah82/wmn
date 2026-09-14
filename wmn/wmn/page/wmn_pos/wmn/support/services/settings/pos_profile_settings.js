@@ -14,6 +14,7 @@
         combined_discount_representation: "Amount Only",
         default_item_view: "Grid View",
         show_item_cart_counter: 0,
+        search_row_nav: 0,
         enable_auto_silent_print: 0,
         print_after_cashier_completion: 0,
         receipt_print_format_source: "WMN Raw Print Format",
@@ -50,6 +51,7 @@
     const NUMERIC_KEYS = new Set([
         "ignore_pricing_rule",
         "show_item_cart_counter",
+        "search_row_nav",
         "enable_auto_silent_print",
         "print_after_cashier_completion",
         "copies",
