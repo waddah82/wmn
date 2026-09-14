@@ -1,0 +1,539 @@
+{
+  "generated_file": "wmn_pos.js",
+  "vendor": [
+    {
+      "marker": "embedded vendor:onscan.js",
+      "path": "wmn/vendor/onscan.js"
+    },
+    {
+      "marker": "embedded vendor:qz-tray.js",
+      "path": "wmn/vendor/qz-tray.js"
+    }
+  ],
+  "support": [
+    {
+      "marker": "support:services/storage/offline_storage.js",
+      "path": "wmn/support/services/storage/offline_storage.js"
+    },
+    {
+      "marker": "support:services/retail/retail_context.js",
+      "path": "wmn/support/services/retail/retail_context.js"
+    },
+    {
+      "marker": "support:features/price_checker/price_checker.online.js",
+      "path": "wmn/support/features/price_checker/price_checker.online.js"
+    },
+    {
+      "marker": "support:features/price_checker/price_checker.offline.js",
+      "path": "wmn/support/features/price_checker/price_checker.offline.js"
+    },
+    {
+      "marker": "support:features/price_checker/price_checker.common.js",
+      "path": "wmn/support/features/price_checker/price_checker.common.js"
+    },
+    {
+      "marker": "support:features/barcode_printing/barcode_printing.online.js",
+      "path": "wmn/support/features/barcode_printing/barcode_printing.online.js"
+    },
+    {
+      "marker": "support:features/barcode_printing/barcode_printing.offline.js",
+      "path": "wmn/support/features/barcode_printing/barcode_printing.offline.js"
+    },
+    {
+      "marker": "support:features/barcode_printing/vendor/jsbarcode.wmn.js",
+      "path": "wmn/support/features/barcode_printing/vendor/jsbarcode.wmn.js"
+    },
+    {
+      "marker": "support:features/barcode_printing/barcode_printing.range.js",
+      "path": "wmn/support/features/barcode_printing/barcode_printing.range.js"
+    },
+    {
+      "marker": "support:features/barcode_printing/barcode_printing.import.js",
+      "path": "wmn/support/features/barcode_printing/barcode_printing.import.js"
+    },
+    {
+      "marker": "support:features/barcode_printing/barcode_printing.print_layout.js",
+      "path": "wmn/support/features/barcode_printing/barcode_printing.print_layout.js"
+    },
+    {
+      "marker": "support:features/barcode_printing/barcode_printing.common.js",
+      "path": "wmn/support/features/barcode_printing/barcode_printing.common.js"
+    },
+    {
+      "marker": "support:features/barcode_scan_quantity/barcode_scan_quantity.common.js",
+      "path": "wmn/support/features/barcode_scan_quantity/barcode_scan_quantity.common.js"
+    },
+    {
+      "marker": "support:features/barcode_scan_quantity/barcode_scan_quantity.ui.js",
+      "path": "wmn/support/features/barcode_scan_quantity/barcode_scan_quantity.ui.js"
+    },
+    {
+      "marker": "support:services/barcode/invoice_barcode.js",
+      "path": "wmn/support/services/barcode/invoice_barcode.js"
+    },
+    {
+      "marker": "support:services/connectivity/connectivity.js",
+      "path": "wmn/support/services/connectivity/connectivity.js"
+    },
+    {
+      "marker": "support:services/offline/mode_and_settings.js",
+      "path": "wmn/support/services/offline/mode_and_settings.js"
+    },
+    {
+      "marker": "support:core/common.js",
+      "path": "wmn/support/core/common.js"
+    },
+    {
+      "marker": "support:services/settings/device_preferences.js",
+      "path": "wmn/support/services/settings/device_preferences.js"
+    },
+    {
+      "marker": "support:services/settings/pos_profile_settings.js",
+      "path": "wmn/support/services/settings/pos_profile_settings.js"
+    },
+    {
+      "marker": "support:ui/dialog_manager.js",
+      "path": "wmn/support/ui/dialog_manager.js"
+    },
+    {
+      "marker": "support:services/offline/document_adapter.js",
+      "path": "wmn/support/services/offline/document_adapter.js"
+    },
+    {
+      "marker": "support:services/payment/offline_payment.js",
+      "path": "wmn/support/services/payment/offline_payment.js"
+    },
+    {
+      "marker": "support:services/payment/online_payment_accounts.js",
+      "path": "wmn/support/services/payment/online_payment_accounts.js"
+    },
+    {
+      "marker": "support:features/payment_gateway/payment_gateway.common.js",
+      "path": "wmn/support/features/payment_gateway/payment_gateway.common.js"
+    },
+    {
+      "marker": "support:services/payment_gateway/model_registry.js",
+      "path": "wmn/support/services/payment_gateway/model_registry.js"
+    },
+    {
+      "marker": "support:services/payment_gateway/providers/provider_base.js",
+      "path": "wmn/support/services/payment_gateway/providers/provider_base.js"
+    },
+    {
+      "marker": "support:services/payment_gateway/providers/geidea.js",
+      "path": "wmn/support/services/payment_gateway/providers/geidea.js"
+    },
+    {
+      "marker": "support:services/payment_gateway/providers/stc_softpos.js",
+      "path": "wmn/support/services/payment_gateway/providers/stc_softpos.js"
+    },
+    {
+      "marker": "support:services/payment_gateway/providers/generic.js",
+      "path": "wmn/support/services/payment_gateway/providers/generic.js"
+    },
+    {
+      "marker": "support:services/payment_gateway/payment_gateway_service.js",
+      "path": "wmn/support/services/payment_gateway/payment_gateway_service.js"
+    },
+    {
+      "marker": "support:features/payment_gateway/payment_gateway.online.js",
+      "path": "wmn/support/features/payment_gateway/payment_gateway.online.js"
+    },
+    {
+      "marker": "support:features/payment_gateway/payment_gateway.offline.js",
+      "path": "wmn/support/features/payment_gateway/payment_gateway.offline.js"
+    },
+    {
+      "marker": "support:services/stock/offline_stock.js",
+      "path": "wmn/support/services/stock/offline_stock.js"
+    },
+    {
+      "marker": "support:services/offline/invoice_manager.js",
+      "path": "wmn/support/services/offline/invoice_manager.js"
+    },
+    {
+      "marker": "support:services/printing/raw_renderer.js",
+      "path": "wmn/support/services/printing/raw_renderer.js"
+    },
+    {
+      "marker": "support:services/printing/template_loader.js",
+      "path": "wmn/support/services/printing/template_loader.js"
+    },
+    {
+      "marker": "support:services/printing/pdf_renderer.js",
+      "path": "wmn/support/services/printing/pdf_renderer.js"
+    },
+    {
+      "marker": "support:services/printing/escpos.js",
+      "path": "wmn/support/services/printing/escpos.js"
+    },
+    {
+      "marker": "support:services/printing/legacy_bridge_adapter.js",
+      "path": "wmn/support/services/printing/legacy_bridge_adapter.js"
+    },
+    {
+      "marker": "support:services/printing/browser_print_adapter.js",
+      "path": "wmn/support/services/printing/browser_print_adapter.js"
+    },
+    {
+      "marker": "support:services/printing/webusb_escpos_adapter.js",
+      "path": "wmn/support/services/printing/webusb_escpos_adapter.js"
+    },
+    {
+      "marker": "support:services/printing/webserial_escpos_adapter.js",
+      "path": "wmn/support/services/printing/webserial_escpos_adapter.js"
+    },
+    {
+      "marker": "support:services/printing/qz_print_adapter.js",
+      "path": "wmn/support/services/printing/qz_print_adapter.js"
+    },
+    {
+      "marker": "support:services/printing/print_service.js",
+      "path": "wmn/support/services/printing/print_service.js"
+    },
+    {
+      "marker": "support:services/receipt/receipt_counter.js",
+      "path": "wmn/support/services/receipt/receipt_counter.js"
+    },
+    {
+      "marker": "support:services/printing/auto_print.js",
+      "path": "wmn/support/services/printing/auto_print.js"
+    },
+    {
+      "marker": "support:features/printing/printing.common.js",
+      "path": "wmn/support/features/printing/printing.common.js"
+    },
+    {
+      "marker": "support:features/printing/printing.online.js",
+      "path": "wmn/support/features/printing/printing.online.js"
+    },
+    {
+      "marker": "support:features/printing/printing.offline.js",
+      "path": "wmn/support/features/printing/printing.offline.js"
+    },
+    {
+      "marker": "support:features/receipt/receipt.common.js",
+      "path": "wmn/support/features/receipt/receipt.common.js"
+    },
+    {
+      "marker": "support:features/receipt/receipt.online.js",
+      "path": "wmn/support/features/receipt/receipt.online.js"
+    },
+    {
+      "marker": "support:features/receipt/receipt.offline.js",
+      "path": "wmn/support/features/receipt/receipt.offline.js"
+    },
+    {
+      "marker": "support:features/invoice_barcode/invoice_barcode.common.js",
+      "path": "wmn/support/features/invoice_barcode/invoice_barcode.common.js"
+    },
+    {
+      "marker": "support:features/invoice_barcode/invoice_barcode.online.js",
+      "path": "wmn/support/features/invoice_barcode/invoice_barcode.online.js"
+    },
+    {
+      "marker": "support:features/invoice_barcode/invoice_barcode.offline.js",
+      "path": "wmn/support/features/invoice_barcode/invoice_barcode.offline.js"
+    },
+    {
+      "marker": "support:features/invoice_handoff/invoice_handoff.common.js",
+      "path": "wmn/support/features/invoice_handoff/invoice_handoff.common.js"
+    },
+    {
+      "marker": "support:features/invoice_handoff/invoice_handoff.online.js",
+      "path": "wmn/support/features/invoice_handoff/invoice_handoff.online.js"
+    },
+    {
+      "marker": "support:features/invoice_handoff/invoice_handoff.offline.js",
+      "path": "wmn/support/features/invoice_handoff/invoice_handoff.offline.js"
+    },
+    {
+      "marker": "support:features/return/return.common.js",
+      "path": "wmn/support/features/return/return.common.js"
+    },
+    {
+      "marker": "support:features/return/return.offline.js",
+      "path": "wmn/support/features/return/return.offline.js"
+    },
+    {
+      "marker": "support:features/cashier_completion/cashier_completion.common.js",
+      "path": "wmn/support/features/cashier_completion/cashier_completion.common.js"
+    },
+    {
+      "marker": "support:features/sync/sync.common.js",
+      "path": "wmn/support/features/sync/sync.common.js"
+    },
+    {
+      "marker": "support:features/sync/sync.online.js",
+      "path": "wmn/support/features/sync/sync.online.js"
+    },
+    {
+      "marker": "support:features/sync/sync.offline.js",
+      "path": "wmn/support/features/sync/sync.offline.js"
+    },
+    {
+      "marker": "support:services/offline/cart_normalizer.js",
+      "path": "wmn/support/services/offline/cart_normalizer.js"
+    },
+    {
+      "marker": "support:services/cache/controller_cache.js",
+      "path": "wmn/support/services/cache/controller_cache.js"
+    },
+    {
+      "marker": "support:services/cache/pos_cache_registry.js",
+      "path": "wmn/support/services/cache/pos_cache_registry.js"
+    },
+    {
+      "marker": "support:services/cache/pos_cache_adapter.js",
+      "path": "wmn/support/services/cache/pos_cache_adapter.js"
+    },
+    {
+      "marker": "support:services/item/free_item_row.js",
+      "path": "wmn/support/services/item/free_item_row.js"
+    },
+    {
+      "marker": "support:features/pos_cache_manager/pos_cache_manager.common.js",
+      "path": "wmn/support/features/pos_cache_manager/pos_cache_manager.common.js"
+    },
+    {
+      "marker": "support:features/pos_cache_manager/pos_cache_manager.online.js",
+      "path": "wmn/support/features/pos_cache_manager/pos_cache_manager.online.js"
+    },
+    {
+      "marker": "support:features/pos_cache_manager/pos_cache_manager.offline.js",
+      "path": "wmn/support/features/pos_cache_manager/pos_cache_manager.offline.js"
+    },
+    {
+      "marker": "support:features/pricing_rule/pricing_rule.common.js",
+      "path": "wmn/support/features/pricing_rule/pricing_rule.common.js"
+    },
+    {
+      "marker": "support:features/pricing_rule/pricing_rule.controller.common.js",
+      "path": "wmn/support/features/pricing_rule/pricing_rule.controller.common.js"
+    },
+    {
+      "marker": "support:features/discount/discount.common.js",
+      "path": "wmn/support/features/discount/discount.common.js"
+    },
+    {
+      "marker": "support:features/ui_preferences/ui_preferences.common.js",
+      "path": "wmn/support/features/ui_preferences/ui_preferences.common.js"
+    },
+    {
+      "marker": "support:features/coupon/coupon.common.js",
+      "path": "wmn/support/features/coupon/coupon.common.js"
+    },
+    {
+      "marker": "support:features/coupon/coupon.controller.common.js",
+      "path": "wmn/support/features/coupon/coupon.controller.common.js"
+    },
+    {
+      "marker": "support:features/coupon/coupon.online.js",
+      "path": "wmn/support/features/coupon/coupon.online.js"
+    },
+    {
+      "marker": "support:features/coupon/coupon.offline.js",
+      "path": "wmn/support/features/coupon/coupon.offline.js"
+    },
+    {
+      "marker": "support:features/promotion/promotion.common.js",
+      "path": "wmn/support/features/promotion/promotion.common.js"
+    },
+    {
+      "marker": "support:features/promotion/promotion.controller.common.js",
+      "path": "wmn/support/features/promotion/promotion.controller.common.js"
+    },
+    {
+      "marker": "support:features/promotion/promotion.online.js",
+      "path": "wmn/support/features/promotion/promotion.online.js"
+    },
+    {
+      "marker": "support:features/promotion/promotion.offline.js",
+      "path": "wmn/support/features/promotion/promotion.offline.js"
+    },
+    {
+      "marker": "support:features/commercial_catalog/commercial_catalog.common.js",
+      "path": "wmn/support/features/commercial_catalog/commercial_catalog.common.js"
+    },
+    {
+      "marker": "support:features/commercial_catalog/commercial_catalog.online.js",
+      "path": "wmn/support/features/commercial_catalog/commercial_catalog.online.js"
+    },
+    {
+      "marker": "support:features/commercial_catalog/commercial_catalog.offline.js",
+      "path": "wmn/support/features/commercial_catalog/commercial_catalog.offline.js"
+    },
+    {
+      "marker": "support:features/supervisor/supervisor.common.js",
+      "path": "wmn/support/features/supervisor/supervisor.common.js"
+    },
+    {
+      "marker": "support:features/supervisor/supervisor.online.js",
+      "path": "wmn/support/features/supervisor/supervisor.online.js"
+    },
+    {
+      "marker": "support:features/supervisor/supervisor.offline.js",
+      "path": "wmn/support/features/supervisor/supervisor.offline.js"
+    },
+    {
+      "marker": "support:features/supervisor/supervisor.controller.common.js",
+      "path": "wmn/support/features/supervisor/supervisor.controller.common.js"
+    },
+    {
+      "marker": "support:features/cash_movement/cash_movement.common.js",
+      "path": "wmn/support/features/cash_movement/cash_movement.common.js"
+    },
+    {
+      "marker": "support:features/cash_movement/cash_movement.online.js",
+      "path": "wmn/support/features/cash_movement/cash_movement.online.js"
+    },
+    {
+      "marker": "support:features/cash_movement/cash_movement.offline.js",
+      "path": "wmn/support/features/cash_movement/cash_movement.offline.js"
+    },
+    {
+      "marker": "support:features/doctype_manager/doctype_manager.common.js",
+      "path": "wmn/support/features/doctype_manager/doctype_manager.common.js"
+    },
+    {
+      "marker": "support:features/doctype_manager/doctype_manager.online.js",
+      "path": "wmn/support/features/doctype_manager/doctype_manager.online.js"
+    },
+    {
+      "marker": "support:features/doctype_manager/doctype_manager.offline.js",
+      "path": "wmn/support/features/doctype_manager/doctype_manager.offline.js"
+    },
+    {
+      "marker": "support:ui/mamsek_ui.js",
+      "path": "wmn/support/ui/mamsek_ui.js"
+    }
+  ],
+  "owned_source": [
+    {
+      "marker": "class_registry.js",
+      "path": "wmn/runtime/class_registry.js",
+      "origin": "WMN-owned modification/runtime"
+    },
+    {
+      "marker": "pos_number_pad.js",
+      "path": "upstream_v16/pos_number_pad.js",
+      "origin": "ERPNext v16 POS source copied into WMN namespace"
+    },
+    {
+      "marker": "pos_item_details.js",
+      "path": "upstream_v16/pos_item_details.js",
+      "origin": "ERPNext v16 POS source copied into WMN namespace"
+    },
+    {
+      "marker": "pos_item_cart.js",
+      "path": "upstream_v16/pos_item_cart.js",
+      "origin": "ERPNext v16 POS source copied into WMN namespace"
+    },
+    {
+      "marker": "pos_item_selector.js",
+      "path": "upstream_v16/pos_item_selector.js",
+      "origin": "ERPNext v16 POS source copied into WMN namespace"
+    },
+    {
+      "marker": "pos_payment.js",
+      "path": "upstream_v16/pos_payment.js",
+      "origin": "ERPNext v16 POS source copied into WMN namespace"
+    },
+    {
+      "marker": "pos_past_order_list.js",
+      "path": "upstream_v16/pos_past_order_list.js",
+      "origin": "ERPNext v16 POS source copied into WMN namespace"
+    },
+    {
+      "marker": "pos_past_order_summary.js",
+      "path": "upstream_v16/pos_past_order_summary.js",
+      "origin": "ERPNext v16 POS source copied into WMN namespace"
+    },
+    {
+      "marker": "pos_controller.js",
+      "path": "upstream_v16/pos_controller.js",
+      "origin": "ERPNext v16 POS source copied into WMN namespace"
+    },
+    {
+      "marker": "pos_data_source.js",
+      "path": "wmn/runtime/offline_data_source.js",
+      "origin": "WMN-owned modification/runtime"
+    },
+    {
+      "marker": "wmn_payment_methods.js",
+      "path": "wmn/components/payment/methods.js",
+      "origin": "WMN-owned modification/runtime"
+    },
+    {
+      "marker": "wmn_payment_class.js",
+      "path": "wmn/components/payment/class.js",
+      "origin": "WMN-owned modification/runtime"
+    },
+    {
+      "marker": "wmn_item_details_methods.js",
+      "path": "wmn/components/item_details/methods.js",
+      "origin": "WMN-owned modification/runtime"
+    },
+    {
+      "marker": "wmn_item_details_class.js",
+      "path": "wmn/components/item_details/class.js",
+      "origin": "WMN-owned modification/runtime"
+    },
+    {
+      "marker": "wmn_past_order_list_methods.js",
+      "path": "wmn/components/past_order_list/methods.js",
+      "origin": "WMN-owned modification/runtime"
+    },
+    {
+      "marker": "wmn_past_order_list_class.js",
+      "path": "wmn/components/past_order_list/class.js",
+      "origin": "WMN-owned modification/runtime"
+    },
+    {
+      "marker": "wmn_past_order_summary_methods.js",
+      "path": "wmn/components/past_order_summary/methods.js",
+      "origin": "WMN-owned modification/runtime"
+    },
+    {
+      "marker": "wmn_past_order_summary_class.js",
+      "path": "wmn/components/past_order_summary/class.js",
+      "origin": "WMN-owned modification/runtime"
+    },
+    {
+      "marker": "wmn_item_selector_methods.js",
+      "path": "wmn/components/item_selector/methods.js",
+      "origin": "WMN-owned modification/runtime"
+    },
+    {
+      "marker": "wmn_item_selector_class.js",
+      "path": "wmn/components/item_selector/class.js",
+      "origin": "WMN-owned modification/runtime"
+    },
+    {
+      "marker": "wmn_item_cart_methods.js",
+      "path": "wmn/components/item_cart/methods.js",
+      "origin": "WMN-owned modification/runtime"
+    },
+    {
+      "marker": "wmn_item_cart_class.js",
+      "path": "wmn/components/item_cart/class.js",
+      "origin": "WMN-owned modification/runtime"
+    },
+    {
+      "marker": "wmn_controller_methods.js",
+      "path": "wmn/components/controller/methods.js",
+      "origin": "WMN-owned modification/runtime"
+    },
+    {
+      "marker": "wmn_controller_class.js",
+      "path": "wmn/components/controller/class.js",
+      "origin": "WMN-owned modification/runtime"
+    },
+    {
+      "marker": "wmn_page_boot.js",
+      "path": "wmn/runtime/page_boot.js",
+      "origin": "WMN-owned modification/runtime"
+    }
+  ],
+  "entry": "wmn/page_entry.js"
+}
