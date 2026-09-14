@@ -7716,6 +7716,29 @@ wmn_install_pos_pwa_app_css();
         return selector?.$component?.find?.(".wmn-category-search-row")?.first?.() || null;
     }
 
+    function iconSvg(paths) {
+        return `<svg class="wmn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+    }
+
+    function cameraIcon() {
+        try {
+            if (frappe?.utils?.icon) return frappe.utils.icon("scan-barcode", "sm");
+        } catch (error) {}
+        return iconSvg('<path d="M4 7V5a1 1 0 0 1 1-1h2M4 17v2a1 1 0 0 0 1 1h2M20 7V5a1 1 0 0 0-1-1h-2M20 17v2a1 1 0 0 1-1 1h-2"/><rect x="7" y="8" width="10" height="8" rx="1"/>');
+    }
+
+    function qtyIcon() {
+        return iconSvg('<path d="M8 7h8M8 12h8M8 17h5"/><rect x="3" y="4" width="18" height="16" rx="2"/>');
+    }
+
+    function gridIcon() {
+        return iconSvg('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>');
+    }
+
+    function buttonViewIcon() {
+        return iconSvg('<rect x="3" y="5" width="18" height="6" rx="1"/><rect x="3" y="13" width="18" height="6" rx="1"/>');
+    }
+
     function sync(selector) {
         const armed = feature.isArmed(selector);
         const $shell = getSearchShell(selector);
@@ -7723,10 +7746,12 @@ wmn_install_pos_pwa_app_css();
         $shell?.toggleClass?.("wmn-qty-next-scan-armed", armed);
         $button?.toggleClass?.("is-armed", armed);
         $button?.attr?.("aria-pressed", String(armed));
-        $button?.find?.(".wmn-qty-next-scan-label")?.text?.(
-            armed ? __("Qty Next Scan: ON") : __("Qty Next Scan")
+        $button?.attr?.(
+            "title",
+            armed
+                ? __("Qty Next Scan is on (F8)")
+                : __("Quantity dialog for next ordinary barcode scan (F8)")
         );
-        $button?.find?.(".wmn-qty-next-scan-badge")?.toggle?.(armed);
         return armed;
     }
 
@@ -7785,26 +7810,69 @@ wmn_install_pos_pwa_app_css();
         });
     }
 
+    function openCamera(selector) {
+        try {
+            const scanner = window.WMN?.Features?.MobileBarcodeScanner;
+            if (scanner?.open) {
+                scanner.open({
+                    multiple: false,
+                    onScan(text) {
+                        if (selector?.wmn_submit_scanned_barcode) {
+                            selector.wmn_submit_scanned_barcode(text, {
+                                source: "camera",
+                                focus: false,
+                            });
+                        } else {
+                            selector.barcode_scanned = true;
+                            selector.set_search_value?.(text);
+                        }
+                    },
+                });
+                return;
+            }
+            scanner?.openForPOS?.(selector);
+        } catch (error) {
+            frappe.msgprint({
+                title: __("Camera Scanner"),
+                indicator: "red",
+                message: error?.message || String(error),
+            });
+        }
+    }
+
     function install(selector) {
         ensureStylesheet();
+        const $shell = getSearchShell(selector);
         const $row = getActionRow(selector);
-        if (!$row?.length) return;
+        if (!$shell?.length || !$row?.length) return;
 
-        if (!$row.find(".wmn-barcode-scan-actions").length) {
+        $shell.find(".wmn-search-shortcut").prop("hidden", true);
+        if (!$shell.find(".wmn-camera-scan").length) {
+            $shell.append(`
+                <button type="button" class="wmn-search-icon-btn wmn-camera-scan" title="${__("Scan with Camera")}" aria-label="${__("Scan with Camera")}">
+                    <span class="wmn-camera-scan-icon">${cameraIcon()}</span>
+                </button>
+            `);
+        }
+
+        if (!$row.children(".wmn-search-actions").length) {
             $row.append(`
-                <div class="wmn-barcode-scan-actions">
-                    <button type="button" class="btn btn-default wmn-camera-scan" title="${__("Scan with Camera")}" aria-label="${__("Scan with Camera")}">
-                        <span class="wmn-camera-scan-icon">${frappe.utils.icon("scan-barcode", "sm")}</span>
-                        <span class="wmn-camera-scan-label">${__("Camera")}</span>
+                <div class="wmn-search-actions" role="group" aria-label="${__("Item search actions")}">
+                    <button type="button" class="wmn-search-icon-btn wmn-qty-next-scan" aria-pressed="false" title="${__("Quantity dialog for next ordinary barcode scan (F8)")}" aria-label="${__("Qty Next Scan")}">
+                        ${qtyIcon()}
                     </button>
-                    <button type="button" class="btn btn-default wmn-qty-next-scan" aria-pressed="false" title="${__("Quantity dialog for next ordinary barcode scan (F8)")}">
-                        <span class="wmn-qty-next-scan-label">${__("Qty Next Scan")}</span>
-                        <span class="wmn-qty-next-scan-badge" hidden>QTY</span>
-                        <kbd>F8</kbd>
+                    <button type="button" class="wmn-search-icon-btn wmn-grid-view-btn" title="${__("Grid View")}" aria-label="${__("Grid View")}">
+                        ${gridIcon()}
+                    </button>
+                    <button type="button" class="wmn-search-icon-btn wmn-button-view-btn" title="${__("Button View")}" aria-label="${__("Button View")}">
+                        ${buttonViewIcon()}
                     </button>
                 </div>
             `);
         }
+
+        selector.$gridBtn = selector.$component.find(".wmn-grid-view-btn");
+        selector.$listBtn = selector.$component.find(".wmn-button-view-btn");
 
         selector.$component
             .off("click.wmnBarcodeScanQty", ".wmn-qty-next-scan")
@@ -7819,33 +7887,20 @@ wmn_install_pos_pwa_app_css();
             .on("click.wmnCameraScan", ".wmn-camera-scan", (event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                try {
-                    const scanner = window.WMN?.Features?.MobileBarcodeScanner;
-                    if (scanner?.open) {
-                        scanner.open({
-                            multiple: false,
-                            onScan(text) {
-                                if (selector?.wmn_submit_scanned_barcode) {
-                                    selector.wmn_submit_scanned_barcode(text, {
-                                        source: "camera",
-                                        focus: false,
-                                    });
-                                } else {
-                                    selector.barcode_scanned = true;
-                                    selector.set_search_value?.(text);
-                                }
-                            },
-                        });
-                    } else {
-                        scanner?.openForPOS?.(selector);
-                    }
-                } catch (error) {
-                    frappe.msgprint({
-                        title: __("Camera Scanner"),
-                        indicator: "red",
-                        message: error?.message || String(error),
-                    });
-                }
+                openCamera(selector);
+            });
+
+        selector.$component
+            .off("click.wmnSearchView", ".wmn-grid-view-btn, .wmn-button-view-btn")
+            .on("click.wmnSearchView", ".wmn-grid-view-btn", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                selector.setCardMode?.();
+            })
+            .on("click.wmnSearchView", ".wmn-button-view-btn", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                selector.setButtonMode?.();
             });
 
         $(document)
@@ -7860,6 +7915,9 @@ wmn_install_pos_pwa_app_css();
             });
 
         sync(selector);
+        selector.updateActiveButton?.();
+        selector.apply_search_row_nav?.();
+        selector.sync_offline_nav_actions?.();
     }
 
     window.WMN_POS.Features.BarcodeScanQuantityUI = {
@@ -9052,6 +9110,7 @@ function wmn_is_mobile_pos_device() {
         combined_discount_representation: "Amount Only",
         default_item_view: "Grid View",
         show_item_cart_counter: 0,
+        search_row_nav: 0,
         enable_auto_silent_print: 0,
         print_after_cashier_completion: 0,
         receipt_print_format_source: "WMN Raw Print Format",
@@ -9088,6 +9147,7 @@ function wmn_is_mobile_pos_device() {
     const NUMERIC_KEYS = new Set([
         "ignore_pricing_rule",
         "show_item_cart_counter",
+        "search_row_nav",
         "enable_auto_silent_print",
         "print_after_cashier_completion",
         "copies",
@@ -9416,7 +9476,7 @@ function wmn_is_mobile_pos_device() {
     ns.UI.Dialogs = ns.UI.Dialogs || {};
 
     const PAGE_STYLE_ID = "wmn-pos-page-stylesheet";
-    const PAGE_STYLE_VERSION = "20260912-item-details-modal";
+    const PAGE_STYLE_VERSION = "20260914-search-scan-nav";
     const PAGE_STYLE_HREF = `/assets/wmn/css/wmn_pos.css?v=${encodeURIComponent(PAGE_STYLE_VERSION)}`;
     let pageStylesheetPromise = null;
     let initialized = false;
@@ -20682,6 +20742,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
     const DEFAULTS = Object.freeze({
         default_item_view: "Grid View",
         show_item_cart_counter: false,
+        search_row_nav: false,
     });
 
     function repository() {
@@ -20698,6 +20759,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         return {
             default_item_view: String(effective.default_item_view || DEFAULTS.default_item_view),
             show_item_cart_counter: Boolean(cint(effective.show_item_cart_counter || 0)),
+            search_row_nav: Boolean(cint(effective.search_row_nav || 0)),
         };
     }
 
@@ -20708,6 +20770,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         repo.saveLocalPatch({
             default_item_view: next.default_item_view === "Button View" ? "Button View" : "Grid View",
             show_item_cart_counter: next.show_item_cart_counter ? 1 : 0,
+            search_row_nav: next.search_row_nav ? 1 : 0,
         }, profile());
         return readAll();
     }
@@ -20719,6 +20782,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         await repo.saveServerPatch({
             default_item_view: next.default_item_view === "Button View" ? "Button View" : "Grid View",
             show_item_cart_counter: next.show_item_cart_counter ? 1 : 0,
+            search_row_nav: next.search_row_nav ? 1 : 0,
         }, profile());
         return readAll();
     }
@@ -34800,7 +34864,7 @@ window.WMN_POS.Source.Controller = class {
         wmn_open_ui_settings_dialog() {
                         const prefs = window.WMNPOSUIPreferences;
                         const repo = window.WMN_POS?.Services?.Settings?.POSProfileSettings;
-                        const current = prefs?.readAll?.() || { default_item_view: "Grid View", show_item_cart_counter: false };
+                        const current = prefs?.readAll?.() || { default_item_view: "Grid View", show_item_cart_counter: false, search_row_nav: false };
                         const status = repo?.status?.() || {};
                         const dialog = new frappe.ui.Dialog({
                             title: __("POS Settings"),
@@ -34817,6 +34881,13 @@ window.WMN_POS.Source.Controller = class {
                                     fieldtype: "Check",
                                     label: __("Show item cart quantity counter"),
                                     default: current.show_item_cart_counter ? 1 : 0,
+                                },
+                                {
+                                    fieldname: "search_row_nav",
+                                    fieldtype: "Check",
+                                    label: __("Place top menu beside search"),
+                                    description: __("Hide the top navigation bar and show its buttons next to the item search field."),
+                                    default: current.search_row_nav ? 1 : 0,
                                 },
                                 { fieldtype: "Section Break", label: __("Settings Storage") },
                                 {
@@ -34835,6 +34906,7 @@ window.WMN_POS.Source.Controller = class {
                                     const normalized = {
                                         default_item_view: String(values.default_item_view || "") === __("Button View") ? "Button View" : "Grid View",
                                         show_item_cart_counter: Boolean(cint(values.show_item_cart_counter || 0)),
+                                        search_row_nav: Boolean(cint(values.search_row_nav || 0)),
                                     };
                                     const saveToServer = String(values.save_target || "") === __("POS Profile Settings");
                                     if (saveToServer) {
@@ -34847,6 +34919,8 @@ window.WMN_POS.Source.Controller = class {
 
                                     this.button_mode = normalized.default_item_view === "Button View";
                                     this.applyDisplayMode?.();
+                                    this.apply_search_row_nav?.();
+                                    this.sync_offline_nav_actions?.();
                                     this.sync_card_quantities?.();
                                     dialog.hide();
                                     frappe.show_alert({
@@ -34995,6 +35069,7 @@ window.WMN_POS.Source.Controller = class {
                 const controller = window.cur_pos;
                 if (!controller) return;
                 if (action === "open-form-view") {
+                    if (this.wmn_is_offline()) return;
                     controller.open_form_view();
                 } else if (action === "toggle-recent-orders") {
                     controller.toggle_recent_order();
@@ -35005,6 +35080,7 @@ window.WMN_POS.Source.Controller = class {
                 } else if (action === "save-as-draft") {
                     controller.save_draft_invoice();
                 } else if (action === "close-pos") {
+                    if (this.wmn_is_offline()) return;
                     controller.close_pos();
                 } else if (action === "open-settings") {
                     this.wmn_open_ui_settings_dialog();
@@ -35094,31 +35170,61 @@ window.WMN_POS.Source.Controller = class {
             this.$tools_menu = this.$component.find(".wmn-tools-menu");
             this.$tools_menu_toggle = this.$tools_menu.find(".wmn-tools-menu-toggle");
             this.$tools_menu_panel = this.$tools_menu.find(".wmn-tools-menu-panel");
-            this.$gridBtn = this.$tools_menu.find(".wmn-grid-view-btn");
-            this.$listBtn = this.$tools_menu.find(".wmn-list-view-btn");
+            this.$gridBtn = this.$component.find(".wmn-grid-view-btn");
+            this.$listBtn = this.$component.find(".wmn-button-view-btn");
             this.$offlineBtn = this.$tools_menu.find(".wmn-list-offline-btn");
             this.$printerBtn = this.$tools_menu.find(".wmn-printer-btn");
             this.$connectivityBtn = this.$component.find(".wmn-connectivity-btn");
             this.$connectivityLabel = this.$connectivityBtn.find(".wmn-connectivity-label");
             this.$pendingBadge = this.$connectivityBtn.find(".wmn-pending-badge");
             this.updateActiveButton();
+            this.apply_search_row_nav();
+            this.sync_offline_nav_actions();
+        },
+
+        apply_search_row_nav() {
+            const enabled = Boolean(cint(window.WMNPOSUIPreferences?.get?.("search_row_nav") || 0));
+            const $shell = this.$component?.closest?.(".wmn-mamsek-shell");
+            $shell?.toggleClass("wmn-search-row-nav", enabled);
+            this.$component?.toggleClass("wmn-search-row-nav", enabled);
+
+            const $nav = this.$component?.find?.(".wmn-pos-nav").first();
+            const $links = this.$component?.find?.(".wmn-pos-nav-links").first();
+            const $row = this.$component?.find?.(".wmn-category-search-row").first();
+            if (!$nav?.length || !$links?.length || !$row?.length) return;
+
+            if (enabled) {
+                $row.append($links);
+            } else if (!$nav.children(".wmn-pos-nav-links").length) {
+                $nav.append($links);
+            }
+        },
+
+        sync_offline_nav_actions() {
+            const offline = Boolean(this.wmn_is_offline?.());
+            this.$component?.toggleClass("wmn-pos-offline-nav", offline);
+            this.$component
+                ?.find?.('.wmn-nav-btn[data-action="open-form-view"], .wmn-nav-btn[data-action="close-pos"]')
+                .prop("hidden", offline)
+                .prop("disabled", offline)
+                .attr("aria-hidden", String(offline))
+                .attr("tabindex", offline ? "-1" : "0");
         },
 
         updateActiveButton() {
             const original_update = super.updateActiveButton;
             if (typeof original_update === "function") original_update.call(this);
 
+            this.$gridBtn = this.$component?.find?.(".wmn-grid-view-btn");
+            this.$listBtn = this.$component?.find?.(".wmn-button-view-btn");
+
             const button_mode = Boolean(this.button_mode);
             this.$gridBtn
-                ?.toggleClass("is-selected", !button_mode)
-                .toggleClass("bg-white shadow-sm", !button_mode)
-                .toggleClass("hover:bg-gray-200", button_mode)
-                .attr("aria-checked", String(!button_mode));
+                ?.toggleClass("is-active", !button_mode)
+                .attr("aria-pressed", String(!button_mode));
             this.$listBtn
-                ?.toggleClass("is-selected", button_mode)
-                .toggleClass("bg-white shadow-sm", button_mode)
-                .toggleClass("hover:bg-gray-200", !button_mode)
-                .attr("aria-checked", String(button_mode));
+                ?.toggleClass("is-active", button_mode)
+                .attr("aria-pressed", String(button_mode));
         },
 
         setCardMode() {
@@ -35171,6 +35277,7 @@ window.WMN_POS.Source.Controller = class {
                             "title",
                             checking ? __("Checking server connection") : (is_online ? __("Server is online") : __("Server is offline"))
                         );
+                        this.sync_offline_nav_actions?.();
                     },
 
         async refresh_pending_invoice_badge() {
@@ -35204,9 +35311,16 @@ window.WMN_POS.Source.Controller = class {
                             this.set_connectivity_indicator_state(detail.online === true, false);
                         };
                         this._wmn_offline_queue_handler = () => this.refresh_pending_invoice_badge();
+                        this._wmn_ui_prefs_handler = () => {
+                            this.apply_search_row_nav?.();
+                            this.updateActiveButton?.();
+                            this.sync_offline_nav_actions?.();
+                        };
 
                         window.addEventListener("wmn:pos-connectivity-status", this._wmn_connectivity_status_handler);
                         window.addEventListener("wmn:pos-offline-queue-changed", this._wmn_offline_queue_handler);
+                        window.addEventListener("wmn:pos-profile-settings-changed", this._wmn_ui_prefs_handler);
+                        window.addEventListener("wmn:pos-profile-settings-ready", this._wmn_ui_prefs_handler);
 
                         this.$connectivityBtn
                             .off("click.wmnConnectivity")
@@ -35223,6 +35337,8 @@ window.WMN_POS.Source.Controller = class {
 
                         this.refresh_pending_invoice_badge();
                         this.set_connectivity_indicator_state(false, true);
+                        this.apply_search_row_nav?.();
+                        this.sync_offline_nav_actions?.();
 
                         if (typeof window.wmn_check_pos_server_connection === "function") {
                             window.wmn_check_pos_server_connection().catch(function () {});
@@ -35487,6 +35603,8 @@ window.WMN_POS.Source.Controller = class {
     FinalMethods.bind_events = UIMethods.bind_events || CoreMethods.bind_events;
     FinalMethods.render_item_list = UIMethods.render_item_list || CoreMethods.render_item_list;
     FinalMethods.prepare_dom = UIMethods.prepare_dom || CoreMethods.prepare_dom;
+    FinalMethods.apply_search_row_nav = UIMethods.apply_search_row_nav || CoreMethods.apply_search_row_nav;
+    FinalMethods.sync_offline_nav_actions = UIMethods.sync_offline_nav_actions || CoreMethods.sync_offline_nav_actions;
     FinalMethods.updateActiveButton = UIMethods.updateActiveButton || CoreMethods.updateActiveButton;
     FinalMethods.setCardMode = UIMethods.setCardMode || CoreMethods.setCardMode;
     FinalMethods.setButtonMode = UIMethods.setButtonMode || CoreMethods.setButtonMode;
@@ -35523,6 +35641,8 @@ window.WMN_POS.Source.Controller = class {
                         this.install_category_bar();
                         this.applyDisplayMode();
                         this.install_connectivity_indicator();
+                        this.apply_search_row_nav();
+                        this.sync_offline_nav_actions();
 
     };
 
@@ -35728,6 +35848,14 @@ window.WMN_POS.Source.Controller = class {
 
         prepare_dom(...args) {
             return methods.FinalMethods.prepare_dom.apply(this, args);
+        }
+
+        apply_search_row_nav(...args) {
+            return methods.FinalMethods.apply_search_row_nav.apply(this, args);
+        }
+
+        sync_offline_nav_actions(...args) {
+            return methods.FinalMethods.sync_offline_nav_actions.apply(this, args);
         }
 
         updateActiveButton(...args) {

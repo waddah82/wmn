@@ -6,6 +6,7 @@
     const DEFAULTS = Object.freeze({
         default_item_view: "Grid View",
         show_item_cart_counter: false,
+        search_row_nav: false,
     });
 
     function repository() {
@@ -22,6 +23,7 @@
         return {
             default_item_view: String(effective.default_item_view || DEFAULTS.default_item_view),
             show_item_cart_counter: Boolean(cint(effective.show_item_cart_counter || 0)),
+            search_row_nav: Boolean(cint(effective.search_row_nav || 0)),
         };
     }
 
@@ -32,6 +34,7 @@
         repo.saveLocalPatch({
             default_item_view: next.default_item_view === "Button View" ? "Button View" : "Grid View",
             show_item_cart_counter: next.show_item_cart_counter ? 1 : 0,
+            search_row_nav: next.search_row_nav ? 1 : 0,
         }, profile());
         return readAll();
     }
@@ -43,6 +46,7 @@
         await repo.saveServerPatch({
             default_item_view: next.default_item_view === "Button View" ? "Button View" : "Grid View",
             show_item_cart_counter: next.show_item_cart_counter ? 1 : 0,
+            search_row_nav: next.search_row_nav ? 1 : 0,
         }, profile());
         return readAll();
     }

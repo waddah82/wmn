@@ -1884,7 +1884,7 @@
         wmn_open_ui_settings_dialog() {
                         const prefs = window.WMNPOSUIPreferences;
                         const repo = window.WMN_POS?.Services?.Settings?.POSProfileSettings;
-                        const current = prefs?.readAll?.() || { default_item_view: "Grid View", show_item_cart_counter: false };
+                        const current = prefs?.readAll?.() || { default_item_view: "Grid View", show_item_cart_counter: false, search_row_nav: false };
                         const status = repo?.status?.() || {};
                         const dialog = new frappe.ui.Dialog({
                             title: __("POS Settings"),
@@ -1901,6 +1901,13 @@
                                     fieldtype: "Check",
                                     label: __("Show item cart quantity counter"),
                                     default: current.show_item_cart_counter ? 1 : 0,
+                                },
+                                {
+                                    fieldname: "search_row_nav",
+                                    fieldtype: "Check",
+                                    label: __("Place top menu beside search"),
+                                    description: __("Hide the top navigation bar and show its buttons next to the item search field."),
+                                    default: current.search_row_nav ? 1 : 0,
                                 },
                                 { fieldtype: "Section Break", label: __("Settings Storage") },
                                 {
@@ -1919,6 +1926,7 @@
                                     const normalized = {
                                         default_item_view: String(values.default_item_view || "") === __("Button View") ? "Button View" : "Grid View",
                                         show_item_cart_counter: Boolean(cint(values.show_item_cart_counter || 0)),
+                                        search_row_nav: Boolean(cint(values.search_row_nav || 0)),
                                     };
                                     const saveToServer = String(values.save_target || "") === __("POS Profile Settings");
                                     if (saveToServer) {
@@ -1931,6 +1939,8 @@
 
                                     this.button_mode = normalized.default_item_view === "Button View";
                                     this.applyDisplayMode?.();
+                                    this.apply_search_row_nav?.();
+                                    this.sync_offline_nav_actions?.();
                                     this.sync_card_quantities?.();
                                     dialog.hide();
                                     frappe.show_alert({
@@ -2079,6 +2089,7 @@
                 const controller = window.cur_pos;
                 if (!controller) return;
                 if (action === "open-form-view") {
+                    if (this.wmn_is_offline()) return;
                     controller.open_form_view();
                 } else if (action === "toggle-recent-orders") {
                     controller.toggle_recent_order();
@@ -2089,6 +2100,7 @@
                 } else if (action === "save-as-draft") {
                     controller.save_draft_invoice();
                 } else if (action === "close-pos") {
+                    if (this.wmn_is_offline()) return;
                     controller.close_pos();
                 } else if (action === "open-settings") {
                     this.wmn_open_ui_settings_dialog();
@@ -2178,31 +2190,61 @@
             this.$tools_menu = this.$component.find(".wmn-tools-menu");
             this.$tools_menu_toggle = this.$tools_menu.find(".wmn-tools-menu-toggle");
             this.$tools_menu_panel = this.$tools_menu.find(".wmn-tools-menu-panel");
-            this.$gridBtn = this.$tools_menu.find(".wmn-grid-view-btn");
-            this.$listBtn = this.$tools_menu.find(".wmn-list-view-btn");
+            this.$gridBtn = this.$component.find(".wmn-grid-view-btn");
+            this.$listBtn = this.$component.find(".wmn-button-view-btn");
             this.$offlineBtn = this.$tools_menu.find(".wmn-list-offline-btn");
             this.$printerBtn = this.$tools_menu.find(".wmn-printer-btn");
             this.$connectivityBtn = this.$component.find(".wmn-connectivity-btn");
             this.$connectivityLabel = this.$connectivityBtn.find(".wmn-connectivity-label");
             this.$pendingBadge = this.$connectivityBtn.find(".wmn-pending-badge");
             this.updateActiveButton();
+            this.apply_search_row_nav();
+            this.sync_offline_nav_actions();
+        },
+
+        apply_search_row_nav() {
+            const enabled = Boolean(cint(window.WMNPOSUIPreferences?.get?.("search_row_nav") || 0));
+            const $shell = this.$component?.closest?.(".wmn-mamsek-shell");
+            $shell?.toggleClass("wmn-search-row-nav", enabled);
+            this.$component?.toggleClass("wmn-search-row-nav", enabled);
+
+            const $nav = this.$component?.find?.(".wmn-pos-nav").first();
+            const $links = this.$component?.find?.(".wmn-pos-nav-links").first();
+            const $row = this.$component?.find?.(".wmn-category-search-row").first();
+            if (!$nav?.length || !$links?.length || !$row?.length) return;
+
+            if (enabled) {
+                $row.append($links);
+            } else if (!$nav.children(".wmn-pos-nav-links").length) {
+                $nav.append($links);
+            }
+        },
+
+        sync_offline_nav_actions() {
+            const offline = Boolean(this.wmn_is_offline?.());
+            this.$component?.toggleClass("wmn-pos-offline-nav", offline);
+            this.$component
+                ?.find?.('.wmn-nav-btn[data-action="open-form-view"], .wmn-nav-btn[data-action="close-pos"]')
+                .prop("hidden", offline)
+                .prop("disabled", offline)
+                .attr("aria-hidden", String(offline))
+                .attr("tabindex", offline ? "-1" : "0");
         },
 
         updateActiveButton() {
             const original_update = super.updateActiveButton;
             if (typeof original_update === "function") original_update.call(this);
 
+            this.$gridBtn = this.$component?.find?.(".wmn-grid-view-btn");
+            this.$listBtn = this.$component?.find?.(".wmn-button-view-btn");
+
             const button_mode = Boolean(this.button_mode);
             this.$gridBtn
-                ?.toggleClass("is-selected", !button_mode)
-                .toggleClass("bg-white shadow-sm", !button_mode)
-                .toggleClass("hover:bg-gray-200", button_mode)
-                .attr("aria-checked", String(!button_mode));
+                ?.toggleClass("is-active", !button_mode)
+                .attr("aria-pressed", String(!button_mode));
             this.$listBtn
-                ?.toggleClass("is-selected", button_mode)
-                .toggleClass("bg-white shadow-sm", button_mode)
-                .toggleClass("hover:bg-gray-200", !button_mode)
-                .attr("aria-checked", String(button_mode));
+                ?.toggleClass("is-active", button_mode)
+                .attr("aria-pressed", String(button_mode));
         },
 
         setCardMode() {
@@ -2255,6 +2297,7 @@
                             "title",
                             checking ? __("Checking server connection") : (is_online ? __("Server is online") : __("Server is offline"))
                         );
+                        this.sync_offline_nav_actions?.();
                     },
 
         async refresh_pending_invoice_badge() {
@@ -2288,9 +2331,16 @@
                             this.set_connectivity_indicator_state(detail.online === true, false);
                         };
                         this._wmn_offline_queue_handler = () => this.refresh_pending_invoice_badge();
+                        this._wmn_ui_prefs_handler = () => {
+                            this.apply_search_row_nav?.();
+                            this.updateActiveButton?.();
+                            this.sync_offline_nav_actions?.();
+                        };
 
                         window.addEventListener("wmn:pos-connectivity-status", this._wmn_connectivity_status_handler);
                         window.addEventListener("wmn:pos-offline-queue-changed", this._wmn_offline_queue_handler);
+                        window.addEventListener("wmn:pos-profile-settings-changed", this._wmn_ui_prefs_handler);
+                        window.addEventListener("wmn:pos-profile-settings-ready", this._wmn_ui_prefs_handler);
 
                         this.$connectivityBtn
                             .off("click.wmnConnectivity")
@@ -2307,6 +2357,8 @@
 
                         this.refresh_pending_invoice_badge();
                         this.set_connectivity_indicator_state(false, true);
+                        this.apply_search_row_nav?.();
+                        this.sync_offline_nav_actions?.();
 
                         if (typeof window.wmn_check_pos_server_connection === "function") {
                             window.wmn_check_pos_server_connection().catch(function () {});
@@ -2571,6 +2623,8 @@
     FinalMethods.bind_events = UIMethods.bind_events || CoreMethods.bind_events;
     FinalMethods.render_item_list = UIMethods.render_item_list || CoreMethods.render_item_list;
     FinalMethods.prepare_dom = UIMethods.prepare_dom || CoreMethods.prepare_dom;
+    FinalMethods.apply_search_row_nav = UIMethods.apply_search_row_nav || CoreMethods.apply_search_row_nav;
+    FinalMethods.sync_offline_nav_actions = UIMethods.sync_offline_nav_actions || CoreMethods.sync_offline_nav_actions;
     FinalMethods.updateActiveButton = UIMethods.updateActiveButton || CoreMethods.updateActiveButton;
     FinalMethods.setCardMode = UIMethods.setCardMode || CoreMethods.setCardMode;
     FinalMethods.setButtonMode = UIMethods.setButtonMode || CoreMethods.setButtonMode;
@@ -2607,6 +2661,8 @@
                         this.install_category_bar();
                         this.applyDisplayMode();
                         this.install_connectivity_indicator();
+                        this.apply_search_row_nav();
+                        this.sync_offline_nav_actions();
 
     };
 

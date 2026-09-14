@@ -192,6 +192,14 @@
             return methods.FinalMethods.prepare_dom.apply(this, args);
         }
 
+        apply_search_row_nav(...args) {
+            return methods.FinalMethods.apply_search_row_nav.apply(this, args);
+        }
+
+        sync_offline_nav_actions(...args) {
+            return methods.FinalMethods.sync_offline_nav_actions.apply(this, args);
+        }
+
         updateActiveButton(...args) {
             return methods.FinalMethods.updateActiveButton.apply(this, args);
         }

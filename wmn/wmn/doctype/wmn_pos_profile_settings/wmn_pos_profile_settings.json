@@ -9,6 +9,7 @@
   "section_1",
   "default_item_view",
   "show_item_cart_counter",
+  "search_row_nav",
   "ignore_pricing_rule",
   "commercial_discount_composition_section",
   "pricing_rule_promotion_policy",
@@ -83,6 +84,13 @@
    "label": "Show Item Cart Quantity Counter",
    "fieldtype": "Check",
    "default": "0"
+  },
+  {
+   "fieldname": "search_row_nav",
+   "label": "Place Top Menu Beside Search",
+   "fieldtype": "Check",
+   "default": "0",
+   "description": "Hide the top POS navigation bar and show its buttons next to the item search field."
   },
   {
    "fieldname": "ignore_pricing_rule",
@@ -360,7 +368,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-13 22:10:00.000000",
+ "modified": "2026-09-14 18:30:00.000000",
  "module": "Wmn",
  "name": "WMN POS Profile Settings",
  "permissions": [
