@@ -23,12 +23,6 @@ app_include_js = [
     "/assets/wmn/js/global_new_override.js",
     "/assets/wmn/js/ui_theme_manager.js",
     #"assets/wmn/js/workspace_header.js",
-    #"assets/wmn/js/html2canvas.js",
-    #"assets/wmn/js/pdfmake.min.js",
-    #"assets/wmn/js/vfs_fonts.js",
-    #"/assets/wmn/js/vfs_fonts_custom.js",
-
-
 ]
 #app_include_css = "assets/your_app/css/workspace_header.css"
 #website_route_rules = [
@@ -50,23 +44,13 @@ app_include_js = [
 # webform_include_js = {"doctype": "public/js/doctype.js"}
 # webform_include_css = {"doctype": "public/css/doctype.css"}
 
-# include js in page
-# page_js = {"page" : "public/js/file.js"}
-#page_js = {
- #   "point-of-sale": "public/js/custom_pos_offline.js"
-#}
-
-
-page_js = {
-    #"point-of-sale": "public/js/mamsek.js"
-    "point-of-sale": "public/js/pos_offline/wmn_pos_loader.js"
+override_doctype_class = {
+    "POS Closing Entry": "wmn.overrides.pos_closing_entry.pos_closing_entry_override.WMNPOSClosingEntry",
 }
 
-
 doctype_js = {
-
-    "POS Closing Entry": "public/js/pos_offline/features/cash_movement/pos_closing.js",
-    "POS Profile": "public/js/pos_offline/features/pricing_rule/pos_profile.js",
+    "POS Closing Entry": "public/js/overrides/pos_closing_entry/pos_closing_entry.override.js",
+    "POS Profile": "public/js/features/pricing_rule/pos_profile.js",
     "Item": "public/js/features/item_barcode_capture/item_barcode_capture.common.js",
 }
 
@@ -75,7 +59,10 @@ doc_events = {
         "validate": "wmn.features.cash_movement.pos_closing.apply_cash_movement_to_closing",
     },
     "POS Profile": {
-        "validate": "wmn.features.pricing_rule.pricing_rule.force_native_pricing_rule_engine_disabled",
+        "validate": [
+            "wmn.features.pricing_rule.pricing_rule.force_native_pricing_rule_engine_disabled",
+            "wmn.setup.pos_profile_settings.sync_receipt_source_from_pos_profile",
+        ],
     },
 }
 override_whitelisted_methods = {
@@ -130,10 +117,13 @@ after_migrate = "wmn.setup.migrate.after_migrate"
 # ----------
 
 # add methods and filters to jinja environment
-# jinja = {
-# 	"methods": "wmn.utils.jinja_methods",
-# 	"filters": "wmn.utils.jinja_filters"
-# }
+jinja = {
+    "methods": [
+        "wmn.utils.print_format.xpos_barcode",
+        "wmn.utils.print_format.xpos_invoice_barcode",
+        "wmn.utils.print_format.invoice_barcode_payload",
+    ],
+}
 
 # Installation
 # ------------
@@ -315,7 +305,7 @@ fixtures = [
     },
     {
         "doctype": "WMN Print Format",
-        "filters": [["name", "in", ["pos raw"]]]
+        "filters": [["print_format", "!=", ""]]
     },
     {
         "doctype": "Party Type",

@@ -4,9 +4,11 @@ from wmn.setup.offline_sync import ensure_offline_sync_fields
 from wmn.setup.offline_payment import ensure_offline_payment_fields
 from wmn.setup.cashier_completion import ensure_cashier_completion_fields
 from wmn.setup.pos_profile_settings import migrate_legacy_pos_profile_settings, validate_settings_schema
+from wmn.setup.v15_pos_compat import ensure_v15_pos_invoice_type_fields
 
 
 def after_install():
+    ensure_v15_pos_invoice_type_fields()
     ensure_offline_sync_fields()
     ensure_offline_payment_fields()
     ensure_invoice_barcode_fields()
