@@ -24,6 +24,14 @@
             return methods.FinalMethods.wmn_handle_invoice_barcode.apply(this, args);
         }
 
+        wmn_apply_camera_search(...args) {
+            return methods.FinalMethods.wmn_apply_camera_search.apply(this, args);
+        }
+
+        wmn_open_camera_search(...args) {
+            return methods.FinalMethods.wmn_open_camera_search.apply(this, args);
+        }
+
         refresh_list(...args) {
             return methods.FinalMethods.refresh_list.apply(this, args);
         }

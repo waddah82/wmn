@@ -7810,11 +7810,11 @@ wmn_install_pos_pwa_app_css();
         });
     }
 
-    function openCamera(selector) {
+    async function openCamera(selector) {
         try {
             const scanner = window.WMN?.Features?.MobileBarcodeScanner;
             if (scanner?.open) {
-                scanner.open({
+                await scanner.open({
                     multiple: false,
                     onScan(text) {
                         if (selector?.wmn_submit_scanned_barcode) {
@@ -7830,7 +7830,7 @@ wmn_install_pos_pwa_app_css();
                 });
                 return;
             }
-            scanner?.openForPOS?.(selector);
+            await scanner?.openForPOS?.(selector);
         } catch (error) {
             frappe.msgprint({
                 title: __("Camera Scanner"),
@@ -32163,6 +32163,7 @@ window.WMN_POS.Source.Controller = class {
                     options: "Barcode",
                     placeholder: __("Search by invoice id, customer name, or scan invoice barcode"),
                     onchange: function () {
+                        if (me.__wmn_setting_camera_search) return;
                         const value = String(me.search_field?.get_value?.() || "").trim();
                         const invoiceBarcode = ns.Features?.InvoiceBarcode?.Common;
                         if (!invoiceBarcode?.isInvoiceBarcode?.(value)) return;
@@ -32190,6 +32191,12 @@ window.WMN_POS.Source.Controller = class {
             });
 
             this.search_field.toggle_label(false);
+            const $searchParent = this.$component.find(".search-field");
+            if (!$searchParent.find(".wmn-past-order-camera-scan").length) {
+                $searchParent.append(`<button type="button" class="btn btn-default btn-sm wmn-past-order-camera-scan" aria-label="${__("Scan invoice barcode with camera")}" title="${__("Scan invoice barcode with camera")}"><i class="fa fa-camera"></i></button>`);
+            }
+            $searchParent.off("click.wmnPastOrderCamera", ".wmn-past-order-camera-scan");
+            $searchParent.on("click.wmnPastOrderCamera", ".wmn-past-order-camera-scan", () => this.wmn_open_camera_search());
             this.status_field.toggle_label(false);
             this.status_field.set_value("Draft");
         },
@@ -32282,6 +32289,33 @@ window.WMN_POS.Source.Controller = class {
             }
         },
 
+        async wmn_apply_camera_search(value) {
+            const barcode = String(value || "").trim();
+            if (!barcode) return false;
+            this.__wmn_setting_camera_search = true;
+            try { await this.search_field?.set_value?.(barcode); }
+            finally { this.__wmn_setting_camera_search = false; }
+            const invoiceBarcode = ns.Features?.InvoiceBarcode?.Common;
+            if (invoiceBarcode?.isInvoiceBarcode?.(barcode)) return this.wmn_handle_invoice_barcode(barcode);
+            return this.refresh_list(barcode, this.status_field?.get_value?.() || "");
+        },
+
+        async wmn_open_camera_search() {
+            const camera = window.WMN?.Features?.MobileBarcodeScanner;
+            if (!camera?.open) {
+                frappe.show_alert({ message: __("Camera barcode scanner is not available"), indicator: "orange" });
+                return false;
+            }
+            try {
+                await camera.open({ multiple: false, onScan: (text) => this.wmn_apply_camera_search(text) });
+                return true;
+            } catch (error) {
+                console.error("WMN Recent Orders camera scanner failed", error);
+                frappe.show_alert({ message: error?.message || __("Unable to open camera scanner"), indicator: "red" });
+                return false;
+            }
+        },
+
         async refresh_list() {
             if (this.events?.reset_summary) this.events.reset_summary();
 
@@ -32330,6 +32364,8 @@ window.WMN_POS.Source.Controller = class {
     FinalMethods.make_filter_section = UIMethods.make_filter_section || CoreMethods.make_filter_section;
     FinalMethods.bind_events = UIMethods.bind_events || CoreMethods.bind_events;
     FinalMethods.wmn_handle_invoice_barcode = UIMethods.wmn_handle_invoice_barcode || CoreMethods.wmn_handle_invoice_barcode;
+    FinalMethods.wmn_apply_camera_search = UIMethods.wmn_apply_camera_search || CoreMethods.wmn_apply_camera_search;
+    FinalMethods.wmn_open_camera_search = UIMethods.wmn_open_camera_search || CoreMethods.wmn_open_camera_search;
     FinalMethods.refresh_list = UIMethods.refresh_list || CoreMethods.refresh_list;
 
     function initialize() {}
@@ -32363,6 +32399,14 @@ window.WMN_POS.Source.Controller = class {
 
         wmn_handle_invoice_barcode(...args) {
             return methods.FinalMethods.wmn_handle_invoice_barcode.apply(this, args);
+        }
+
+        wmn_apply_camera_search(...args) {
+            return methods.FinalMethods.wmn_apply_camera_search.apply(this, args);
+        }
+
+        wmn_open_camera_search(...args) {
+            return methods.FinalMethods.wmn_open_camera_search.apply(this, args);
         }
 
         refresh_list(...args) {

@@ -13,6 +13,7 @@ const WMN_POS_API_CACHE = "wmn-pos-page-api-20260910-v3";
 
 const SHELL_URLS = [
   "/app/wmn-pos",
+  "/assets/wmn/js/features/mobile_barcode_scanner/mobile_barcode_scanner.common.js",
   "/wmn-pos-manifest.json",
   "/wmn-pos-manifest.webmanifest"
 ];

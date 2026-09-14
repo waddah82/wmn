@@ -111,11 +111,11 @@
         });
     }
 
-    function openCamera(selector) {
+    async function openCamera(selector) {
         try {
             const scanner = window.WMN?.Features?.MobileBarcodeScanner;
             if (scanner?.open) {
-                scanner.open({
+                await scanner.open({
                     multiple: false,
                     onScan(text) {
                         if (selector?.wmn_submit_scanned_barcode) {
@@ -131,7 +131,7 @@
                 });
                 return;
             }
-            scanner?.openForPOS?.(selector);
+            await scanner?.openForPOS?.(selector);
         } catch (error) {
             frappe.msgprint({
                 title: __("Camera Scanner"),
