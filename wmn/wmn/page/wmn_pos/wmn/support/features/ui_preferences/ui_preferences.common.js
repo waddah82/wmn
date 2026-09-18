@@ -7,6 +7,7 @@
         default_item_view: "Grid View",
         show_item_cart_counter: false,
         search_row_nav: false,
+        decrease_available_qty_in_cart: true,
     });
 
     function repository() {
@@ -24,6 +25,9 @@
             default_item_view: String(effective.default_item_view || DEFAULTS.default_item_view),
             show_item_cart_counter: Boolean(cint(effective.show_item_cart_counter || 0)),
             search_row_nav: Boolean(cint(effective.search_row_nav || 0)),
+            decrease_available_qty_in_cart: effective.decrease_available_qty_in_cart === undefined
+                ? true
+                : Boolean(cint(effective.decrease_available_qty_in_cart)),
         };
     }
 
@@ -35,6 +39,7 @@
             default_item_view: next.default_item_view === "Button View" ? "Button View" : "Grid View",
             show_item_cart_counter: next.show_item_cart_counter ? 1 : 0,
             search_row_nav: next.search_row_nav ? 1 : 0,
+            decrease_available_qty_in_cart: next.decrease_available_qty_in_cart ? 1 : 0,
         }, profile());
         return readAll();
     }
@@ -47,6 +52,7 @@
             default_item_view: next.default_item_view === "Button View" ? "Button View" : "Grid View",
             show_item_cart_counter: next.show_item_cart_counter ? 1 : 0,
             search_row_nav: next.search_row_nav ? 1 : 0,
+            decrease_available_qty_in_cart: next.decrease_available_qty_in_cart ? 1 : 0,
         }, profile());
         return readAll();
     }

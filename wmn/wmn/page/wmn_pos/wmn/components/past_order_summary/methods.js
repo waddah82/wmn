@@ -390,11 +390,7 @@
 
         async is_invoice_returnable(doctype, invoice) {
                     if (!wmn_summary_is_offline()) {
-                        const r = await frappe.call({
-                            method: "wmn.wmn.page.wmn_pos.wmn_pos.is_invoice_returnable",
-                            args: { doctype, invoice },
-                        });
-                        return r.message;
+                        return super.is_invoice_returnable(doctype, invoice);
                     }
 
                     const returnOffline = window.WMN_POS?.Features?.Return?.Offline;
@@ -456,11 +452,9 @@
                         frappe.show_alert({ message: __("Offline receipt printer is not available."), indicator: "orange" });
                         return;
                     }
-                    if (typeof wmn_uses_wmn_raw_receipt === "function" && wmn_uses_wmn_raw_receipt()) {
-                        const doc = this.doc || (this.events && this.events.get_frm && this.events.get_frm().doc);
-                        if (typeof wmn_print_raw_receipt === "function") {
-                            return wmn_print_raw_receipt(doc);
-                        }
+                    const doc = this.doc || (this.events && this.events.get_frm && this.events.get_frm().doc);
+                    if (typeof wmn_print_raw_receipt === "function") {
+                        return wmn_print_raw_receipt(doc);
                     }
                     return super.print_receipt();
                 },

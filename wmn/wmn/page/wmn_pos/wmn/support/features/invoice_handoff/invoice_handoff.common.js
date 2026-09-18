@@ -127,6 +127,35 @@
         ctrl.item_selector?.sync_card_quantities?.();
     }
 
+    async function saveOrdinaryDraft(ctrl) {
+        if (!ctrl?.frm?.doc) throw new Error("No open POS invoice");
+        if (ctrl.__wmn_handoff_in_flight) return false;
+        const doc = ctrl.frm.doc;
+        if (!canSendToCashier(doc) || isAwaitingCashier(doc)) {
+            throw new Error("This invoice cannot be saved as an ordinary draft");
+        }
+        ctrl.__wmn_handoff_in_flight = true;
+        try {
+            doc.__wmn_saved_as_draft = true;
+            const adapter = isOffline(ctrl)
+                ? ns.Features.InvoiceHandoff.Offline
+                : ns.Features.InvoiceHandoff.Online;
+            if (!adapter?.saveDraft) throw new Error("WMN draft adapter is not available");
+            await adapter.saveDraft(ctrl, doc);
+            if (ctrl.recent_order_list?.refresh_list) {
+                try { await ctrl.recent_order_list.refresh_list(); } catch (e) {}
+            }
+            await resetToNewOrder(ctrl);
+            frappe.show_alert({
+                message: wmn_t("Draft saved without printing.", "\u062a\u0645 \u062d\u0641\u0638 \u0627\u0644\u0645\u0633\u0648\u062f\u0629 \u062f\u0648\u0646 \u0637\u0628\u0627\u0639\u0629."),
+                indicator: "green",
+            });
+            return true;
+        } finally {
+            ctrl.__wmn_handoff_in_flight = false;
+        }
+    }
+
     async function sendToCashier(ctrl) {
         if (!ctrl?.frm?.doc) throw new Error("No open POS invoice");
         if (ctrl.__wmn_handoff_in_flight) return false;
@@ -192,6 +221,7 @@
         prepareForCompletion,
         capturePaymentSnapshot,
         restorePaymentSnapshot,
+        saveOrdinaryDraft,
         sendToCashier,
     };
 })();

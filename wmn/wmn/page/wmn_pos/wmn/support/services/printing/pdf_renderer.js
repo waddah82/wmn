@@ -28,37 +28,14 @@
             );
         }
 
-        function wmn_escpos_print_method(method) {
-            method = String(method || "").trim();
-            return method === "legacy_bridge" || method === "webusb" || method === "webserial";
-        }
-
         function wmn_get_receipt_print_format_source(printConfig, printFormat) {
-            const settings = (window.cur_pos && window.cur_pos.settings) || {};
-            const method = String(
-                (printConfig && printConfig.method) ||
-                settings.printing_method ||
-                "legacy_bridge"
-            ).trim();
-            const formatName = String(
-                (printFormat && (printFormat.name || printFormat.print_format || printFormat.print_format_name)) ||
-                settings.print_format ||
-                ""
-            ).toLowerCase();
-            const value = String(
-                (printConfig && printConfig.receipt_print_format_source) ||
-                settings.receipt_print_format_source ||
-                (printFormat && printFormat.receipt_print_format_source) ||
-                "WMN Raw Print Format"
-            ).trim().toLowerCase();
-
-            if (wmn_escpos_print_method(method)) return "wmn_raw";
-            if (formatName.indexOf("raw") !== -1) return "wmn_raw";
-            return value.indexOf("raw") !== -1 ? "wmn_raw" : "erpnext_print_format";
+            return Number(printFormat?.raw_printing || 0) === 1
+                ? "erpnext_raw"
+                : "erpnext_print_format";
         }
 
         function wmn_uses_wmn_raw_receipt(printConfig, printFormat) {
-            return wmn_get_receipt_print_format_source(printConfig, printFormat) === "wmn_raw";
+            return wmn_get_receipt_print_format_source(printConfig, printFormat) === "erpnext_raw";
         }
 
 function wmn_get_printer_ws_url() {
@@ -139,9 +116,9 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             return wmn_send_to_legacy_bridge({ url: "receipt.pdf", file_content: clean }, printType);
         }
 
-        function wmn_send_raw_text_to_printer(rawText, printType) {
+        function wmn_send_raw_text_to_printer(rawText, printType, context) {
             const service = window.WMN_POS?.Services?.Printing?.PrintService;
-            if (service?.sendRaw) return service.sendRaw(String(rawText || ""), { printType: printType || "RECEIPT" });
+            if (service?.sendRaw) return service.sendRaw(String(rawText || ""), Object.assign({ printType: printType || "RECEIPT" }, context || {}));
             return wmn_send_to_legacy_bridge({
                 raw_content: btoa(unescape(encodeURIComponent(String(rawText || ""))))
             }, printType);
@@ -356,8 +333,9 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 }
             }
 
-            if (cfg.template && typeof wmn_render_raw_print_template === "function") {
-                const rawText = String(wmn_render_raw_print_template(cfg.template, doc, cfg.printFormat || "") || "");
+            const rawTemplate = String(cfg.printFormat?.raw_commands || "");
+            if (rawTemplate && typeof wmn_render_raw_print_template === "function") {
+                const rawText = String(wmn_render_raw_print_template(rawTemplate, doc, cfg.printFormat || {}) || "");
                 if (rawText.trim()) {
                     return {
                         rawText,
@@ -396,10 +374,10 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
 
             const printService = window.WMN_POS?.Services?.Printing?.PrintService;
             const printConfig = printService?.getConfig?.() || {};
-            const usesWmnRaw = wmn_uses_wmn_raw_receipt(printConfig);
             const cfg = await wmn_get_raw_print_template(doc, {
-                source: usesWmnRaw ? "wmn_raw" : "erpnext_print_format",
+                source: "erpnext_print_format",
             });
+            const usesWmnRaw = wmn_uses_wmn_raw_receipt(printConfig, cfg.printFormat);
             const printType = wmn_get_print_type(cfg.printFormat) || cfg.printType;
             const method = String(printConfig.method || "legacy_bridge").trim();
 
@@ -412,7 +390,10 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 const rawText = barcodeService?.decorateRawText
                     ? barcodeService.decorateRawText(raw.rawText, doc, printConfig)
                     : raw.rawText;
-                return await wmn_send_raw_text_to_printer(rawText, raw.printType || printType);
+                return await wmn_send_raw_text_to_printer(rawText, raw.printType || printType, {
+                    doc: doc,
+                    raw_text: raw.rawText,
+                });
             }
 
             if (method === "browser") {
@@ -437,7 +418,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             }
 
             if (method === "webusb" || method === "webserial") {
-                throw new Error("Direct WebUSB/WebSerial can only print RAW commands. Use Browser Print, WMN Windows Bridge, or QZ Tray for Print Format receipts.");
+                throw new Error("Enable Raw Printing and provide Raw Commands in the selected ERPNext Print Format, or use Browser Print, WMN Windows Bridge, or QZ Tray for HTML receipts.");
             }
 
             const pdfBase64 = await wmn_get_server_print_format_pdf(doc, cfg.printFormat);

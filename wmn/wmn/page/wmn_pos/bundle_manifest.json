@@ -148,6 +148,10 @@
       "path": "wmn/support/services/stock/offline_stock.js"
     },
     {
+      "marker": "support:services/stock/cart_stock_preview.js",
+      "path": "wmn/support/services/stock/cart_stock_preview.js"
+    },
+    {
       "marker": "support:services/offline/invoice_manager.js",
       "path": "wmn/support/services/offline/invoice_manager.js"
     },

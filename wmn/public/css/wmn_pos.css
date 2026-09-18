@@ -311,7 +311,7 @@ body:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {
 	height: auto !important;
 	min-height: 0 !important;
 	padding: 0 !important;
-	
+
 	background: #fff;
 }
 
@@ -1478,7 +1478,7 @@ body:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {
 	box-shadow: inset 0 0 0 1px rgba(13, 140, 140, 0.08);
 }
 
-/* ========================================================================== 
+/* ==========================================================================
  * WMN v15 responsive layout
  * One clean responsive system. Mobile landscape is detected by device input
  * capabilities and orientation, not by viewport width alone.
@@ -1737,11 +1737,11 @@ body:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {
 	}
 
 	.wmn-mamsek-shell {
-		
+
 		width: 100% !important;
 		height: auto !important;
 		min-height: calc(100dvh - var(--wmn-pos-mobile-header-height)) !important;
-		
+
 		overflow: visible !important;
 	}
 
@@ -1782,11 +1782,11 @@ body:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {
 	}
 
 	.wmn-pos-nav {
-		
+
 		flex: 0 0 1px !important;
-		
+
 		min-height: 2px !important;
-		
+
 	}
 
 
@@ -2100,7 +2100,7 @@ body:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {
 	}
 }
 
-/* ========================================================================== 
+/* ==========================================================================
  * v16 — Proportional item cards
  * One sizing rule for every viewport. The grid decides the number of cards
  * from the available width; portrait/landscape breakpoints no longer set a
@@ -2188,7 +2188,7 @@ body:not(.wmn-mamsek-pos-route) > .wmn-mamsek-shell {
 	font-size: clamp(11px, 6cqw, 14px) !important;
 }
 
-/* ========================================================================== 
+/* ==========================================================================
  * v19 — Mobile landscape: items and cart side by side
  * Layout only. Preserve the existing page and section overflow behavior.
  * ========================================================================== */
@@ -2737,7 +2737,7 @@ body.rtl-mode
 	}
 }
 
-/* ========================================================================== 
+/* ==========================================================================
  * WMN adaptive cart + modal item details
  * - Desktop/tablet: resizable order sidebar.
  * - Small screens: full-width item selector + floating cart drawer.
@@ -4624,45 +4624,6 @@ body.wmn-mamsek-pos-route .wmn-item-details-modal .warehouse-control:focus-withi
     min-width: 122px !important;
 }
 
-/* Offline payment dialog */
-.wmn-offline-payment-modal .modal-dialog {
-    width: min(580px, calc(100vw - 24px)) !important;
-    max-width: 580px !important;
-}
-
-.wmn-offline-payment-dialog > div:first-child {
-    gap: 7px !important;
-    margin-bottom: 10px !important;
-}
-
-.wmn-offline-payment-dialog > div:first-child > div {
-    padding: 8px 9px !important;
-    border-color: var(--wmn-border, #d8e0e2) !important;
-    border-radius: 9px !important;
-    background: var(--wmn-soft, #f3f6f7) !important;
-}
-
-.wmn-offline-payment-row {
-    grid-template-columns: minmax(0, 1fr) 120px !important;
-    gap: 8px !important;
-    margin-bottom: 7px !important;
-    padding: 2px 0 !important;
-}
-
-.wmn-offline-payment-amount {
-    min-height: 34px !important;
-    height: 34px !important;
-    text-align: center !important;
-    font-weight: 750 !important;
-}
-
-.wmn-offline-payment-dialog .wmn-offline-sell-on-credit-btn {
-    display: inline-flex !important;
-    width: auto !important;
-    min-width: 118px !important;
-    margin-top: 9px !important;
-}
-
 /* Offline invoice manager */
 .wmn-offline-invoices-modal .modal-dialog {
     width: min(940px, calc(100vw - 24px)) !important;
@@ -4749,7 +4710,6 @@ body.wmn-mamsek-pos-route .wmn-item-details-modal .warehouse-control:focus-withi
 @media (max-width: 640px) {
     .wmn-pos-app-dialog .modal-dialog,
     .wmn-pos-config-dialog .modal-dialog,
-    .wmn-offline-payment-modal .modal-dialog,
     .wmn-offline-invoices-modal .modal-dialog,
     .wmn-add-payment-modal .modal-dialog,
     .wmn-pos-batch-legacy-dialog .modal-dialog {
@@ -4779,10 +4739,6 @@ body.wmn-mamsek-pos-route .wmn-item-details-modal .warehouse-control:focus-withi
     .wmn-config-actions .btn {
         flex: 1 1 0 !important;
         min-width: 0 !important;
-    }
-
-    .wmn-offline-payment-dialog > div:first-child {
-        grid-template-columns: 1fr !important;
     }
 
     .wmn-offline-invoices-modal .modal-body {
@@ -5359,110 +5315,6 @@ body.wmn-mamsek-pos-route .wmn-pos-app-dialog .modal-content {
                 font-weight: 700;
             }
 
-/* WMN POS payment layout. */
-
-body.wmn-mamsek-pos-route .payment-container {
-                flex-direction: column !important;
-                height: 100% !important;
-                min-height: 0 !important;
-                gap: 12px !important;
-            }
-            body.wmn-mamsek-pos-route .payment-split-container {
-                display: grid !important;
-                grid-template-columns: minmax(260px, 38%) minmax(300px, 1fr) !important;
-                gap: 14px !important;
-                flex: 1 1 auto !important;
-                min-height: 0 !important;
-            }
-            body.wmn-mamsek-pos-route .payment-container-left,
-            body.wmn-mamsek-pos-route .payment-container-right,
-            body.wmn-mamsek-pos-route .fields-numpad-container {
-                min-width: 0 !important;
-                min-height: 0 !important;
-            }
-            body.wmn-mamsek-pos-route .payment-container-left,
-            body.wmn-mamsek-pos-route .fields-numpad-container {
-                display: flex !important;
-                flex-direction: column !important;
-                gap: 10px !important;
-            }
-            body.wmn-mamsek-pos-route .payment-modes {
-                display: grid !important;
-                gap: 9px !important;
-                align-content: start !important;
-                overflow-y: auto !important;
-                padding-inline-end: 2px !important;
-            }
-            body.wmn-mamsek-pos-route .payment-mode-wrapper {
-                width: 100% !important;
-                margin: 0 !important;
-            }
-            body.wmn-mamsek-pos-route .mode-of-payment {
-                display: flex !important;
-                align-items: center !important;
-                justify-content: space-between !important;
-                gap: 10px !important;
-                width: 100% !important;
-                min-height: 54px !important;
-                padding: 10px 12px !important;
-                border: 1px solid var(--border-color, #d1d8dd) !important;
-                border-radius: 10px !important;
-                background: var(--card-bg, #fff) !important;
-                cursor: pointer !important;
-            }
-            body.wmn-mamsek-pos-route .mode-of-payment.border-primary {
-                border-color: var(--primary, #2490ef) !important;
-                box-shadow: inset 0 0 0 1px var(--primary, #2490ef) !important;
-            }
-            body.wmn-mamsek-pos-route .mode-of-payment-control {
-                display: none;
-                max-width: 150px;
-            }
-            body.wmn-mamsek-pos-route .fields-section {
-                flex: 1 1 auto !important;
-                min-height: 0 !important;
-                overflow-y: auto !important;
-            }
-            body.wmn-mamsek-pos-route .number-pad {
-                flex: 0 0 auto !important;
-                width: 100% !important;
-            }
-            body.wmn-mamsek-pos-route .numpad-container {
-                display: grid !important;
-                grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-                gap: 8px !important;
-                width: 100% !important;
-            }
-            body.wmn-mamsek-pos-route .numpad-btn {
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                min-height: 48px !important;
-                padding: 8px !important;
-                border: 1px solid var(--border-color, #d1d8dd) !important;
-                border-radius: 10px !important;
-                background: var(--control-bg, #f4f5f6) !important;
-                color: var(--text-color, #1f2937) !important;
-                font-weight: 700 !important;
-                cursor: pointer !important;
-                user-select: none !important;
-            }
-            body.wmn-mamsek-pos-route .numpad-btn:hover {
-                border-color: var(--primary, #2490ef) !important;
-                background: var(--fg-hover-color, #eef6ff) !important;
-            }
-            body.wmn-mamsek-pos-route .totals-section {
-                flex: 0 0 auto !important;
-            }
-            body.wmn-mamsek-pos-route .submit-order-btn {
-                flex: 0 0 auto !important;
-            }
-            @media (max-width: 900px) {
-                body.wmn-mamsek-pos-route .payment-split-container {
-                    grid-template-columns: 1fr !important;
-                }
-            }
-
 /* ==========================================================================
  * WMN POS feature styles
  * Keep static page/feature CSS here only. JS may still set data, classes, or
@@ -5794,6 +5646,17 @@ body.wmn-mamsek-pos-route .wmn-pos-manager-button.wmn-pos-manager-colored:hover 
 	background: var(--wmn-pos-menu-bg, var(--card-bg, #fff));
 	color: var(--wmn-pos-menu-text, var(--text-color, #1f2937));
 	filter: brightness(.96);
+}
+
+body.wmn-mamsek-pos-route .wmn-pos-manager-button.wmn-pos-manager-colored:focus-visible {
+	background: var(--wmn-pos-menu-bg, var(--card-bg, #fff));
+	color: var(--wmn-pos-menu-text, var(--text-color, #1f2937));
+	outline: 2px solid var(--wmn-pos-menu-text, currentColor);
+}
+
+body.wmn-mamsek-pos-route .wmn-pos-manager-button.wmn-pos-manager-colored svg,
+body.wmn-mamsek-pos-route .wmn-pos-manager-button.wmn-pos-manager-colored small {
+	color: inherit;
 }
 
 body.wmn-mamsek-pos-route .wmn-pos-manager-button .wmn-pos-manager-icon {
@@ -6899,80 +6762,424 @@ body.wmn-pos-report-frame-body .container-fluid {
 	width: 100%;
 	margin-top: 6px;
 }
-
-.wmn-offline-payment-dialog,
-.wmn-offline-invoices-dialog {
-	direction: inherit;
+/* ======================================================================
+   WMN unified Complete Order payment layout — scoped online and offline
+   ====================================================================== */
+body.wmn-mamsek-pos-route .wmn-complete-order-layout.wmn-complete-order-online,
+body.wmn-mamsek-pos-route .wmn-complete-order-layout.wmn-complete-order-offline {
+	min-width: 0;
+	box-sizing: border-box;
 }
 
-.wmn-offline-payment-summary {
+body.wmn-mamsek-pos-route .wmn-complete-order-layout.wmn-complete-order-online *,
+body.wmn-mamsek-pos-route .wmn-complete-order-layout.wmn-complete-order-online *::before,
+body.wmn-mamsek-pos-route .wmn-complete-order-layout.wmn-complete-order-online *::after,
+body.wmn-mamsek-pos-route .wmn-complete-order-layout.wmn-complete-order-offline *,
+body.wmn-mamsek-pos-route .wmn-complete-order-layout.wmn-complete-order-offline *::before,
+body.wmn-mamsek-pos-route .wmn-complete-order-layout.wmn-complete-order-offline *::after {
+	box-sizing: border-box;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-layout.wmn-complete-order-offline {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	width: 100%;
+}
+
+/* Dialog shell exception: Frappe mounts the modal outside the payment root. */
+body.wmn-mamsek-pos-route .wmn-pos-app-dialog.wmn-offline-payment-modal .modal-dialog {
+	width: min(920px, calc(100vw - 24px));
+	max-width: 920px;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-summary {
 	display: grid;
-	grid-template-columns: repeat(3, 1fr);
+	grid-template-columns: repeat(5, minmax(0, 1fr));
 	gap: 10px;
-	margin-bottom: 14px;
 }
 
-.wmn-offline-payment-card {
-	padding: 10px;
-	border: 1px solid #e5e7eb;
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-summary .wmn-offline-payment-card {
+	min-width: 0;
+	padding: 10px 12px;
+	border: 1px solid var(--border-color, #e5e7eb);
 	border-radius: 10px;
-	background: #f8fafc;
+	background: var(--subtle-fg, #f8fafc);
 }
 
-.wmn-offline-payment-label {
-	color: #6b7280;
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-summary .wmn-offline-payment-label,
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-amount-label {
+	display: block;
+	margin-bottom: 4px;
+	color: var(--text-muted, #6b7280);
 	font-size: 12px;
+	font-weight: 650;
+	overflow-wrap: anywhere;
 }
 
-.wmn-offline-payment-value {
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-summary .wmn-offline-payment-value {
+	min-width: 0;
 	font-size: 15px;
 	font-weight: 700;
+	overflow-wrap: anywhere;
 }
 
-.wmn-offline-payment-value.large {
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-summary .wmn-offline-payment-value.large,
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-summary .wmn-payment-paid-total,
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-summary .wmn-payment-balance-total {
 	font-size: 18px;
+	font-weight: 800;
 }
 
-.wmn-offline-payment-method-list {
-	padding: 12px;
-	border: 1px solid #e5e7eb;
-	border-radius: 10px;
-}
-
-.wmn-offline-payment-row {
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-workspace {
 	display: grid;
-	grid-template-columns: 1fr 160px;
-	align-items: center;
-	gap: 10px;
-	margin-bottom: 10px;
+	grid-template-columns: minmax(0, 1fr);
+	gap: 14px;
+	min-height: 0;
 }
 
-.wmn-offline-payment-account {
-	color: #6b7280;
-	font-size: 12px;
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-methods {
+	min-height: 0;
+	max-height: min(48vh, 520px);
+	overflow: auto;
+	overscroll-behavior: contain;
+	padding: 12px;
+	border: 1px solid var(--border-color, #e5e7eb);
+	border-radius: 10px;
+	background: var(--card-bg, #fff);
 }
 
-.wmn-offline-gateway-note {
-	margin-top: 5px;
-	color: #b45309;
-	font-size: 12px;
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-keypad[hidden] {
+	display: none !important;
 }
 
-.wmn-offline-gateway-status {
-	margin-top: 4px;
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-keypad {
+	width: min(100%, 340px);
+	margin: 10px 0 0 auto;
+	padding: 10px;
+	border: 1px solid var(--border-color, #e5e7eb);
+	border-radius: 12px;
+	background: var(--card-bg, #fff);
 }
 
-.wmn-offline-payment-button {
-	width: 100%;
-	margin-top: 12px;
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-keypad-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 7px;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-key {
+	min-height: 46px;
+	border: 1px solid var(--border-color, #e5e7eb);
+	border-radius: 9px;
+	background: var(--subtle-fg, #f8fafc);
+	color: var(--text-color, #1f2937);
+	font-size: 16px;
 	font-weight: 700;
 }
 
-.wmn-offline-payment-total-row {
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-key[data-key="remaining"],
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-key[data-key="done"] {
+	font-size: 12px;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-offline-payment-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(128px, 160px);
+	align-items: end;
+	gap: 12px;
+	padding: 10px 0;
+	border-bottom: 1px solid var(--border-color, #e5e7eb);
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-offline-payment-row:first-child {
+	padding-top: 0;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-offline-payment-row:last-child {
+	padding-bottom: 0;
+	border-bottom: 0;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-method-copy,
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-amount-control {
+	min-width: 0;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-method-name {
+	font-weight: 750;
+	overflow-wrap: anywhere;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-offline-payment-account,
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-offline-gateway-note,
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-offline-gateway-status {
+	margin-top: 4px;
+	color: var(--text-muted, #6b7280);
+	font-size: 12px;
+	overflow-wrap: anywhere;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-offline-gateway-note {
+	color: #b45309;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-offline-payment-amount,
+body.wmn-mamsek-pos-route .wmn-complete-order-online .mode-of-payment-control input {
+	min-height: 44px;
+	border-radius: 8px;
+	direction: ltr;
+	text-align: end;
+	font-weight: 750;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-actions .wmn-offline-payment-button,
+body.wmn-mamsek-pos-route .wmn-complete-order-online .submit-order-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 44px;
+	margin: 0;
+	padding: 9px 14px;
+	border-radius: 9px;
+	font-weight: 700;
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-actions .wmn-offline-payment-button {
+	flex: 1 1 160px;
+	width: auto;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-online {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-height: 0;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-online .payment-split-container {
+	display: grid;
+	grid-template-columns: minmax(0, .9fr) minmax(280px, 1fr);
+	gap: 14px;
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-online .payment-container-left,
+body.wmn-mamsek-pos-route .wmn-complete-order-online .payment-container-right,
+body.wmn-mamsek-pos-route .wmn-complete-order-online .fields-numpad-container {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+	gap: 10px;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-online .payment-modes {
+	display: grid;
+	gap: 9px;
+	align-content: start;
+	min-height: 0;
+	max-height: min(48vh, 520px);
+	overflow: auto;
+	overscroll-behavior: contain;
+	padding-inline-end: 2px;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-online .payment-mode-wrapper {
+	min-width: 0;
+	margin: 0;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-online .mode-of-payment {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	margin-top: 12px;
+	gap: 10px;
+	min-width: 0;
+	min-height: 54px;
+	padding: 10px 12px;
+	border: 1px solid var(--border-color, #d1d8dd);
+	border-radius: 10px;
+	background: var(--card-bg, #fff);
+	cursor: pointer;
+	overflow-wrap: anywhere;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-online .mode-of-payment-control {
+	display: none;
+	min-width: 0;
+	max-width: 150px;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-online .fields-section {
+	min-height: 0;
+	overflow: auto;
+	overscroll-behavior: contain;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-online .numpad-container {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 8px;
+	width: 100%;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-online .numpad-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 48px;
+	border-radius: 10px;
+	font-weight: 700;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-online .totals-section {
+	flex: 0 0 auto;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-online .totals-section .totals {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 10px;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-online .totals-section .totals > .seperator-y {
+	display: none;
+}
+
+body.wmn-mamsek-pos-route .wmn-complete-order-online .totals-section .col {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+@media (max-width: 991px) {
+	body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-summary {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+
+	body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-workspace {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	body.wmn-mamsek-pos-route .wmn-complete-order-online .payment-split-container {
+		grid-template-columns: minmax(0, 1fr) minmax(240px, .8fr);
+	}
+}
+
+@media (max-width: 767px) {
+	/* Dialog shell exception: its body and footer sit outside the layout root. */
+	body.wmn-mamsek-pos-route .wmn-pos-app-dialog.wmn-offline-payment-modal .modal-dialog {
+		width: calc(100vw - 12px);
+		max-width: calc(100vw - 12px);
+		margin: 6px auto;
+	}
+
+	body.wmn-mamsek-pos-route .wmn-pos-app-dialog.wmn-offline-payment-modal .modal-content {
+		display: flex;
+		flex-direction: column;
+		max-height: calc(100dvh - 12px);
+	}
+
+	body.wmn-mamsek-pos-route .wmn-pos-app-dialog.wmn-offline-payment-modal .modal-body {
+		flex: 1 1 auto;
+		min-height: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+	}
+
+	body.wmn-mamsek-pos-route .wmn-pos-app-dialog.wmn-offline-payment-modal .modal-footer {
+		flex: 0 0 auto;
+	}
+
+	body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-summary {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 8px;
+	}
+
+	body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-workspace,
+	body.wmn-mamsek-pos-route .wmn-complete-order-online .payment-split-container {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-methods,
+	body.wmn-mamsek-pos-route .wmn-complete-order-online .payment-modes {
+		max-height: min(38dvh, 360px);
+	}
+
+	body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-guidance {
+		font-size: 12px;
+	}
+
+	body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-offline-payment-row {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 8px;
+	}
+
+	body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-amount-control {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(120px, .55fr);
+		align-items: center;
+		gap: 8px;
+	}
+
+	body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-amount-label {
+		margin: 0;
+	}
+
+	body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-actions {
+		position: sticky;
+		bottom: 0;
+		z-index: 2;
+		padding: 10px 0 max(10px, env(safe-area-inset-bottom));
+		background: var(--card-bg, #fff);
+		box-shadow: 0 -8px 14px rgba(15, 23, 42, .08);
+	}
+
+	body.wmn-mamsek-pos-route .wmn-complete-order-offline .wmn-payment-actions .wmn-offline-payment-button {
+		flex-basis: 100%;
+	}
+
+	body.wmn-mamsek-pos-route .wmn-complete-order-online .submit-order-btn {
+		position: sticky;
+		bottom: 0;
+		z-index: 2;
+	}
+
+	body.wmn-mamsek-pos-route .wmn-complete-order-online .totals-section .totals {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
+body.wmn-mamsek-pos-route[dir="rtl"] .wmn-complete-order-layout.wmn-complete-order-online,
+body.wmn-mamsek-pos-route[dir="rtl"] .wmn-complete-order-layout.wmn-complete-order-offline,
+body.wmn-mamsek-pos-route [dir="rtl"] .wmn-complete-order-layout.wmn-complete-order-online,
+body.wmn-mamsek-pos-route [dir="rtl"] .wmn-complete-order-layout.wmn-complete-order-offline {
+	direction: rtl;
+	text-align: right;
+}
+
+body.wmn-mamsek-pos-route[dir="rtl"] .wmn-complete-order-offline .wmn-offline-payment-amount,
+body.wmn-mamsek-pos-route[dir="rtl"] .wmn-complete-order-online .mode-of-payment-control input,
+body.wmn-mamsek-pos-route [dir="rtl"] .wmn-complete-order-offline .wmn-offline-payment-amount,
+body.wmn-mamsek-pos-route [dir="rtl"] .wmn-complete-order-online .mode-of-payment-control input {
+	direction: ltr;
+	text-align: end;
+}
+
+
+
+
+.wmn-offline-invoices-dialog {
+	direction: inherit;
 }
 
 .wmn-offline-invoice-head {

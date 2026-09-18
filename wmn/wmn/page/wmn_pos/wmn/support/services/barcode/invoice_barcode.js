@@ -333,17 +333,27 @@
         const width = Math.max(2, Math.min(6, parseInt(config.invoice_barcode_module_width || "2", 10) || 2));
         const human = cint(config.invoice_barcode_human_readable === undefined ? 1 : config.invoice_barcode_human_readable) === 1;
         const barcodeValue = String(value || "");
+        const symbology = String(config.invoice_barcode_symbology || "auto");
+        const numericPairs = /^\d+$/.test(barcodeValue) && barcodeValue.length % 2 === 0;
         let data;
-        if (/^\d+$/.test(barcodeValue) && barcodeValue.length % 2 === 0) {
+        let mode = 73;
+        if (symbology === "code39") {
+            if (!/^[0-9A-Z $%*+\-./]+$/.test(barcodeValue)) throw new Error("Code39 supports only uppercase letters, digits, and its standard symbols");
+            mode = 69;
+            data = barcodeValue;
+        } else if (symbology === "code128_c" || (symbology === "auto" && numericPairs)) {
+            if (!numericPairs) throw new Error("Code128-C requires an even number of digits");
             const pairs = [];
             for (let i = 0; i < barcodeValue.length; i += 2) {
                 pairs.push(String.fromCharCode(parseInt(barcodeValue.slice(i, i + 2), 10)));
             }
             data = "{C" + pairs.join("");
-        } else {
+        } else if (symbology === "auto" || symbology === "code128_b") {
             data = "{B" + barcodeValue;
+        } else {
+            throw new Error("Unknown invoice barcode symbology: " + symbology);
         }
-        if (data.length > 255) throw new Error("Invoice barcode is too long for ESC/POS Code 128");
+        if (data.length > 255) throw new Error("Invoice barcode is too long for ESC/POS");
 
         const ESC = String.fromCharCode(0x1b);
         const GS = String.fromCharCode(0x1d);
@@ -353,7 +363,7 @@
             GS + "w" + String.fromCharCode(width),
             GS + "h" + String.fromCharCode(height),
             GS + "H" + String.fromCharCode(human ? 2 : 0),
-            GS + "k" + String.fromCharCode(73) + String.fromCharCode(data.length) + data,
+            GS + "k" + String.fromCharCode(mode) + String.fromCharCode(data.length) + data,
             "\n",
             ESC + "a" + String.fromCharCode(0),
         ].join("");
@@ -361,15 +371,39 @@
 
     function decorateRawText(rawText, doc, config) {
         config = config || getPrintConfig();
-        if (!isPrintEnabled(config)) return String(rawText || "");
+        const text = String(rawText || "");
+        const marker = /^[ \t]*print_inv_barcode(?:,\s*(\d+))?[ \t]*\r?$/gmi;
+        if (!isPrintEnabled(config)) return text.replace(marker, "");
         const payload = payloadFromDoc(doc);
-        if (!payload) return String(rawText || "");
-        return String(rawText || "") + escPosBarcode(payload, config);
+        if (!payload) return text.replace(marker, "");
+        if (marker.test(text)) {
+            marker.lastIndex = 0;
+            return text.replace(marker, (_match, height) => escPosBarcode(payload, height
+                ? Object.assign({}, config, { invoice_barcode_height: Number(height) })
+                : config));
+        }
+        return text + escPosBarcode(payload, config);
     }
 
     function browserRawHtml(rawText, doc, config) {
-        const escaped = escapeHtml(rawText).replace(/\n/g, "<br>");
-        return `<div class="wmn-print-raw-block">${escaped}</div>${buildHtmlBlock(doc, config)}`;
+        config = config || getPrintConfig();
+        const marker = /^[ \t]*print_inv_barcode(?:,\s*(\d+))?[ \t]*\r?$/gmi;
+        const text = String(rawText || "");
+        let found = false;
+        let last = 0;
+        let content = "";
+        for (const match of text.matchAll(marker)) {
+            found = true;
+            content += escapeHtml(text.slice(last, match.index));
+            const barcodeConfig = match[1]
+                ? Object.assign({}, config, { invoice_barcode_height: Number(match[1]) })
+                : config;
+            content += buildHtmlBlock(doc, barcodeConfig);
+            last = match.index + match[0].length;
+        }
+        content += escapeHtml(text.slice(last));
+        if (!found) content += buildHtmlBlock(doc, config);
+        return `<div class="wmn-print-raw-block" style="width: 80mm; max-width: 80mm; margin: 0 auto; padding: 2mm; box-sizing: border-box; color: #111; background: #fff; font: 12px/1.35 monospace; white-space: pre-wrap; overflow-wrap: anywhere;">${content}</div>`;
     }
 
     ns.Services.Barcode.InvoiceBarcode = {

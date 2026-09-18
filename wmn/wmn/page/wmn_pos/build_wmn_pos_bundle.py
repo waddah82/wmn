@@ -21,7 +21,7 @@ INLINED_IMPORTS = {
 
 
 def read_text(relative_path: str) -> str:
-    return (ROOT / relative_path).read_text().rstrip()
+    return (ROOT / relative_path).read_text(encoding="utf-8").rstrip()
 
 
 def strip_inlined_imports(relative_path: str, body: str) -> str:
@@ -47,7 +47,7 @@ def section(marker: str, body: str) -> str:
 
 
 def main() -> None:
-    manifest = json.loads(MANIFEST.read_text())
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     output = []
     output.append("/* WMN POS page source. Copied from ERPNext v16 and modified directly for WMN. */")
     output.append('frappe.provide("wmn.PointOfSale");')
@@ -90,7 +90,7 @@ def main() -> None:
     output.append(read_text(manifest["entry"]))
     output.append("")
 
-    (ROOT / manifest["generated_file"]).write_text("\n".join(output))
+    (ROOT / manifest["generated_file"]).write_text("\n".join(output), encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":

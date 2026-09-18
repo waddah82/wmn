@@ -8265,17 +8265,27 @@ wmn_install_pos_pwa_app_css();
         const width = Math.max(2, Math.min(6, parseInt(config.invoice_barcode_module_width || "2", 10) || 2));
         const human = cint(config.invoice_barcode_human_readable === undefined ? 1 : config.invoice_barcode_human_readable) === 1;
         const barcodeValue = String(value || "");
+        const symbology = String(config.invoice_barcode_symbology || "auto");
+        const numericPairs = /^\d+$/.test(barcodeValue) && barcodeValue.length % 2 === 0;
         let data;
-        if (/^\d+$/.test(barcodeValue) && barcodeValue.length % 2 === 0) {
+        let mode = 73;
+        if (symbology === "code39") {
+            if (!/^[0-9A-Z $%*+\-./]+$/.test(barcodeValue)) throw new Error("Code39 supports only uppercase letters, digits, and its standard symbols");
+            mode = 69;
+            data = barcodeValue;
+        } else if (symbology === "code128_c" || (symbology === "auto" && numericPairs)) {
+            if (!numericPairs) throw new Error("Code128-C requires an even number of digits");
             const pairs = [];
             for (let i = 0; i < barcodeValue.length; i += 2) {
                 pairs.push(String.fromCharCode(parseInt(barcodeValue.slice(i, i + 2), 10)));
             }
             data = "{C" + pairs.join("");
-        } else {
+        } else if (symbology === "auto" || symbology === "code128_b") {
             data = "{B" + barcodeValue;
+        } else {
+            throw new Error("Unknown invoice barcode symbology: " + symbology);
         }
-        if (data.length > 255) throw new Error("Invoice barcode is too long for ESC/POS Code 128");
+        if (data.length > 255) throw new Error("Invoice barcode is too long for ESC/POS");
 
         const ESC = String.fromCharCode(0x1b);
         const GS = String.fromCharCode(0x1d);
@@ -8285,7 +8295,7 @@ wmn_install_pos_pwa_app_css();
             GS + "w" + String.fromCharCode(width),
             GS + "h" + String.fromCharCode(height),
             GS + "H" + String.fromCharCode(human ? 2 : 0),
-            GS + "k" + String.fromCharCode(73) + String.fromCharCode(data.length) + data,
+            GS + "k" + String.fromCharCode(mode) + String.fromCharCode(data.length) + data,
             "\n",
             ESC + "a" + String.fromCharCode(0),
         ].join("");
@@ -8293,15 +8303,39 @@ wmn_install_pos_pwa_app_css();
 
     function decorateRawText(rawText, doc, config) {
         config = config || getPrintConfig();
-        if (!isPrintEnabled(config)) return String(rawText || "");
+        const text = String(rawText || "");
+        const marker = /^[ \t]*print_inv_barcode(?:,\s*(\d+))?[ \t]*\r?$/gmi;
+        if (!isPrintEnabled(config)) return text.replace(marker, "");
         const payload = payloadFromDoc(doc);
-        if (!payload) return String(rawText || "");
-        return String(rawText || "") + escPosBarcode(payload, config);
+        if (!payload) return text.replace(marker, "");
+        if (marker.test(text)) {
+            marker.lastIndex = 0;
+            return text.replace(marker, (_match, height) => escPosBarcode(payload, height
+                ? Object.assign({}, config, { invoice_barcode_height: Number(height) })
+                : config));
+        }
+        return text + escPosBarcode(payload, config);
     }
 
     function browserRawHtml(rawText, doc, config) {
-        const escaped = escapeHtml(rawText).replace(/\n/g, "<br>");
-        return `<div class="wmn-print-raw-block">${escaped}</div>${buildHtmlBlock(doc, config)}`;
+        config = config || getPrintConfig();
+        const marker = /^[ \t]*print_inv_barcode(?:,\s*(\d+))?[ \t]*\r?$/gmi;
+        const text = String(rawText || "");
+        let found = false;
+        let last = 0;
+        let content = "";
+        for (const match of text.matchAll(marker)) {
+            found = true;
+            content += escapeHtml(text.slice(last, match.index));
+            const barcodeConfig = match[1]
+                ? Object.assign({}, config, { invoice_barcode_height: Number(match[1]) })
+                : config;
+            content += buildHtmlBlock(doc, barcodeConfig);
+            last = match.index + match[0].length;
+        }
+        content += escapeHtml(text.slice(last));
+        if (!found) content += buildHtmlBlock(doc, config);
+        return `<div class="wmn-print-raw-block" style="width: 80mm; max-width: 80mm; margin: 0 auto; padding: 2mm; box-sizing: border-box; color: #111; background: #fff; font: 12px/1.35 monospace; white-space: pre-wrap; overflow-wrap: anywhere;">${content}</div>`;
     }
 
     ns.Services.Barcode.InvoiceBarcode = {
@@ -9111,9 +9145,9 @@ function wmn_is_mobile_pos_device() {
         default_item_view: "Grid View",
         show_item_cart_counter: 0,
         search_row_nav: 0,
+        decrease_available_qty_in_cart: 1,
         enable_auto_silent_print: 0,
         print_after_cashier_completion: 0,
-        receipt_print_format_source: "WMN Raw Print Format",
         printing_method: "legacy_bridge",
         fallback_method: "none",
         copies: 1,
@@ -9124,11 +9158,17 @@ function wmn_is_mobile_pos_device() {
         invoice_barcode_height: 56,
         invoice_barcode_module_width: 2,
         invoice_barcode_human_readable: 1,
+        invoice_barcode_symbology: "auto",
         qz_printer_name: "",
+        qz_destination: "printer",
+        qz_tcp_host: "",
+        qz_tcp_port: 9100,
         qz_connector_mode: "legacy",
         qz_connector_url: "",
         qz_host: "",
         qz_encoding: "UTF8",
+        qz_raw_flavor: "auto",
+        escpos_codepage: "",
         bridge_ws_url: "ws://127.0.0.1:12212/printer",
         webusb_vendor_id: "",
         webusb_product_id: "",
@@ -9148,6 +9188,7 @@ function wmn_is_mobile_pos_device() {
         "ignore_pricing_rule",
         "show_item_cart_counter",
         "search_row_nav",
+        "decrease_available_qty_in_cart",
         "enable_auto_silent_print",
         "print_after_cashier_completion",
         "copies",
@@ -9158,6 +9199,7 @@ function wmn_is_mobile_pos_device() {
         "invoice_barcode_height",
         "invoice_barcode_module_width",
         "invoice_barcode_human_readable",
+        "qz_tcp_port",
         "webserial_baud_rate",
         "webserial_data_bits",
         "webserial_stop_bits",
@@ -10909,6 +10951,20 @@ async function wmn_v9_direct_add_or_update(ctrl, args) {
 
 /* BEGIN support:services/payment/offline_payment.js */
 /* Offline payment and partial/credit payment logic. */
+function wmn_payment_key_value(current, key, isReturn, remaining, replace) {
+            const original = String(current ?? "0").replace(/^-/, "");
+            let value = replace && /^[0-9]$/.test(key) ? "" : original;
+            if (key === "clear") value = "0";
+            else if (key === "back") value = value.slice(0, -1) || "0";
+            else if (key === "remaining") value = String(Math.max(0, Number(remaining) || 0));
+            else if (key === ".") {
+                if (!value.includes(".")) value = (value || "0") + ".";
+            } else if (/^[0-9]$/.test(key)) {
+                value = value === "0" ? key : value + key;
+            }
+            return isReturn && Number(value) !== 0 ? "-" + value : value;
+        }
+
 function wmn_invoice_payment_total(doc) {
             doc = doc || {};
             const rowTotal = (doc.payments || []).reduce((sum, row) => sum + Math.abs(flt((row && row.amount) || 0)), 0);
@@ -11192,15 +11248,18 @@ function wmn_invoice_payment_total(doc) {
                 }
                 return `
                     <div class="wmn-offline-payment-row" data-payment-index="${idx}">
-                        <div>
-                            <div class="wmn-font-bold">${mode}</div>
+                        <div class="wmn-payment-method-copy">
+                            <div class="wmn-payment-method-name wmn-font-bold">${mode}</div>
                             <div class="wmn-offline-payment-account">${frappe.utils.escape_html(p.account || "")}</div>
                             ${gatewayHtml}
                         </div>
-                        <input type="number" step="0.01" ${isReturn ? 'max="0"' : 'min="0"'}
-                               class="form-control wmn-offline-payment-amount"
-                               data-payment-index="${idx}"
-                               value="${amount}">
+                        <div class="wmn-payment-amount-control">
+                            <label class="wmn-payment-amount-label">${wmn_t("Amount", "\u0627\u0644\u0645\u0628\u0644\u063a")}</label>
+                            <input type="number" step="0.01" ${isReturn ? 'max="0"' : 'min="0"'}
+                                   class="form-control wmn-offline-payment-amount"
+                                   data-payment-index="${idx}"
+                                   value="${amount}">
+                        </div>
                     </div>
                 `;
             }).join("");
@@ -11214,47 +11273,59 @@ function wmn_invoice_payment_total(doc) {
                             fieldtype: "HTML",
                             fieldname: "payment_html",
                             options: `
-                                <div class="wmn-offline-payment-dialog">
-                                    <div class="wmn-offline-payment-summary">
+                                <div class="wmn-offline-payment-dialog wmn-complete-order-layout wmn-complete-order-offline">
+                                    <section class="wmn-offline-payment-summary wmn-payment-summary">
                                         <div class="wmn-offline-payment-card">
-                                            <div class="wmn-offline-payment-label">${wmn_t("Grand Total", "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A")}</div>
+                                            <div class="wmn-offline-payment-label">${wmn_t("Grand Total", "\u0627\u0644\u0625\u062c\u0645\u0627\u0644\u064a")}</div>
                                             <div class="wmn-offline-payment-value large">${format_currency(total, doc.currency || "YER")}</div>
                                         </div>
                                         <div class="wmn-offline-payment-card">
-                                            <div class="wmn-offline-payment-label">${wmn_t("Customer", "\u0627\u0644\u0639\u0645\u064A\u0644")}</div>
+                                            <div class="wmn-offline-payment-label">${wmn_t("Customer", "\u0627\u0644\u0639\u0645\u064a\u0644")}</div>
                                             <div class="wmn-offline-payment-value">${frappe.utils.escape_html(doc.customer_name || doc.customer || "")}</div>
                                         </div>
                                         <div class="wmn-offline-payment-card">
-                                            <div class="wmn-offline-payment-label">${wmn_t("Invoice", "\u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629")}</div>
+                                            <div class="wmn-offline-payment-label">${wmn_t("Invoice", "\u0627\u0644\u0641\u0627\u062a\u0648\u0631\u0629")}</div>
                                             <div class="wmn-offline-payment-value">${frappe.utils.escape_html(doc.name || "")}</div>
                                         </div>
+                                        <div class="wmn-offline-payment-card">
+                                            <div class="wmn-offline-payment-label">${isReturn ? wmn_t("Refund", "\u0627\u0644\u0627\u0633\u062a\u0631\u062f\u0627\u062f") : wmn_t("Paid", "\u0627\u0644\u0645\u062f\u0641\u0648\u0639")}</div>
+                                            <div class="wmn-offline-payment-value wmn-payment-paid-total">0</div>
+                                        </div>
+                                        <div class="wmn-offline-payment-card">
+                                            <div class="wmn-offline-payment-label wmn-payment-balance-label">${wmn_t("Balance", "\u0627\u0644\u0645\u062a\u0628\u0642\u064a")}</div>
+                                            <div class="wmn-offline-payment-value wmn-payment-balance-total">${format_currency(total, doc.currency || "YER")}</div>
+                                        </div>
+                                    </section>
+
+                                    <section class="wmn-payment-workspace">
+                                        <div class="wmn-offline-payment-method-list wmn-payment-methods">
+                                            ${rowsHtml || `<div class="text-muted">${wmn_t("No payment methods found", "\u0644\u0627 \u062a\u0648\u062c\u062f \u0637\u0631\u0642 \u062f\u0641\u0639")}</div>`}
+                                        </div>
+                                    </section>
+
+                                    <div class="wmn-payment-keypad" hidden aria-label="${wmn_t("Payment keypad", "\u0644\u0648\u062d\u0629 \u0623\u0631\u0642\u0627\u0645 \u0627\u0644\u062f\u0641\u0639")}">
+                                        <div class="wmn-payment-keypad-grid">
+                                            ${["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "back", "clear", "remaining", "done"].map((key) => `
+                                                <button type="button" class="wmn-payment-key" data-key="${key}">${{
+                                                    back: "\u232b", clear: wmn_t("Clear", "\u0645\u0633\u062d"),
+                                                    remaining: wmn_t("Remaining", "\u0627\u0644\u0645\u062a\u0628\u0642\u064a"),
+                                                    done: wmn_t("Done", "\u062a\u0645"),
+                                                }[key] || key}</button>`).join("")}
+                                        </div>
                                     </div>
 
-                                    <div class="wmn-offline-payment-method-list">
-                                        ${rowsHtml || `<div class="text-muted">${wmn_t("No payment methods found", "\u0644\u0627 \u062A\u0648\u062C\u062F \u0637\u0631\u0642 \u062F\u0641\u0639")}</div>`}
-                                    </div>
+                                    <div class="wmn-payment-actions">
+                                        ${canSellOnCredit ? `
+                                            <button type="button" class="btn btn-default wmn-offline-sell-on-credit-btn wmn-offline-payment-button">
+                                                ${__("Sell on Credit")}
+                                            </button>
+                                        ` : ""}
 
-                                    ${canSellOnCredit ? `
-                                        <button type="button" class="btn btn-default wmn-offline-sell-on-credit-btn wmn-offline-payment-button">
-                                            ${__("Sell on Credit")}
-                                        </button>
-                                    ` : ""}
-
-                                    ${(handoff?.canSendToCashier?.(doc) && ctrl?.__wmn_cashier_resume !== true) ? `
-                                        <button type="button" class="btn btn-default wmn-offline-send-to-cashier-btn wmn-offline-payment-button">
-                                            ${wmn_t("Send to Cashier", "إرسال إلى الكاشير")}
-                                        </button>
-                                    ` : ""}
-
-                                    <div class="wmn-offline-payment-total-row">
-                                        <div class="wmn-offline-payment-label">
-                                            ${isReturn
-                                                ? wmn_t("Complete Order will apply the refund to the offline return then save it offline.", "إكمال الطلب سيطبق الاسترداد على المرتجع ثم يحفظه أوفلاين.")
-                                                : wmn_t("Complete Order will apply payment to the offline invoice then save it offline.", "\u0625\u0643\u0645\u0627\u0644 \u0627\u0644\u0637\u0644\u0628 \u0633\u064A\u0636\u064A\u0641 \u0627\u0644\u062F\u0641\u0639 \u0644\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646 \u062B\u0645 \u064A\u062D\u0641\u0638\u0647\u0627 \u0623\u0648\u0641\u0644\u0627\u064A\u0646.")}
-                                        </div>
-                                        <div class="wmn-font-bold">
-                                            ${isReturn ? wmn_t("Refund", "الاسترداد") : wmn_t("Paid", "\u0627\u0644\u0645\u062F\u0641\u0648\u0639")}: <span class="wmn-offline-paid-total">0</span>
-                                        </div>
+                                        ${(handoff?.canSendToCashier?.(doc) && ctrl?.__wmn_cashier_resume !== true) ? `
+                                            <button type="button" class="btn btn-default wmn-offline-send-to-cashier-btn wmn-offline-payment-button">
+                                                ${wmn_t("Send to Cashier", "\u0625\u0631\u0633\u0627\u0644 \u0625\u0644\u0649 \u0627\u0644\u0643\u0627\u0634\u064a\u0631")}
+                                            </button>
+                                        ` : ""}
                                     </div>
                                 </div>
                             `
@@ -11355,12 +11426,50 @@ function wmn_invoice_payment_total(doc) {
                 d.$wrapper.addClass("wmn-pos-app-dialog wmn-offline-payment-modal");
                 d.show();
 
+                let activePaymentInput = null;
+                let replaceNextKey = false;
+                const $keypad = d.$wrapper.find(".wmn-payment-keypad");
+                d.$wrapper.on("focusin.wmnPaymentKeypad", ".wmn-offline-payment-amount", function () {
+                    activePaymentInput = this;
+                    replaceNextKey = true;
+                    $keypad.prop("hidden", false);
+                });
+                d.$wrapper.on("click.wmnPaymentKeypad", ".wmn-payment-key", function () {
+                    const key = String($(this).attr("data-key") || "");
+                    if (key === "done") {
+                        $keypad.prop("hidden", true);
+                        activePaymentInput = null;
+                        return;
+                    }
+                    if (!activePaymentInput) return;
+                    const $input = $(activePaymentInput);
+                    const othersPaid = d.$wrapper.find(".wmn-offline-payment-amount").toArray()
+                        .filter((input) => input !== activePaymentInput)
+                        .reduce((sum, input) => sum + Math.abs(flt($(input).val() || 0)), 0);
+                    const remaining = Math.max(0, Math.abs(total) - othersPaid);
+                    const value = wmn_payment_key_value($input.val(), key, isReturn, remaining, replaceNextKey);
+                    replaceNextKey = false;
+                    $input.val(value).trigger("input");
+                });
+                d.$wrapper.on("hidden.bs.modal.wmnPaymentKeypad", () => {
+                    d.$wrapper.off(".wmnPaymentKeypad");
+                    activePaymentInput = null;
+                });
+
                 const updatePaidTotal = () => {
                     let paid = 0;
                     d.$wrapper.find(".wmn-offline-payment-amount").each(function () {
                         paid += flt($(this).val() || 0);
                     });
-                    d.$wrapper.find(".wmn-offline-paid-total").text(format_currency(paid, doc.currency || "YER"));
+                    const invoiceTotal = flt(doc.rounded_total || doc.grand_total || 0);
+                    const difference = invoiceTotal - paid;
+                    const isChange = !isReturn && difference < 0;
+                    const balance = isChange ? -difference : difference;
+                    d.$wrapper.find(".wmn-payment-paid-total").text(format_currency(paid, doc.currency || "YER"));
+                    d.$wrapper.find(".wmn-payment-balance-label").text(isChange
+                        ? wmn_t("Change Amount", "\u0627\u0644\u0628\u0627\u0642\u064a \u0644\u0644\u0639\u0645\u064a\u0644")
+                        : wmn_t("Balance", "\u0627\u0644\u0645\u062a\u0628\u0642\u064a"));
+                    d.$wrapper.find(".wmn-payment-balance-total").text(format_currency(balance, doc.currency || "YER"));
                 };
 
                 d.$wrapper.on("input", ".wmn-offline-payment-amount", function () {
@@ -13046,6 +13155,72 @@ async function wmn_open_offline_existing_invoice_payment_dialog(doc) {
         }
 /* END support:services/stock/offline_stock.js */
 
+/* BEGIN support:services/stock/cart_stock_preview.js */
+/* Client-side available-stock preview for the current cart. */
+(function () {
+    "use strict";
+    const ns = window.WMN_POS;
+    ns.Services.Stock = ns.Services.Stock || {};
+
+    function isEnabled() {
+        const value = window.WMNPOSUIPreferences?.get?.("decrease_available_qty_in_cart");
+        return value === undefined || value === null ? true : Boolean(cint(value));
+    }
+
+    function warehouseFor(row, doc, fallbackWarehouse) {
+        return String(row?.warehouse || doc?.set_warehouse || fallbackWarehouse || "");
+    }
+
+    function reservedByItemWarehouse(doc, fallbackWarehouse) {
+        const reserved = new Map();
+        for (const row of doc?.items || []) {
+            if (!row?.item_code) continue;
+            const warehouse = warehouseFor(row, doc, fallbackWarehouse);
+            if (!warehouse) continue;
+            const qty = row.stock_qty !== undefined
+                ? flt(row.stock_qty || 0)
+                : flt(row.qty || 0) * flt(row.conversion_factor || 1);
+            const key = `${row.item_code}::${warehouse}`;
+            reserved.set(key, flt(reserved.get(key) || 0) + qty);
+        }
+        return reserved;
+    }
+
+    function setBase(item, actualQty) {
+        if (!item) return 0;
+        item.__wmn_available_qty_base = flt(actualQty || 0);
+        item.actual_qty = item.__wmn_available_qty_base;
+        return item.actual_qty;
+    }
+
+    function apply(items, doc, controller, fallbackWarehouse, enabled = isEnabled()) {
+        const reserved = reservedByItemWarehouse(doc || {}, fallbackWarehouse);
+        for (const item of items || []) {
+            if (!item?.item_code || !cint(item.is_stock_item || 0)) continue;
+            const warehouse = warehouseFor(item, doc, fallbackWarehouse);
+            if (!warehouse) continue;
+            if (item.__wmn_available_qty_base === undefined || item.__wmn_available_qty_base === null) {
+                item.__wmn_available_qty_base = flt(item.actual_qty || 0);
+            }
+            const key = `${item.item_code}::${warehouse}`;
+            const available = enabled
+                ? flt(item.__wmn_available_qty_base) - flt(reserved.get(key) || 0)
+                : flt(item.__wmn_available_qty_base);
+            item.actual_qty = available;
+            if (controller) {
+                controller.item_stock_map = controller.item_stock_map || {};
+                controller.item_stock_map[item.item_code] = controller.item_stock_map[item.item_code] || {};
+                controller.item_stock_map[item.item_code][warehouse] = [available, cint(item.is_stock_item || 0)];
+                if (controller.item_details) controller.item_details.item_stock_map = controller.item_stock_map;
+            }
+        }
+        return items || [];
+    }
+
+    ns.Services.Stock.CartStockPreview = { isEnabled, reservedByItemWarehouse, setBase, apply };
+})();
+/* END support:services/stock/cart_stock_preview.js */
+
 /* BEGIN support:services/offline/invoice_manager.js */
 /* Offline invoice queue manager UI and sync commands. */
         async function wmn_restore_offline_available_qty_for_doc(doc) {
@@ -13614,23 +13789,6 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
             }
         }
 
-        async function wmn_get_cached_wmn_print_format(formatName) {
-            try {
-                if (!window.wmnPOSOffline || !window.wmnPOSOffline.getSetting) return null;
-
-                let cached = null;
-                if (formatName) {
-                    cached = await window.wmnPOSOffline.getSetting("wmn_print_format::" + formatName);
-                }
-                if (!cached) {
-                    cached = await window.wmnPOSOffline.getSetting("wmn_print_format");
-                }
-                return cached || null;
-            } catch (e) {
-                return null;
-            }
-        }
-
         function wmn_get_raw_value(scope, path) {
             path = String(path || "").trim();
             if (!path) return "";
@@ -13697,45 +13855,6 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
         async function wmn_get_raw_print_template(doc, options = {}) {
             const settings = (window.cur_pos && window.cur_pos.settings) || {};
             const formatName = settings.print_format || (doc && doc.print_format) || "";
-            const source = String(options.source || "erpnext_print_format").trim().toLowerCase();
-
-            if (source === "wmn_raw") {
-                let wmnPrintFormat = await wmn_get_cached_wmn_print_format(formatName) || {};
-
-                if ((!wmnPrintFormat || !wmnPrintFormat.name) && formatName && window.frappe && frappe.call && navigator.onLine !== false) {
-                    try {
-                        const res = await frappe.call({
-                            method: "frappe.client.get",
-                            args: {
-                                doctype: "WMN Print Format",
-                                name: formatName
-                            },
-                            freeze: false,
-                        });
-                        wmnPrintFormat = res && res.message ? res.message : {};
-                    } catch (e) {
-                        wmnPrintFormat = {};
-                    }
-                }
-
-                const template =
-                    (wmnPrintFormat && (
-                        wmnPrintFormat.raw_template_code ||
-                        wmnPrintFormat.raw_template ||
-                        wmnPrintFormat.raw_receipt_template
-                    )) ||
-                    "";
-
-                return {
-                    printFormat: wmnPrintFormat && wmnPrintFormat.name
-                        ? wmnPrintFormat
-                        : { name: formatName, print_format: formatName },
-                    printFormatDoc: null,
-                    template,
-                    printType: (wmnPrintFormat && (wmnPrintFormat.default_print_type || wmnPrintFormat.print_type)) || "RECEIPT"
-                };
-            }
-
             let printFormatDoc = await wmn_get_cached_print_format_doc(formatName) || {};
 
             if ((!printFormatDoc || !printFormatDoc.name) && formatName && window.frappe && frappe.call && navigator.onLine !== false) {
@@ -13759,7 +13878,6 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
                 (printFormatDoc && (
                     printFormatDoc.html ||
                     printFormatDoc.custom_html ||
-                    printFormatDoc.raw_commands ||
                     printFormatDoc.format_data
                 )) ||
                 "";
@@ -14067,37 +14185,14 @@ function wmn_init_offline_invoice_manager_dialog(pos) {
             );
         }
 
-        function wmn_escpos_print_method(method) {
-            method = String(method || "").trim();
-            return method === "legacy_bridge" || method === "webusb" || method === "webserial";
-        }
-
         function wmn_get_receipt_print_format_source(printConfig, printFormat) {
-            const settings = (window.cur_pos && window.cur_pos.settings) || {};
-            const method = String(
-                (printConfig && printConfig.method) ||
-                settings.printing_method ||
-                "legacy_bridge"
-            ).trim();
-            const formatName = String(
-                (printFormat && (printFormat.name || printFormat.print_format || printFormat.print_format_name)) ||
-                settings.print_format ||
-                ""
-            ).toLowerCase();
-            const value = String(
-                (printConfig && printConfig.receipt_print_format_source) ||
-                settings.receipt_print_format_source ||
-                (printFormat && printFormat.receipt_print_format_source) ||
-                "WMN Raw Print Format"
-            ).trim().toLowerCase();
-
-            if (wmn_escpos_print_method(method)) return "wmn_raw";
-            if (formatName.indexOf("raw") !== -1) return "wmn_raw";
-            return value.indexOf("raw") !== -1 ? "wmn_raw" : "erpnext_print_format";
+            return Number(printFormat?.raw_printing || 0) === 1
+                ? "erpnext_raw"
+                : "erpnext_print_format";
         }
 
         function wmn_uses_wmn_raw_receipt(printConfig, printFormat) {
-            return wmn_get_receipt_print_format_source(printConfig, printFormat) === "wmn_raw";
+            return wmn_get_receipt_print_format_source(printConfig, printFormat) === "erpnext_raw";
         }
 
 function wmn_get_printer_ws_url() {
@@ -14178,9 +14273,9 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             return wmn_send_to_legacy_bridge({ url: "receipt.pdf", file_content: clean }, printType);
         }
 
-        function wmn_send_raw_text_to_printer(rawText, printType) {
+        function wmn_send_raw_text_to_printer(rawText, printType, context) {
             const service = window.WMN_POS?.Services?.Printing?.PrintService;
-            if (service?.sendRaw) return service.sendRaw(String(rawText || ""), { printType: printType || "RECEIPT" });
+            if (service?.sendRaw) return service.sendRaw(String(rawText || ""), Object.assign({ printType: printType || "RECEIPT" }, context || {}));
             return wmn_send_to_legacy_bridge({
                 raw_content: btoa(unescape(encodeURIComponent(String(rawText || ""))))
             }, printType);
@@ -14395,8 +14490,9 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 }
             }
 
-            if (cfg.template && typeof wmn_render_raw_print_template === "function") {
-                const rawText = String(wmn_render_raw_print_template(cfg.template, doc, cfg.printFormat || "") || "");
+            const rawTemplate = String(cfg.printFormat?.raw_commands || "");
+            if (rawTemplate && typeof wmn_render_raw_print_template === "function") {
+                const rawText = String(wmn_render_raw_print_template(rawTemplate, doc, cfg.printFormat || {}) || "");
                 if (rawText.trim()) {
                     return {
                         rawText,
@@ -14435,10 +14531,10 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
 
             const printService = window.WMN_POS?.Services?.Printing?.PrintService;
             const printConfig = printService?.getConfig?.() || {};
-            const usesWmnRaw = wmn_uses_wmn_raw_receipt(printConfig);
             const cfg = await wmn_get_raw_print_template(doc, {
-                source: usesWmnRaw ? "wmn_raw" : "erpnext_print_format",
+                source: "erpnext_print_format",
             });
+            const usesWmnRaw = wmn_uses_wmn_raw_receipt(printConfig, cfg.printFormat);
             const printType = wmn_get_print_type(cfg.printFormat) || cfg.printType;
             const method = String(printConfig.method || "legacy_bridge").trim();
 
@@ -14451,7 +14547,10 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 const rawText = barcodeService?.decorateRawText
                     ? barcodeService.decorateRawText(raw.rawText, doc, printConfig)
                     : raw.rawText;
-                return await wmn_send_raw_text_to_printer(rawText, raw.printType || printType);
+                return await wmn_send_raw_text_to_printer(rawText, raw.printType || printType, {
+                    doc: doc,
+                    raw_text: raw.rawText,
+                });
             }
 
             if (method === "browser") {
@@ -14476,7 +14575,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             }
 
             if (method === "webusb" || method === "webserial") {
-                throw new Error("Direct WebUSB/WebSerial can only print RAW commands. Use Browser Print, WMN Windows Bridge, or QZ Tray for Print Format receipts.");
+                throw new Error("Enable Raw Printing and provide Raw Commands in the selected ERPNext Print Format, or use Browser Print, WMN Windows Bridge, or QZ Tray for HTML receipts.");
             }
 
             const pdfBase64 = await wmn_get_server_print_format_pdf(doc, cfg.printFormat);
@@ -14706,7 +14805,13 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         label: "Browser Print",
         capabilities: { raw: true, png: true, pdf: true, html: true },
         isSupported() { return typeof window.print === "function"; },
-        sendRaw(rawText) { return printHtml(rawToHtml(rawText)); },
+        sendRaw(rawText, settings, context) {
+            const barcode = window.WMN_POS?.Services?.Barcode?.InvoiceBarcode;
+            if (context && typeof context.raw_text === "string" && barcode?.browserRawHtml) {
+                return printHtml(barcode.browserRawHtml(context.raw_text, context.doc, settings));
+            }
+            return printHtml(rawToHtml(rawText));
+        },
         sendPng(base64) { return printImage(base64); },
         sendPdf(base64) { return printPdf(base64); },
         sendHtml(html) { return printHtml(html); },
@@ -15058,10 +15163,19 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
 
     async function resolvePrinter(settings) {
         const qz = await connect(settings);
+        if (String(settings?.qz_destination || "printer") === "tcp") {
+            const host = String(settings?.qz_tcp_host || "").trim();
+            const port = Number(settings?.qz_tcp_port);
+            if (!host) throw new Error("QZ TCP printer host is required.");
+            if (!Number.isInteger(port) || port < 1 || port > 65535) {
+                throw new Error("QZ TCP printer port must be between 1 and 65535.");
+            }
+            return { qz, target: { host, port } };
+        }
         let name = String(settings?.qz_printer_name || "").trim();
         if (!name) name = await qz.printers.getDefault();
         if (!name) throw new Error("No QZ printer is configured and no default printer was found.");
-        return { qz, name };
+        return { qz, target: name };
     }
 
     function configOptions(settings, context) {
@@ -15074,26 +15188,149 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         return options;
     }
 
+    function rawToBase64(rawText) {
+        const bytes = new TextEncoder().encode(String(rawText || ""));
+        let binary = "";
+        const chunk = 0x8000;
+        for (let offset = 0; offset < bytes.length; offset += chunk) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(offset, offset + chunk));
+        }
+        return btoa(binary);
+    }
+
+    function isIBM864Encoding(value) {
+        const name = String(value || "").trim().toLowerCase().replace(/[-_\s]/g, "");
+        return name === "ibm864" || name === "cp864" || name === "864" || name === "csibm864";
+    }
+
+    function splitIBM864Raw(rawText) {
+        const input = String(rawText || "");
+        const chunks = [];
+        let text = "";
+        let afterCommandControl = false;
+
+        const flushText = () => {
+            if (!text) return;
+            chunks.push(text);
+            text = "";
+        };
+
+        for (let i = 0; i < input.length; i += 1) {
+            const ch = input[i];
+            const code = input.charCodeAt(i);
+
+            // QZ applies IBM864 Arabic Bidi/shaping per RAW item. Keep LF/CR and
+            // ESC/POS control bytes outside Arabic text. This preserves the byte
+            // stream while preventing QZ from moving a line break across RTL text.
+            if (code < 0x20 || code === 0x7f) {
+                flushText();
+                chunks.push(ch);
+                afterCommandControl = code === 0x10 || code === 0x1b || code === 0x1c || code === 0x1d;
+                continue;
+            }
+
+            // Command opcode/arguments are byte-oriented. If Arabic text follows a
+            // command directly (for example ESC t n + Arabic), isolate the ASCII
+            // command tail before letting QZ shape the Arabic text. Normal mixed
+            // text such as "UOM: طبق" remains one text item.
+            if (afterCommandControl && code > 0xff && text) {
+                flushText();
+                afterCommandControl = false;
+            }
+
+            text += ch;
+            if (code > 0xff) afterCommandControl = false;
+        }
+        flushText();
+        return chunks;
+    }
+
+    function rawDataItem(data, flavor) {
+        return {
+            type: "raw",
+            format: "command",
+            flavor,
+            data: flavor === "base64" ? rawToBase64(data) : data,
+        };
+    }
+
+    function rawDataItems(output, flavor, encoding) {
+        if (flavor !== "plain" || !isIBM864Encoding(encoding)) {
+            return [rawDataItem(output, flavor)];
+        }
+
+        return splitIBM864Raw(output).map((data) => rawDataItem(data, "plain"));
+    }
+
     async function sendRaw(rawText, settings, context) {
-        const { qz, name } = await resolvePrinter(settings);
-        const config = qz.configs.create(name, configOptions(settings, context));
-        const data = [{ type: "raw", format: "command", flavor: "plain", data: String(rawText || "") }];
+        const { qz, target } = await resolvePrinter(settings);
+        const config = qz.configs.create(target, configOptions(settings, context));
+        const tcp = String(settings?.qz_destination || "printer") === "tcp";
+        const flavor = String(settings?.qz_raw_flavor || "auto") === "auto"
+            ? (tcp ? "base64" : "plain") : String(settings.qz_raw_flavor);
+        if (!['plain', 'base64'].includes(flavor)) throw new Error("QZ RAW flavor must be plain or base64.");
+        if (flavor === "base64" && !/^(utf-?8)?$/i.test(String(settings?.qz_encoding || "UTF8"))) {
+            throw new Error("QZ base64 RAW sends UTF-8 bytes; select plain to use another text encoding.");
+        }
+        const codepage = String(settings?.escpos_codepage || "").trim();
+        if (codepage && (!/^\d+$/.test(codepage) || Number(codepage) > 255)) {
+            throw new Error("ESC/POS codepage must be a number between 0 and 255.");
+        }
+        let output = String(rawText || "");
+        if (codepage) {
+            const command = "\x1Bt" + String.fromCharCode(Number(codepage));
+            output = output.startsWith("\x1b@") ? "\x1b@" + command + output.slice(2) : command + output;
+        }
+        const data = rawDataItems(output, flavor, settings?.qz_encoding);
+
+        // QZ RAW bypasses EscPos.buildRawJob(), so apply the same receipt
+        // lifecycle settings here. Keep feed/cut as independent RAW items so
+        // IBM864 shaping cannot move them across Arabic text.
+        const EscPos = ns.Services?.Printing?.EscPos;
+        const feedLines = EscPos?.clampInt
+            ? EscPos.clampInt(settings?.feed_lines, 0, 12, 3)
+            : Math.max(0, Math.min(12, parseInt(settings?.feed_lines ?? 3, 10) || 0));
+        const cutPaper = EscPos?.toBoolean
+            ? EscPos.toBoolean(settings?.cut_paper, true)
+            : !["0", "false", "no", "off"].includes(String(settings?.cut_paper ?? 1).trim().toLowerCase());
+
+        if (feedLines > 0) {
+            data.push(rawDataItem("\n".repeat(feedLines), flavor));
+        }
+        if (cutPaper) {
+            data.push(rawDataItem("\x1d\x56\x00", flavor)); // GS V 0
+        }
+
         await qz.print(config, data);
         return true;
     }
 
     async function sendPdf(base64, settings, context) {
-        const { qz, name } = await resolvePrinter(settings);
-        const config = qz.configs.create(name, configOptions(settings, context));
-        const data = [{ type: "pixel", format: "pdf", flavor: "base64", data: String(base64 || "") }];
+        const { qz, target } = await resolvePrinter(settings);
+        const config = qz.configs.create(target, configOptions(settings, context));
+        const tcp = String(settings?.qz_destination || "printer") === "tcp";
+        const data = [{
+            type: tcp ? "raw" : "pixel",
+            format: "pdf",
+            flavor: "base64",
+            data: String(base64 || ""),
+            ...(tcp ? { options: { language: "ESCPOS" } } : {}),
+        }];
         await qz.print(config, data);
         return true;
     }
 
     async function sendPng(base64, settings, context) {
-        const { qz, name } = await resolvePrinter(settings);
-        const config = qz.configs.create(name, configOptions(settings, context));
-        const data = [{ type: "pixel", format: "image", flavor: "base64", data: String(base64 || "") }];
+        const { qz, target } = await resolvePrinter(settings);
+        const config = qz.configs.create(target, configOptions(settings, context));
+        const tcp = String(settings?.qz_destination || "printer") === "tcp";
+        const data = [{
+            type: tcp ? "raw" : "pixel",
+            format: "image",
+            flavor: "base64",
+            data: String(base64 || ""),
+            ...(tcp ? { options: { language: "ESCPOS" } } : {}),
+        }];
         await qz.print(config, data);
         return true;
     }
@@ -15136,6 +15373,10 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         auto: "Auto (Managed then Legacy)",
         custom: "Custom URL",
     };
+    const QZ_DESTINATION_LABELS = {
+        printer: "Installed Printer",
+        tcp: "TCP/IP Host",
+    };
 
     const DEFAULTS = {
         method: "legacy_bridge",
@@ -15158,17 +15399,22 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         webserial_parity: "none",
         webserial_flow_control: "none",
         qz_printer_name: "",
+        qz_destination: "printer",
+        qz_tcp_host: "",
+        qz_tcp_port: 9100,
         qz_host: "",
         qz_encoding: "UTF8",
+        qz_raw_flavor: "auto",
+        escpos_codepage: "",
         qz_connector_mode: "legacy",
         qz_connector_url: "",
         show_invoice_barcode: 1,
         invoice_barcode_height: 56,
         invoice_barcode_module_width: 2,
         invoice_barcode_human_readable: 1,
+        invoice_barcode_symbology: "auto",
         enable_auto_silent_print: 0,
         print_after_cashier_completion: 0,
-        receipt_print_format_source: "WMN Raw Print Format",
     };
 
     function devicePreferences() {
@@ -15333,16 +15579,18 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         return QZ_CONNECTOR_MODE_LABELS[qzConnectorModeId(value)] || QZ_CONNECTOR_MODE_LABELS.legacy;
     }
 
-    function qzConnectorModeOptions() {
-        return Object.values(QZ_CONNECTOR_MODE_LABELS).join("\n");
+    function qzDestinationId(value) {
+        const text = String(value || "").trim();
+        if (QZ_DESTINATION_LABELS[text]) return text;
+        return Object.keys(QZ_DESTINATION_LABELS).find((key) => QZ_DESTINATION_LABELS[key] === text) || "printer";
     }
 
-    function receiptSourceId(value) {
-        const text = String(value || "").trim().toLowerCase();
-        if (text === "wmn_raw" || text === "raw" || text === "wmn raw print format" || text === "wmn raw") {
-            return "WMN Raw Print Format";
-        }
-        return "ERPNext Print Format";
+    function qzDestinationLabel(value) {
+        return QZ_DESTINATION_LABELS[qzDestinationId(value)];
+    }
+
+    function qzConnectorModeOptions() {
+        return Object.values(QZ_CONNECTOR_MODE_LABELS).join("\n");
     }
 
     function normalizeDialogConfig(values) {
@@ -15350,7 +15598,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             method: methodId(values?.method, false),
             fallback_method: methodId(values?.fallback_method, true),
             qz_connector_mode: qzConnectorModeId(values?.qz_connector_mode),
-            receipt_print_format_source: receiptSourceId(values?.receipt_print_format_source),
+            qz_destination: qzDestinationId(values?.qz_destination),
         });
     }
 
@@ -15383,16 +15631,34 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
     }
 
     function validateQZPrinterSelection(values) {
+        const flavor = String(values?.qz_raw_flavor || "auto");
+        if (!["auto", "plain", "base64"].includes(flavor)) throw new Error("Invalid QZ RAW mode.");
+        const codepage = String(values?.escpos_codepage || "").trim();
+        if (codepage && (!/^\d+$/.test(codepage) || Number(codepage) > 255)) throw new Error("ESC/POS codepage must be 0–255.");
+        const symbology = String(values?.invoice_barcode_symbology || "auto");
+        if (!["auto", "code128_b", "code128_c", "code39"].includes(symbology)) throw new Error("Invalid invoice barcode type.");
         const method = methodId(values?.method, false);
         if (method !== "qz") return;
+        const destination = qzDestinationId(values?.qz_destination);
+        const effectiveFlavor = flavor === "auto" ? (destination === "tcp" ? "base64" : "plain") : flavor;
+        if (effectiveFlavor === "base64" && !/^(utf-?8)?$/i.test(String(values?.qz_encoding || "UTF8"))) {
+            throw new Error("QZ base64 RAW uses UTF-8; select plain for IBM864 or another encoding.");
+        }
 
         const mode = qzConnectorModeId(values?.qz_connector_mode);
         if (mode === "custom" && !String(values?.qz_connector_url || "").trim()) {
             throw new Error("QZ Connector URL is required in Custom URL mode.");
         }
 
-        const printerName = String(values?.qz_printer_name || "").trim();
-        if (!printerName) {
+        if (qzDestinationId(values?.qz_destination) === "tcp") {
+            if (!String(values?.qz_tcp_host || "").trim()) {
+                throw new Error("QZ TCP printer host is required.");
+            }
+            const port = Number(values?.qz_tcp_port);
+            if (!Number.isInteger(port) || port < 1 || port > 65535) {
+                throw new Error("QZ TCP printer port must be between 1 and 65535.");
+            }
+        } else if (!String(values?.qz_printer_name || "").trim()) {
             throw new Error("Select a QZ printer before saving or printing.");
         }
     }
@@ -15425,7 +15691,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 Object.entries(info).forEach(([key, value]) => setDialogValue(dialog, key, value));
                 frappe.show_alert({ message: __("Serial printer paired."), indicator: "green" });
             }, true);
-        } else if (method === "qz") {
+        } else if (method === "qz" && qzDestinationId(dialog.get_value("qz_destination")) === "printer") {
             button(__("Detect QZ Printers"), async () => {
                 const list = await refreshQZPrinterOptions(dialog, { selectFirst: true });
                 frappe.show_alert({ message: __("Found {0} printers. Select the printer to use.", [list.length]), indicator: "green" });
@@ -15468,7 +15734,6 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 { fieldtype: "Section Break", label: __("Receipt Lifecycle") },
                 { fieldname: "enable_auto_silent_print", label: __("Enable Auto Silent Print"), fieldtype: "Check", default: cfg.enable_auto_silent_print, description: __("Automatically prints the final receipt after a normal Complete Order.") },
                 { fieldname: "print_after_cashier_completion", label: __("Print Again After Cashier Completion"), fieldtype: "Check", default: cfg.print_after_cashier_completion, description: __("Controls the second print after a cashier completes an Awaiting Cashier invoice. The handoff print remains unchanged.") },
-                { fieldname: "receipt_print_format_source", label: __("Receipt Print Format Source"), fieldtype: "Select", reqd: 1, options: "ERPNext Print Format\nWMN Raw Print Format", default: cfg.receipt_print_format_source, description: __("WMN Windows Bridge and direct ESC/POS printers always receive RAW text. ERPNext Print Format is used for Browser Print and optional QZ PDF output.") },
                 { fieldtype: "Section Break", label: __("ESC/POS Receipt") },
                 { fieldname: "cut_paper", label: __("Cut Paper"), fieldtype: "Check", default: cfg.cut_paper },
                 { fieldname: "feed_lines", label: __("Feed Lines"), fieldtype: "Int", default: cfg.feed_lines },
@@ -15482,6 +15747,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 { fieldtype: "Column Break" },
                 { fieldname: "invoice_barcode_module_width", label: __("ESC/POS Module Width"), fieldtype: "Int", default: cfg.invoice_barcode_module_width, depends_on: "eval:doc.show_invoice_barcode==1" },
                 { fieldname: "invoice_barcode_human_readable", label: __("Print Barcode Value"), fieldtype: "Check", default: cfg.invoice_barcode_human_readable, depends_on: "eval:doc.show_invoice_barcode==1" },
+                { fieldname: "invoice_barcode_symbology", label: __("RAW Barcode Type"), fieldtype: "Select", options: "auto\ncode128_b\ncode128_c\ncode39", default: cfg.invoice_barcode_symbology, depends_on: "eval:doc.show_invoice_barcode==1", description: __("Auto preserves the current Code128 behavior. Code128-C needs an even number of digits. Code39 supports limited symbols and may be wider.") },
 
                 { fieldtype: "Section Break", label: __("WMN Windows Bridge"), depends_on: "eval:doc.method=='WMN Windows Bridge'" },
                 { fieldname: "bridge_ws_url", label: __("Printer WebSocket URL"), fieldtype: "Data", default: cfg.bridge_ws_url, depends_on: "eval:doc.method=='WMN Windows Bridge'" },
@@ -15504,9 +15770,14 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
                 { fieldtype: "Section Break", label: __("QZ Tray"), depends_on: "eval:doc.method=='QZ Tray'" },
                 { fieldname: "qz_connector_mode", label: __("QZ Connector Mode"), fieldtype: "Select", options: qzConnectorModeOptions(), default: qzConnectorModeLabel(cfg.qz_connector_mode), depends_on: "eval:doc.method=='QZ Tray'", description: __("Current / Legacy keeps the existing connector behavior. Managed Bundle uses the QZ client bundled with WMN. Auto tries Managed first and falls back to Legacy.") },
                 { fieldname: "qz_connector_url", label: __("QZ Connector URL"), fieldtype: "Data", default: cfg.qz_connector_url, depends_on: "eval:doc.method=='QZ Tray' && doc.qz_connector_mode=='Custom URL'", description: __("Used only in Custom URL mode.") },
-                { fieldname: "qz_printer_name", label: __("Printer Name"), fieldtype: "Select", options: ["", cfg.qz_printer_name].filter(Boolean).join("\n"), default: cfg.qz_printer_name, depends_on: "eval:doc.method=='QZ Tray'", description: __("Required for QZ Tray. Use Detect QZ Printers, then select the exact printer name.") },
+                { fieldname: "qz_destination", label: __("Printer Destination"), fieldtype: "Select", options: Object.values(QZ_DESTINATION_LABELS).join("\n"), default: qzDestinationLabel(cfg.qz_destination), depends_on: "eval:doc.method=='QZ Tray'" },
+                { fieldname: "qz_printer_name", label: __("Printer Name"), fieldtype: "Select", options: ["", cfg.qz_printer_name].filter(Boolean).join("\n"), default: cfg.qz_printer_name, depends_on: "eval:doc.method=='QZ Tray' && doc.qz_destination=='Installed Printer'", description: __("Use Detect QZ Printers, then select the exact printer name.") },
+                { fieldname: "qz_tcp_host", label: __("Printer TCP Address"), fieldtype: "Data", default: cfg.qz_tcp_host, depends_on: "eval:doc.method=='QZ Tray' && doc.qz_destination=='TCP/IP Host'", description: __("Printer or emulator address, for example 127.0.0.1. This is not the QZ Host.") },
+                { fieldname: "qz_tcp_port", label: __("Printer TCP Port"), fieldtype: "Int", default: cfg.qz_tcp_port, depends_on: "eval:doc.method=='QZ Tray' && doc.qz_destination=='TCP/IP Host'", description: __("Usually 9100; use the port configured on the printer or emulator.") },
                 { fieldname: "qz_host", label: __("QZ Host"), fieldtype: "Data", default: cfg.qz_host, depends_on: "eval:doc.method=='QZ Tray'", description: __("Leave empty for local QZ Tray.") },
                 { fieldname: "qz_encoding", label: __("QZ Raw Encoding"), fieldtype: "Data", default: cfg.qz_encoding, depends_on: "eval:doc.method=='QZ Tray'", description: __("Examples: UTF8, IBM864. This is used for RAW printing only and must be supported by the printer.") },
+                { fieldname: "qz_raw_flavor", label: __("QZ RAW Transfer"), fieldtype: "Select", options: "auto\nplain\nbase64", default: cfg.qz_raw_flavor, depends_on: "eval:doc.method=='QZ Tray'", description: __("Auto uses base64 for TCP and plain for installed printers. Base64 sends UTF-8 bytes and ignores other QZ text encodings.") },
+                { fieldname: "escpos_codepage", label: __("ESC/POS Codepage Number"), fieldtype: "Data", default: cfg.escpos_codepage, depends_on: "eval:doc.method=='QZ Tray'", description: __("Optional ESC t value (0-255). Example: 37 for IBM864 on supported Epson printers. Leave blank to keep the printer default.") },
 
                 { fieldtype: "Section Break" },
                 { fieldname: "connection_actions", fieldtype: "HTML" },
@@ -15544,17 +15815,21 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         dialog.set_value("method", methodLabel(cfg.method));
         dialog.set_value("fallback_method", cfg.fallback_method === "none" ? "No fallback" : methodLabel(cfg.fallback_method));
         dialog.set_value("qz_connector_mode", qzConnectorModeLabel(cfg.qz_connector_mode));
+        dialog.set_value("qz_destination", qzDestinationLabel(cfg.qz_destination));
         dialog.get_field("method").$input.on("change.wmn-print", () => {
             setTimeout(async () => {
                 renderActionButtons(dialog);
-                if (methodId(dialog.get_value("method"), false) === "qz") {
+                if (methodId(dialog.get_value("method"), false) === "qz" && qzDestinationId(dialog.get_value("qz_destination")) === "printer") {
                     try { await refreshQZPrinterOptions(dialog, { selectFirst: false }); } catch (e) {}
                 }
             }, 0);
         });
+        dialog.get_field("qz_destination").$input.on("change.wmn-print", () => {
+            setTimeout(() => renderActionButtons(dialog), 0);
+        });
         setTimeout(async () => {
             renderActionButtons(dialog);
-            if (methodId(dialog.get_value("method"), false) === "qz") {
+            if (methodId(dialog.get_value("method"), false) === "qz" && qzDestinationId(dialog.get_value("qz_destination")) === "printer") {
                 try { await refreshQZPrinterOptions(dialog, { selectFirst: false }); } catch (e) {}
             }
         }, 0);
@@ -16268,6 +16543,35 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         ctrl.item_selector?.sync_card_quantities?.();
     }
 
+    async function saveOrdinaryDraft(ctrl) {
+        if (!ctrl?.frm?.doc) throw new Error("No open POS invoice");
+        if (ctrl.__wmn_handoff_in_flight) return false;
+        const doc = ctrl.frm.doc;
+        if (!canSendToCashier(doc) || isAwaitingCashier(doc)) {
+            throw new Error("This invoice cannot be saved as an ordinary draft");
+        }
+        ctrl.__wmn_handoff_in_flight = true;
+        try {
+            doc.__wmn_saved_as_draft = true;
+            const adapter = isOffline(ctrl)
+                ? ns.Features.InvoiceHandoff.Offline
+                : ns.Features.InvoiceHandoff.Online;
+            if (!adapter?.saveDraft) throw new Error("WMN draft adapter is not available");
+            await adapter.saveDraft(ctrl, doc);
+            if (ctrl.recent_order_list?.refresh_list) {
+                try { await ctrl.recent_order_list.refresh_list(); } catch (e) {}
+            }
+            await resetToNewOrder(ctrl);
+            frappe.show_alert({
+                message: wmn_t("Draft saved without printing.", "\u062a\u0645 \u062d\u0641\u0638 \u0627\u0644\u0645\u0633\u0648\u062f\u0629 \u062f\u0648\u0646 \u0637\u0628\u0627\u0639\u0629."),
+                indicator: "green",
+            });
+            return true;
+        } finally {
+            ctrl.__wmn_handoff_in_flight = false;
+        }
+    }
+
     async function sendToCashier(ctrl) {
         if (!ctrl?.frm?.doc) throw new Error("No open POS invoice");
         if (ctrl.__wmn_handoff_in_flight) return false;
@@ -16333,6 +16637,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         prepareForCompletion,
         capturePaymentSnapshot,
         restorePaymentSnapshot,
+        saveOrdinaryDraft,
         sendToCashier,
     };
 })();
@@ -20743,6 +21048,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         default_item_view: "Grid View",
         show_item_cart_counter: false,
         search_row_nav: false,
+        decrease_available_qty_in_cart: true,
     });
 
     function repository() {
@@ -20760,6 +21066,9 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             default_item_view: String(effective.default_item_view || DEFAULTS.default_item_view),
             show_item_cart_counter: Boolean(cint(effective.show_item_cart_counter || 0)),
             search_row_nav: Boolean(cint(effective.search_row_nav || 0)),
+            decrease_available_qty_in_cart: effective.decrease_available_qty_in_cart === undefined
+                ? true
+                : Boolean(cint(effective.decrease_available_qty_in_cart)),
         };
     }
 
@@ -20771,6 +21080,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             default_item_view: next.default_item_view === "Button View" ? "Button View" : "Grid View",
             show_item_cart_counter: next.show_item_cart_counter ? 1 : 0,
             search_row_nav: next.search_row_nav ? 1 : 0,
+            decrease_available_qty_in_cart: next.decrease_available_qty_in_cart ? 1 : 0,
         }, profile());
         return readAll();
     }
@@ -20783,6 +21093,7 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
             default_item_view: next.default_item_view === "Button View" ? "Button View" : "Grid View",
             show_item_cart_counter: next.show_item_cart_counter ? 1 : 0,
             search_row_nav: next.search_row_nav ? 1 : 0,
+            decrease_available_qty_in_cart: next.decrease_available_qty_in_cart ? 1 : 0,
         }, profile());
         return readAll();
     }
@@ -23902,7 +24213,9 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
 
     const FORM_WATCH_INTERVAL = 350;
     const LIST_LIMIT = 50;
+    const MENU_CACHE_KEY = "wmn_doctype_manager_menu";
     const dialogScriptCache = new Map();
+    let menuRequestRevision = 0;
 
     const SECTION_LABELS = Object.freeze({
         Setup: __("Setup"),
@@ -24029,6 +24342,11 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         }
     }
 
+    function menuColor(value) {
+        const color = String(value || "").trim();
+        return /^#[0-9a-fA-F]{6}$/.test(color) ? color : "";
+    }
+
     function configuredIcon(item) {
         const iconName = String(item?.icon || "").trim();
         if (iconName && frappe.utils && typeof frappe.utils.icon === "function") {
@@ -24043,9 +24361,15 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
         const permissionText = item.can_write || item.can_create
             ? __("Open list, add or edit")
             : __("Read only");
-        const hasCustomAppearance = Boolean(item.button_color || item.text_color);
+        const background = menuColor(item.button_color);
+        const foreground = menuColor(item.text_color);
+        const hasCustomAppearance = Boolean(background || foreground);
+        const style = [
+            background ? `--wmn-pos-menu-bg:${background}` : "",
+            foreground ? `--wmn-pos-menu-text:${foreground}` : "",
+        ].filter(Boolean).join(";");
         return `
-            <button type="button" class="wmn-pos-manager-button wmn-pos-manager-doctype${hasCustomAppearance ? " wmn-pos-manager-colored" : ""}" data-doctype="${escapeHtml(item.doctype)}">
+            <button type="button" class="wmn-pos-manager-button wmn-pos-manager-doctype${hasCustomAppearance ? " wmn-pos-manager-colored" : ""}" data-doctype="${escapeHtml(item.doctype)}"${style ? ` style="${style}"` : ""}>
                 ${configuredIcon(item)}
                 <span><strong>${escapeHtml(item.label || item.doctype)}</strong><small>${escapeHtml(permissionText)}</small></span>
             </button>`;
@@ -24088,13 +24412,31 @@ function wmn_send_to_printer(payload, printType, wsUrl = null) {
     async function openMenu(itemSelector) {
         ensureStyles();
         const adapter = getAdapter();
+        const revision = ++menuRequestRevision;
         let doctypes = [];
 
         try {
             doctypes = await adapter.getAvailableDoctypes();
+            if (revision !== menuRequestRevision) return null;
+            if (!isOffline() && window.wmnPOSOffline?.setSetting) {
+                try {
+                    await window.wmnPOSOffline.setSetting(MENU_CACHE_KEY, doctypes);
+                } catch (cacheError) {
+                    console.warn("WMN POS menu cache refresh failed", cacheError);
+                }
+            }
         } catch (error) {
+            if (revision !== menuRequestRevision) return null;
             console.error("WMN POS DocType permission load failed", error);
-            frappe.show_alert({ message: error?.message || __("Unable to load WMN POS menu."), indicator: "red" });
+            if (!isOffline()) {
+                doctypes = await window.wmnPOSOffline?.getSetting?.(MENU_CACHE_KEY) || [];
+            }
+            frappe.show_alert({
+                message: doctypes.length
+                    ? __("Showing the last saved POS menu because refresh failed.")
+                    : error?.message || __("Unable to load WMN POS menu."),
+                indicator: doctypes.length ? "orange" : "red",
+            });
         }
 
         const dialog = new frappe.ui.Dialog({
@@ -31465,6 +31807,8 @@ window.WMN_POS.Source.Controller = class {
 
         checkout() {
                     const result = super.checkout();
+                    this.$component?.addClass?.("wmn-complete-order-layout wmn-complete-order-online");
+                    this.$component?.attr?.("data-wmn-payment-layout", "online");
                     const doc = this.events?.get_frm?.()?.doc || {};
 
                     if (wmn_payment_is_zero_return(doc) && typeof wmn_prepare_zero_payment_return === "function") {
@@ -32812,11 +33156,7 @@ window.WMN_POS.Source.Controller = class {
 
         async is_invoice_returnable(doctype, invoice) {
                     if (!wmn_summary_is_offline()) {
-                        const r = await frappe.call({
-                            method: "wmn.wmn.page.wmn_pos.wmn_pos.is_invoice_returnable",
-                            args: { doctype, invoice },
-                        });
-                        return r.message;
+                        return super.is_invoice_returnable(doctype, invoice);
                     }
 
                     const returnOffline = window.WMN_POS?.Features?.Return?.Offline;
@@ -32878,11 +33218,9 @@ window.WMN_POS.Source.Controller = class {
                         frappe.show_alert({ message: __("Offline receipt printer is not available."), indicator: "orange" });
                         return;
                     }
-                    if (typeof wmn_uses_wmn_raw_receipt === "function" && wmn_uses_wmn_raw_receipt()) {
-                        const doc = this.doc || (this.events && this.events.get_frm && this.events.get_frm().doc);
-                        if (typeof wmn_print_raw_receipt === "function") {
-                            return wmn_print_raw_receipt(doc);
-                        }
+                    const doc = this.doc || (this.events && this.events.get_frm && this.events.get_frm().doc);
+                    if (typeof wmn_print_raw_receipt === "function") {
+                        return wmn_print_raw_receipt(doc);
                     }
                     return super.print_receipt();
                 },
@@ -34908,7 +35246,7 @@ window.WMN_POS.Source.Controller = class {
         wmn_open_ui_settings_dialog() {
                         const prefs = window.WMNPOSUIPreferences;
                         const repo = window.WMN_POS?.Services?.Settings?.POSProfileSettings;
-                        const current = prefs?.readAll?.() || { default_item_view: "Grid View", show_item_cart_counter: false, search_row_nav: false };
+                        const current = prefs?.readAll?.() || { default_item_view: "Grid View", show_item_cart_counter: false, search_row_nav: false, decrease_available_qty_in_cart: true };
                         const status = repo?.status?.() || {};
                         const dialog = new frappe.ui.Dialog({
                             title: __("POS Settings"),
@@ -34933,6 +35271,13 @@ window.WMN_POS.Source.Controller = class {
                                     description: __("Hide the top navigation bar and show its buttons next to the item search field."),
                                     default: current.search_row_nav ? 1 : 0,
                                 },
+                                {
+                                    fieldname: "decrease_available_qty_in_cart",
+                                    fieldtype: "Check",
+                                    label: __("Decrease available quantity while in cart"),
+                                    description: __("Restore the displayed quantity when an item is reduced or removed from the cart."),
+                                    default: current.decrease_available_qty_in_cart === false ? 0 : 1,
+                                },
                                 { fieldtype: "Section Break", label: __("Settings Storage") },
                                 {
                                     fieldname: "save_target",
@@ -34951,6 +35296,7 @@ window.WMN_POS.Source.Controller = class {
                                         default_item_view: String(values.default_item_view || "") === __("Button View") ? "Button View" : "Grid View",
                                         show_item_cart_counter: Boolean(cint(values.show_item_cart_counter || 0)),
                                         search_row_nav: Boolean(cint(values.search_row_nav || 0)),
+                                        decrease_available_qty_in_cart: Boolean(cint(values.decrease_available_qty_in_cart || 0)),
                                     };
                                     const saveToServer = String(values.save_target || "") === __("POS Profile Settings");
                                     if (saveToServer) {
@@ -35122,7 +35468,14 @@ window.WMN_POS.Source.Controller = class {
                         $button.toggleClass("is-active", Boolean(is_visible));
                     }, 0);
                 } else if (action === "save-as-draft") {
-                    controller.save_draft_invoice();
+                    Promise.resolve().then(() => {
+                        const saveDraft = window.WMN_POS?.Features?.InvoiceHandoff?.Common?.saveOrdinaryDraft;
+                        if (!saveDraft) throw new Error("WMN draft service is not available");
+                        return saveDraft(controller);
+                    }).catch((error) => {
+                        console.error("WMN save draft failed", error);
+                        frappe.show_alert({ message: error?.message || __("Unable to save draft"), indicator: "red" });
+                    });
                 } else if (action === "close-pos") {
                     if (this.wmn_is_offline()) return;
                     controller.close_pos();
@@ -35488,6 +35841,10 @@ window.WMN_POS.Source.Controller = class {
                 const cartRows = frm?.doc?.items || [];
                 const totalByItemCode = new Map();
                 const showCounter = Boolean(window.WMNPOSUIPreferences?.get?.("show_item_cart_counter"));
+                const preview = ns.Services?.Stock?.CartStockPreview;
+                const controller = window.cur_pos || null;
+                const fallbackWarehouse = frm?.doc?.set_warehouse || controller?.settings?.warehouse || "";
+                preview?.apply?.(this.items || [], frm?.doc || {}, controller, fallbackWarehouse);
 
                 for (const row of cartRows) {
                     if (!row) continue;
@@ -35502,10 +35859,18 @@ window.WMN_POS.Source.Controller = class {
                     const qty = selector.get_cart_quantity(item);
                     const itemTotalQty = flt(totalByItemCode.get(String(item.item_code || "")) || 0);
                     const $counter = $card.find(".wmn-item-cart-counter").first();
+                    const stockItem = (selector.items || []).find((row) => row?.item_code === item.item_code);
 
                     $card.toggleClass("has-quantity", qty > 0).find(".wmn-item-count").val(qty);
                     if ($counter.length) {
                         $counter.text(itemTotalQty).prop("hidden", !(showCounter && itemTotalQty > 0));
+                    }
+                    if (stockItem && cint(stockItem.is_stock_item || 0)) {
+                        const available = flt(stockItem.actual_qty || 0);
+                        $card.find(".wmn-stock-pill").first()
+                            .text(available)
+                            .toggleClass("is-empty", available <= 0)
+                            .toggleClass("is-low", available > 0 && available <= 10);
                     }
                 });
                     },
@@ -35534,7 +35899,7 @@ window.WMN_POS.Source.Controller = class {
                                 try {
                                     const stock = await window.wmnPOSOffline.getStock(item.item_code, warehouse);
                                     if (stock && stock.actual_qty !== undefined && stock.actual_qty !== null) {
-                                        item.actual_qty = flt(stock.actual_qty || 0);
+                                        ns.Services?.Stock?.CartStockPreview?.setBase?.(item, stock.actual_qty);
                                     }
                                 } catch (e) {
                                     console.warn("WMN offline stock pill refresh skipped", item.item_code, e);
@@ -35565,7 +35930,7 @@ window.WMN_POS.Source.Controller = class {
                                 for (const item of currentItems) {
                                     const fresh = item?.item_code ? freshByCode.get(item.item_code) : null;
                                     if (fresh && fresh.actual_qty !== undefined && fresh.actual_qty !== null) {
-                                        item.actual_qty = flt(fresh.actual_qty || 0);
+                                        ns.Services?.Stock?.CartStockPreview?.setBase?.(item, fresh.actual_qty);
                                     }
                                 }
                             } catch (e) {
@@ -35574,6 +35939,9 @@ window.WMN_POS.Source.Controller = class {
                         }
 
                         const selector = this;
+                        const frm = this.events?.get_frm?.() || window.cur_pos?.frm || null;
+                        const fallbackWarehouse = frm?.doc?.set_warehouse || window.cur_pos?.settings?.warehouse || "";
+                        ns.Services?.Stock?.CartStockPreview?.apply?.(currentItems, frm?.doc || {}, window.cur_pos || null, fallbackWarehouse, false);
                         this.$items_container.find(".wmn-item-card").each(function () {
                             const $card = $(this);
                             const cardData = read_item_data($card);
