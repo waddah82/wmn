@@ -286,6 +286,9 @@
                             get_frm: () => this.frm,
                             toggle_item_selector: (minimize) => this.wmn_handle_item_details_visibility(minimize),
                             form_updated: (item, field, value) => {
+                                if (!item || !item.name || this.item_details?.__wmn_applying_item_details_form) {
+                                    return Promise.resolve();
+                                }
                                 const item_row = typeof wmn_pos_get_doc === "function"
                                     ? wmn_pos_get_doc(item.doctype, item.name)
                                     : frappe.model.get_doc(item.doctype, item.name);
@@ -1492,9 +1495,23 @@
                         return Object.assign({}, offlineItem || {}, item || {});
                     },
 
+        wmn_is_existing_online_cart_row(item) {
+            const name = item && item.name;
+            if (!name) return false;
+            const rows = this.frm?.doc?.items || [];
+            const row = rows.find((candidate) => candidate && candidate.name === name);
+            if (!row || !row.item_code) return false;
+            if (item.item_code && String(row.item_code) !== String(item.item_code)) return false;
+            return true;
+        },
+
         async wmn_prepare_online_batch_args_before_super(args) {
             try {
                 if (!args || !args.item) return args;
+
+                if (this.item_details?.__wmn_applying_item_details_form) {
+                    return args;
+                }
 
                 const itemData = args.item.item_data || {};
                 const hasBatch = cint(
@@ -1504,6 +1521,12 @@
                 ) === 1;
 
                 if (!hasBatch) return args;
+
+                // Item Details / qty edits on a line already in the cart must not
+                // reopen the batch or UOM dialogs. Those dialogs are for adding.
+                if (this.wmn_is_existing_online_cart_row(args.item)) {
+                    return args;
+                }
 
                 const currentBatch = String(args.item.batch_no || "").trim();
                 const needsBatchDialog =
@@ -1567,17 +1590,20 @@
                     args.item = selectedUomItem;
                 }
 
-                const availableBatchQty = flt(args.item.__wmn_selected_batch_available_qty || 0);
-                const selectedQty = flt(args.item.qty || args.value || 1);
-                const conversion = flt(args.item.conversion_factor || 1);
-                const requiredStockQty = selectedQty * conversion;
+                const knownBatchQty = args.item.__wmn_selected_batch_available_qty;
+                if (knownBatchQty != null && knownBatchQty !== "") {
+                    const availableBatchQty = flt(knownBatchQty || 0);
+                    const selectedQty = flt(args.item.qty || args.value || 1);
+                    const conversion = flt(args.item.conversion_factor || 1);
+                    const requiredStockQty = selectedQty * conversion;
 
-                if (!wmn_pos_allows_negative_stock(args.item, this) && availableBatchQty >= 0 && requiredStockQty > availableBatchQty) {
-                    frappe.show_alert({
-                        message: __("Quantity cannot exceed available batch quantity"),
-                        indicator: "orange",
-                    });
-                    return null;
+                    if (!wmn_pos_allows_negative_stock(args.item, this) && requiredStockQty > availableBatchQty) {
+                        frappe.show_alert({
+                            message: __("Quantity cannot exceed available batch quantity"),
+                            indicator: "orange",
+                        });
+                        return null;
+                    }
                 }
 
                 return args;
@@ -3341,6 +3367,7 @@
     FinalMethods.wmn_get_child_doctype = UIMethods.wmn_get_child_doctype || CoreMethods.wmn_get_child_doctype;
     FinalMethods.wmn_recalculate_offline_totals = UIMethods.wmn_recalculate_offline_totals || CoreMethods.wmn_recalculate_offline_totals;
     FinalMethods.wmn_offline_get_full_item = UIMethods.wmn_offline_get_full_item || CoreMethods.wmn_offline_get_full_item;
+    FinalMethods.wmn_is_existing_online_cart_row = UIMethods.wmn_is_existing_online_cart_row || CoreMethods.wmn_is_existing_online_cart_row;
     FinalMethods.wmn_prepare_online_batch_args_before_super = UIMethods.wmn_prepare_online_batch_args_before_super || CoreMethods.wmn_prepare_online_batch_args_before_super;
     FinalMethods.wmn_apply_online_batch_after_cart_update = UIMethods.wmn_apply_online_batch_after_cart_update || CoreMethods.wmn_apply_online_batch_after_cart_update;
     FinalMethods.wmn_offline_on_cart_update = UIMethods.wmn_offline_on_cart_update || CoreMethods.wmn_offline_on_cart_update;
