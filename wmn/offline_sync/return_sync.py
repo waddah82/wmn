@@ -386,9 +386,12 @@ def _apply_offline_identity(return_doc, offline_id, offline_sync_field):
     return_doc.set(offline_sync_field, offline_id)
 
 
-def _assert_offline_financial_expectation(invoice, return_doc):
-    # Offline financial values are never written to the server document. They are
-    # used only as a fail-closed consistency check against ERPNext reconstruction.
+def _log_offline_financial_expectation(invoice, return_doc):
+    # Offline financial values are advisory for reconstructed returns. The server
+    # document is rebuilt from the submitted ERPNext source invoice plus the
+    # offline user's item/payment intent, so stale browser totals must not block
+    # synchronization when ERPNext can safely reconstruct the return.
+    mismatches = []
     for fieldname in (
         "total",
         "net_total",
@@ -401,12 +404,16 @@ def _assert_offline_financial_expectation(invoice, return_doc):
         offline_value = flt(invoice.get(fieldname) or 0)
         server_value = flt(return_doc.get(fieldname) or 0)
         if not _amount_equal(offline_value, server_value):
-            frappe.throw(
-                _(
-                    "Offline return differs from ERPNext reconstruction in {0}: "
-                    "offline={1}, server={2}. The return was not synchronized."
-                ).format(fieldname, offline_value, server_value)
+            mismatches.append(
+                f"{fieldname}: offline={offline_value}, server={server_value}"
             )
+
+    if mismatches:
+        frappe.logger("wmn.offline_return_sync").warning(
+            "Offline return totals differed from ERPNext reconstruction for %s: %s",
+            return_doc.get("name") or invoice.get("name") or invoice.get("wmn_offline_sync_id") or "",
+            "; ".join(mismatches),
+        )
 
 
 def _recalculate_and_validate_safety(return_doc, invoice):
@@ -414,7 +421,7 @@ def _recalculate_and_validate_safety(return_doc, invoice):
     # applying the user's selected quantities/payment intent.
     return_doc.run_method("calculate_taxes_and_totals")
 
-    _assert_offline_financial_expectation(invoice, return_doc)
+    _log_offline_financial_expectation(invoice, return_doc)
 
     grand_total = flt(return_doc.get("grand_total") or 0)
     if grand_total >= -_AMOUNT_TOLERANCE:
