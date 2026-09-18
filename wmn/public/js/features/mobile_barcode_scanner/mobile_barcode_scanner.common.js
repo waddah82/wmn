@@ -4,6 +4,9 @@
 
     window.WMN = window.WMN || {};
     window.WMN.Features = window.WMN.Features || {};
+    let activeClose = null;
+    let opening = null;
+    let closing = Promise.resolve();
 
     const BARCODE_FORMATS = Object.freeze([
         "aztec",
@@ -50,26 +53,6 @@
         return Boolean(navigator.mediaDevices?.getUserMedia) && (hasNativeDetector() || hasHtml5Qrcode());
     }
 
-    function ensureFrappeScanner() {
-        if (!window.frappe?.ui?.Scanner) {
-            throw new Error(__("Camera barcode scanner is not available in this session."));
-        }
-        return window.frappe.ui.Scanner;
-    }
-
-    function openFrappe(options = {}) {
-        const Scanner = ensureFrappeScanner();
-        return new Scanner({
-            dialog: true,
-            multiple: Boolean(options.multiple),
-            on_scan(data) {
-                const text = extractText(data);
-                if (!text) return;
-                options.onScan?.(text, data);
-            },
-        });
-    }
-
     function stopTracks(stream) {
         (stream?.getTracks?.() || []).forEach((track) => {
             try { track.stop(); } catch (error) {}
@@ -89,6 +72,25 @@
         }
     }
 
+    function waitForScannerElement(elementId, attempts = 50) {
+        return new Promise((resolve, reject) => {
+            const check = () => {
+                const element = document.getElementById(elementId);
+                if (element) {
+                    resolve(element);
+                    return;
+                }
+                attempts -= 1;
+                if (attempts <= 0) {
+                    reject(new Error(`HTML Element with id=${elementId} not found`));
+                    return;
+                }
+                window.setTimeout(check, 30);
+            };
+            check();
+        });
+    }
+
     function openLocal(options = {}) {
         if (!navigator.mediaDevices?.getUserMedia) {
             throw new Error(__("Camera is not available in this browser."));
@@ -103,27 +105,42 @@
         let stream = null;
         let rafId = 0;
         let html5 = null;
+        let stopPromise = null;
         const scanAreaId = `wmn-local-barcode-scan-${Date.now()}`;
+        const scanMarkup = detector
+            ? `<div class="wmn-local-barcode-scanner" id="${scanAreaId}"><video playsinline autoplay muted></video><p class="text-muted text-center">${__("Point the camera at a barcode")}</p></div>`
+            : `<div class="wmn-local-barcode-scanner" id="${scanAreaId}"></div>`;
 
         const finish = (text, data) => {
             if (settled || !text) return;
             settled = true;
-            options.onScan?.(text, data);
-            if (!options.multiple) dialog.hide();
-            else settled = false;
+            Promise.resolve(options.onScan?.(text, data)).finally(async () => {
+                if (!options.multiple) {
+                    await stop();
+                    dialog.hide();
+                } else {
+                    settled = false;
+                }
+            });
         };
 
-        const stop = async () => {
-            if (rafId) {
-                window.cancelAnimationFrame(rafId);
-                rafId = 0;
-            }
-            stopTracks(stream);
-            stream = null;
-            if (html5) {
-                try { await html5.stop(); } catch (error) {}
+        const stop = () => {
+            if (stopPromise) return stopPromise;
+            stopPromise = (async () => {
+                if (rafId) {
+                    window.cancelAnimationFrame(rafId);
+                    rafId = 0;
+                }
+                stopTracks(stream);
+                stream = null;
+                const currentHtml5 = html5;
                 html5 = null;
-            }
+                if (currentHtml5) {
+                    try { await currentHtml5.stop(); } catch (error) {}
+                    try { await currentHtml5.clear(); } catch (error) {}
+                }
+            })();
+            return stopPromise;
         };
 
         const dialog = new frappe.ui.Dialog({
@@ -132,13 +149,12 @@
                 {
                     fieldtype: "HTML",
                     fieldname: "scan_area",
-                    options: detector
-                        ? `<div class="wmn-local-barcode-scanner" id="${scanAreaId}"><video playsinline autoplay muted></video><p class="text-muted text-center">${__("Point the camera at a barcode")}</p></div>`
-                        : `<div class="wmn-local-barcode-scanner" id="${scanAreaId}"></div>`,
+                    options: "",
                 },
             ],
             on_hide() {
-                stop();
+                if (activeClose === stop) activeClose = null;
+                closing = stop();
             },
         });
 
@@ -173,6 +189,7 @@
         };
 
         const startHtml5 = async () => {
+            await waitForScannerElement(scanAreaId);
             html5 = new window.Html5Qrcode(scanAreaId);
             await html5.start(
                 { facingMode: "environment" },
@@ -185,6 +202,9 @@
         };
 
         dialog.show();
+        const scanField = dialog.get_field?.("scan_area") || dialog.fields_dict?.scan_area;
+        scanField?.$wrapper?.html?.(scanMarkup);
+        activeClose = stop;
         window.setTimeout(() => {
             const video = dialog.$wrapper?.find?.("video")?.get?.(0);
             const starter = detector && video ? startNative(video) : startHtml5();
@@ -201,12 +221,26 @@
         return dialog;
     }
 
+    async function close() {
+        await closing;
+        const closer = activeClose;
+        activeClose = null;
+        if (closer) closing = Promise.resolve(closer());
+        await closing;
+    }
+
     function open(options = {}) {
-        if (canOpenLocal()) return openLocal(options);
-        if (isOffline()) {
-            throw new Error(__("Camera barcode scanning is not available offline in this browser."));
-        }
-        return openFrappe(options);
+        if (opening) return opening;
+        opening = (async () => {
+            await close();
+            if (!canOpenLocal()) {
+                throw new Error(__("Local camera barcode scanning is not available in this browser."));
+            }
+            return openLocal(options);
+        })().finally(() => {
+            opening = null;
+        });
+        return opening;
     }
 
     function openForPOS(selector) {
@@ -233,5 +267,6 @@
         openForPOS,
         canOpenLocal,
         isOffline,
+        close,
     };
 })();

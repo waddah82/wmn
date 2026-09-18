@@ -1884,7 +1884,7 @@
         wmn_open_ui_settings_dialog() {
                         const prefs = window.WMNPOSUIPreferences;
                         const repo = window.WMN_POS?.Services?.Settings?.POSProfileSettings;
-                        const current = prefs?.readAll?.() || { default_item_view: "Grid View", show_item_cart_counter: false, search_row_nav: false };
+                        const current = prefs?.readAll?.() || { default_item_view: "Grid View", show_item_cart_counter: false, search_row_nav: false, decrease_available_qty_in_cart: true };
                         const status = repo?.status?.() || {};
                         const dialog = new frappe.ui.Dialog({
                             title: __("POS Settings"),
@@ -1909,6 +1909,13 @@
                                     description: __("Hide the top navigation bar and show its buttons next to the item search field."),
                                     default: current.search_row_nav ? 1 : 0,
                                 },
+                                {
+                                    fieldname: "decrease_available_qty_in_cart",
+                                    fieldtype: "Check",
+                                    label: __("Decrease available quantity while in cart"),
+                                    description: __("Restore the displayed quantity when an item is reduced or removed from the cart."),
+                                    default: current.decrease_available_qty_in_cart === false ? 0 : 1,
+                                },
                                 { fieldtype: "Section Break", label: __("Settings Storage") },
                                 {
                                     fieldname: "save_target",
@@ -1927,6 +1934,7 @@
                                         default_item_view: String(values.default_item_view || "") === __("Button View") ? "Button View" : "Grid View",
                                         show_item_cart_counter: Boolean(cint(values.show_item_cart_counter || 0)),
                                         search_row_nav: Boolean(cint(values.search_row_nav || 0)),
+                                        decrease_available_qty_in_cart: Boolean(cint(values.decrease_available_qty_in_cart || 0)),
                                     };
                                     const saveToServer = String(values.save_target || "") === __("POS Profile Settings");
                                     if (saveToServer) {
@@ -2098,7 +2106,14 @@
                         $button.toggleClass("is-active", Boolean(is_visible));
                     }, 0);
                 } else if (action === "save-as-draft") {
-                    controller.save_draft_invoice();
+                    Promise.resolve().then(() => {
+                        const saveDraft = window.WMN_POS?.Features?.InvoiceHandoff?.Common?.saveOrdinaryDraft;
+                        if (!saveDraft) throw new Error("WMN draft service is not available");
+                        return saveDraft(controller);
+                    }).catch((error) => {
+                        console.error("WMN save draft failed", error);
+                        frappe.show_alert({ message: error?.message || __("Unable to save draft"), indicator: "red" });
+                    });
                 } else if (action === "close-pos") {
                     if (this.wmn_is_offline()) return;
                     controller.close_pos();
@@ -2464,6 +2479,10 @@
                 const cartRows = frm?.doc?.items || [];
                 const totalByItemCode = new Map();
                 const showCounter = Boolean(window.WMNPOSUIPreferences?.get?.("show_item_cart_counter"));
+                const preview = ns.Services?.Stock?.CartStockPreview;
+                const controller = window.cur_pos || null;
+                const fallbackWarehouse = frm?.doc?.set_warehouse || controller?.settings?.warehouse || "";
+                preview?.apply?.(this.items || [], frm?.doc || {}, controller, fallbackWarehouse);
 
                 for (const row of cartRows) {
                     if (!row) continue;
@@ -2478,10 +2497,18 @@
                     const qty = selector.get_cart_quantity(item);
                     const itemTotalQty = flt(totalByItemCode.get(String(item.item_code || "")) || 0);
                     const $counter = $card.find(".wmn-item-cart-counter").first();
+                    const stockItem = (selector.items || []).find((row) => row?.item_code === item.item_code);
 
                     $card.toggleClass("has-quantity", qty > 0).find(".wmn-item-count").val(qty);
                     if ($counter.length) {
                         $counter.text(itemTotalQty).prop("hidden", !(showCounter && itemTotalQty > 0));
+                    }
+                    if (stockItem && cint(stockItem.is_stock_item || 0)) {
+                        const available = flt(stockItem.actual_qty || 0);
+                        $card.find(".wmn-stock-pill").first()
+                            .text(available)
+                            .toggleClass("is-empty", available <= 0)
+                            .toggleClass("is-low", available > 0 && available <= 10);
                     }
                 });
                     },
@@ -2510,7 +2537,7 @@
                                 try {
                                     const stock = await window.wmnPOSOffline.getStock(item.item_code, warehouse);
                                     if (stock && stock.actual_qty !== undefined && stock.actual_qty !== null) {
-                                        item.actual_qty = flt(stock.actual_qty || 0);
+                                        ns.Services?.Stock?.CartStockPreview?.setBase?.(item, stock.actual_qty);
                                     }
                                 } catch (e) {
                                     console.warn("WMN offline stock pill refresh skipped", item.item_code, e);
@@ -2541,7 +2568,7 @@
                                 for (const item of currentItems) {
                                     const fresh = item?.item_code ? freshByCode.get(item.item_code) : null;
                                     if (fresh && fresh.actual_qty !== undefined && fresh.actual_qty !== null) {
-                                        item.actual_qty = flt(fresh.actual_qty || 0);
+                                        ns.Services?.Stock?.CartStockPreview?.setBase?.(item, fresh.actual_qty);
                                     }
                                 }
                             } catch (e) {
@@ -2550,6 +2577,9 @@
                         }
 
                         const selector = this;
+                        const frm = this.events?.get_frm?.() || window.cur_pos?.frm || null;
+                        const fallbackWarehouse = frm?.doc?.set_warehouse || window.cur_pos?.settings?.warehouse || "";
+                        ns.Services?.Stock?.CartStockPreview?.apply?.(currentItems, frm?.doc || {}, window.cur_pos || null, fallbackWarehouse, false);
                         this.$items_container.find(".wmn-item-card").each(function () {
                             const $card = $(this);
                             const cardData = read_item_data($card);

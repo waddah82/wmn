@@ -1,0 +1,10 @@
+const fs = require("fs");
+const assert = require("assert");
+const path = require("path");
+const src = fs.readFileSync(path.resolve(__dirname, "../methods.js"), "utf8");
+assert.match(src, /decrease_available_qty_in_cart/, "Settings dialog must expose the stock preview control");
+assert.match(src, /CartStockPreview/, "Item selector must apply the shared stock preview");
+assert.match(src, /saveOrdinaryDraft[\s\S]*return saveDraft\(controller\)/, "Save as Draft must use its non-printing flow");
+assert.doesNotMatch(src, /controller\.wmn_send_to_cashier\(\)/, "Save as Draft must not invoke cashier handoff");
+assert.doesNotMatch(src, /controller\.save_draft_invoice\(\)/, "Removed upstream method must not be called");
+console.log("WMN_DRAFT_AND_STOCK_CONTROLS_PASS");

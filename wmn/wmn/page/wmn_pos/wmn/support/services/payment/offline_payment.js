@@ -1,4 +1,18 @@
 /* Offline payment and partial/credit payment logic. */
+function wmn_payment_key_value(current, key, isReturn, remaining, replace) {
+            const original = String(current ?? "0").replace(/^-/, "");
+            let value = replace && /^[0-9]$/.test(key) ? "" : original;
+            if (key === "clear") value = "0";
+            else if (key === "back") value = value.slice(0, -1) || "0";
+            else if (key === "remaining") value = String(Math.max(0, Number(remaining) || 0));
+            else if (key === ".") {
+                if (!value.includes(".")) value = (value || "0") + ".";
+            } else if (/^[0-9]$/.test(key)) {
+                value = value === "0" ? key : value + key;
+            }
+            return isReturn && Number(value) !== 0 ? "-" + value : value;
+        }
+
 function wmn_invoice_payment_total(doc) {
             doc = doc || {};
             const rowTotal = (doc.payments || []).reduce((sum, row) => sum + Math.abs(flt((row && row.amount) || 0)), 0);
@@ -282,15 +296,18 @@ function wmn_invoice_payment_total(doc) {
                 }
                 return `
                     <div class="wmn-offline-payment-row" data-payment-index="${idx}">
-                        <div>
-                            <div class="wmn-font-bold">${mode}</div>
+                        <div class="wmn-payment-method-copy">
+                            <div class="wmn-payment-method-name wmn-font-bold">${mode}</div>
                             <div class="wmn-offline-payment-account">${frappe.utils.escape_html(p.account || "")}</div>
                             ${gatewayHtml}
                         </div>
-                        <input type="number" step="0.01" ${isReturn ? 'max="0"' : 'min="0"'}
-                               class="form-control wmn-offline-payment-amount"
-                               data-payment-index="${idx}"
-                               value="${amount}">
+                        <div class="wmn-payment-amount-control">
+                            <label class="wmn-payment-amount-label">${wmn_t("Amount", "\u0627\u0644\u0645\u0628\u0644\u063a")}</label>
+                            <input type="number" step="0.01" ${isReturn ? 'max="0"' : 'min="0"'}
+                                   class="form-control wmn-offline-payment-amount"
+                                   data-payment-index="${idx}"
+                                   value="${amount}">
+                        </div>
                     </div>
                 `;
             }).join("");
@@ -304,47 +321,59 @@ function wmn_invoice_payment_total(doc) {
                             fieldtype: "HTML",
                             fieldname: "payment_html",
                             options: `
-                                <div class="wmn-offline-payment-dialog">
-                                    <div class="wmn-offline-payment-summary">
+                                <div class="wmn-offline-payment-dialog wmn-complete-order-layout wmn-complete-order-offline">
+                                    <section class="wmn-offline-payment-summary wmn-payment-summary">
                                         <div class="wmn-offline-payment-card">
-                                            <div class="wmn-offline-payment-label">${wmn_t("Grand Total", "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A")}</div>
+                                            <div class="wmn-offline-payment-label">${wmn_t("Grand Total", "\u0627\u0644\u0625\u062c\u0645\u0627\u0644\u064a")}</div>
                                             <div class="wmn-offline-payment-value large">${format_currency(total, doc.currency || "YER")}</div>
                                         </div>
                                         <div class="wmn-offline-payment-card">
-                                            <div class="wmn-offline-payment-label">${wmn_t("Customer", "\u0627\u0644\u0639\u0645\u064A\u0644")}</div>
+                                            <div class="wmn-offline-payment-label">${wmn_t("Customer", "\u0627\u0644\u0639\u0645\u064a\u0644")}</div>
                                             <div class="wmn-offline-payment-value">${frappe.utils.escape_html(doc.customer_name || doc.customer || "")}</div>
                                         </div>
                                         <div class="wmn-offline-payment-card">
-                                            <div class="wmn-offline-payment-label">${wmn_t("Invoice", "\u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629")}</div>
+                                            <div class="wmn-offline-payment-label">${wmn_t("Invoice", "\u0627\u0644\u0641\u0627\u062a\u0648\u0631\u0629")}</div>
                                             <div class="wmn-offline-payment-value">${frappe.utils.escape_html(doc.name || "")}</div>
                                         </div>
+                                        <div class="wmn-offline-payment-card">
+                                            <div class="wmn-offline-payment-label">${isReturn ? wmn_t("Refund", "\u0627\u0644\u0627\u0633\u062a\u0631\u062f\u0627\u062f") : wmn_t("Paid", "\u0627\u0644\u0645\u062f\u0641\u0648\u0639")}</div>
+                                            <div class="wmn-offline-payment-value wmn-payment-paid-total">0</div>
+                                        </div>
+                                        <div class="wmn-offline-payment-card">
+                                            <div class="wmn-offline-payment-label wmn-payment-balance-label">${wmn_t("Balance", "\u0627\u0644\u0645\u062a\u0628\u0642\u064a")}</div>
+                                            <div class="wmn-offline-payment-value wmn-payment-balance-total">${format_currency(total, doc.currency || "YER")}</div>
+                                        </div>
+                                    </section>
+
+                                    <section class="wmn-payment-workspace">
+                                        <div class="wmn-offline-payment-method-list wmn-payment-methods">
+                                            ${rowsHtml || `<div class="text-muted">${wmn_t("No payment methods found", "\u0644\u0627 \u062a\u0648\u062c\u062f \u0637\u0631\u0642 \u062f\u0641\u0639")}</div>`}
+                                        </div>
+                                    </section>
+
+                                    <div class="wmn-payment-keypad" hidden aria-label="${wmn_t("Payment keypad", "\u0644\u0648\u062d\u0629 \u0623\u0631\u0642\u0627\u0645 \u0627\u0644\u062f\u0641\u0639")}">
+                                        <div class="wmn-payment-keypad-grid">
+                                            ${["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "back", "clear", "remaining", "done"].map((key) => `
+                                                <button type="button" class="wmn-payment-key" data-key="${key}">${{
+                                                    back: "\u232b", clear: wmn_t("Clear", "\u0645\u0633\u062d"),
+                                                    remaining: wmn_t("Remaining", "\u0627\u0644\u0645\u062a\u0628\u0642\u064a"),
+                                                    done: wmn_t("Done", "\u062a\u0645"),
+                                                }[key] || key}</button>`).join("")}
+                                        </div>
                                     </div>
 
-                                    <div class="wmn-offline-payment-method-list">
-                                        ${rowsHtml || `<div class="text-muted">${wmn_t("No payment methods found", "\u0644\u0627 \u062A\u0648\u062C\u062F \u0637\u0631\u0642 \u062F\u0641\u0639")}</div>`}
-                                    </div>
+                                    <div class="wmn-payment-actions">
+                                        ${canSellOnCredit ? `
+                                            <button type="button" class="btn btn-default wmn-offline-sell-on-credit-btn wmn-offline-payment-button">
+                                                ${__("Sell on Credit")}
+                                            </button>
+                                        ` : ""}
 
-                                    ${canSellOnCredit ? `
-                                        <button type="button" class="btn btn-default wmn-offline-sell-on-credit-btn wmn-offline-payment-button">
-                                            ${__("Sell on Credit")}
-                                        </button>
-                                    ` : ""}
-
-                                    ${(handoff?.canSendToCashier?.(doc) && ctrl?.__wmn_cashier_resume !== true) ? `
-                                        <button type="button" class="btn btn-default wmn-offline-send-to-cashier-btn wmn-offline-payment-button">
-                                            ${wmn_t("Send to Cashier", "إرسال إلى الكاشير")}
-                                        </button>
-                                    ` : ""}
-
-                                    <div class="wmn-offline-payment-total-row">
-                                        <div class="wmn-offline-payment-label">
-                                            ${isReturn
-                                                ? wmn_t("Complete Order will apply the refund to the offline return then save it offline.", "إكمال الطلب سيطبق الاسترداد على المرتجع ثم يحفظه أوفلاين.")
-                                                : wmn_t("Complete Order will apply payment to the offline invoice then save it offline.", "\u0625\u0643\u0645\u0627\u0644 \u0627\u0644\u0637\u0644\u0628 \u0633\u064A\u0636\u064A\u0641 \u0627\u0644\u062F\u0641\u0639 \u0644\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0627\u0644\u0623\u0648\u0641\u0644\u0627\u064A\u0646 \u062B\u0645 \u064A\u062D\u0641\u0638\u0647\u0627 \u0623\u0648\u0641\u0644\u0627\u064A\u0646.")}
-                                        </div>
-                                        <div class="wmn-font-bold">
-                                            ${isReturn ? wmn_t("Refund", "الاسترداد") : wmn_t("Paid", "\u0627\u0644\u0645\u062F\u0641\u0648\u0639")}: <span class="wmn-offline-paid-total">0</span>
-                                        </div>
+                                        ${(handoff?.canSendToCashier?.(doc) && ctrl?.__wmn_cashier_resume !== true) ? `
+                                            <button type="button" class="btn btn-default wmn-offline-send-to-cashier-btn wmn-offline-payment-button">
+                                                ${wmn_t("Send to Cashier", "\u0625\u0631\u0633\u0627\u0644 \u0625\u0644\u0649 \u0627\u0644\u0643\u0627\u0634\u064a\u0631")}
+                                            </button>
+                                        ` : ""}
                                     </div>
                                 </div>
                             `
@@ -445,12 +474,50 @@ function wmn_invoice_payment_total(doc) {
                 d.$wrapper.addClass("wmn-pos-app-dialog wmn-offline-payment-modal");
                 d.show();
 
+                let activePaymentInput = null;
+                let replaceNextKey = false;
+                const $keypad = d.$wrapper.find(".wmn-payment-keypad");
+                d.$wrapper.on("focusin.wmnPaymentKeypad", ".wmn-offline-payment-amount", function () {
+                    activePaymentInput = this;
+                    replaceNextKey = true;
+                    $keypad.prop("hidden", false);
+                });
+                d.$wrapper.on("click.wmnPaymentKeypad", ".wmn-payment-key", function () {
+                    const key = String($(this).attr("data-key") || "");
+                    if (key === "done") {
+                        $keypad.prop("hidden", true);
+                        activePaymentInput = null;
+                        return;
+                    }
+                    if (!activePaymentInput) return;
+                    const $input = $(activePaymentInput);
+                    const othersPaid = d.$wrapper.find(".wmn-offline-payment-amount").toArray()
+                        .filter((input) => input !== activePaymentInput)
+                        .reduce((sum, input) => sum + Math.abs(flt($(input).val() || 0)), 0);
+                    const remaining = Math.max(0, Math.abs(total) - othersPaid);
+                    const value = wmn_payment_key_value($input.val(), key, isReturn, remaining, replaceNextKey);
+                    replaceNextKey = false;
+                    $input.val(value).trigger("input");
+                });
+                d.$wrapper.on("hidden.bs.modal.wmnPaymentKeypad", () => {
+                    d.$wrapper.off(".wmnPaymentKeypad");
+                    activePaymentInput = null;
+                });
+
                 const updatePaidTotal = () => {
                     let paid = 0;
                     d.$wrapper.find(".wmn-offline-payment-amount").each(function () {
                         paid += flt($(this).val() || 0);
                     });
-                    d.$wrapper.find(".wmn-offline-paid-total").text(format_currency(paid, doc.currency || "YER"));
+                    const invoiceTotal = flt(doc.rounded_total || doc.grand_total || 0);
+                    const difference = invoiceTotal - paid;
+                    const isChange = !isReturn && difference < 0;
+                    const balance = isChange ? -difference : difference;
+                    d.$wrapper.find(".wmn-payment-paid-total").text(format_currency(paid, doc.currency || "YER"));
+                    d.$wrapper.find(".wmn-payment-balance-label").text(isChange
+                        ? wmn_t("Change Amount", "\u0627\u0644\u0628\u0627\u0642\u064a \u0644\u0644\u0639\u0645\u064a\u0644")
+                        : wmn_t("Balance", "\u0627\u0644\u0645\u062a\u0628\u0642\u064a"));
+                    d.$wrapper.find(".wmn-payment-balance-total").text(format_currency(balance, doc.currency || "YER"));
                 };
 
                 d.$wrapper.on("input", ".wmn-offline-payment-amount", function () {

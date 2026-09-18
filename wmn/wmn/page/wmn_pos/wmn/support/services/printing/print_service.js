@@ -19,6 +19,10 @@
         auto: "Auto (Managed then Legacy)",
         custom: "Custom URL",
     };
+    const QZ_DESTINATION_LABELS = {
+        printer: "Installed Printer",
+        tcp: "TCP/IP Host",
+    };
 
     const DEFAULTS = {
         method: "legacy_bridge",
@@ -41,17 +45,22 @@
         webserial_parity: "none",
         webserial_flow_control: "none",
         qz_printer_name: "",
+        qz_destination: "printer",
+        qz_tcp_host: "",
+        qz_tcp_port: 9100,
         qz_host: "",
         qz_encoding: "UTF8",
+        qz_raw_flavor: "auto",
+        escpos_codepage: "",
         qz_connector_mode: "legacy",
         qz_connector_url: "",
         show_invoice_barcode: 1,
         invoice_barcode_height: 56,
         invoice_barcode_module_width: 2,
         invoice_barcode_human_readable: 1,
+        invoice_barcode_symbology: "auto",
         enable_auto_silent_print: 0,
         print_after_cashier_completion: 0,
-        receipt_print_format_source: "WMN Raw Print Format",
     };
 
     function devicePreferences() {
@@ -216,16 +225,18 @@
         return QZ_CONNECTOR_MODE_LABELS[qzConnectorModeId(value)] || QZ_CONNECTOR_MODE_LABELS.legacy;
     }
 
-    function qzConnectorModeOptions() {
-        return Object.values(QZ_CONNECTOR_MODE_LABELS).join("\n");
+    function qzDestinationId(value) {
+        const text = String(value || "").trim();
+        if (QZ_DESTINATION_LABELS[text]) return text;
+        return Object.keys(QZ_DESTINATION_LABELS).find((key) => QZ_DESTINATION_LABELS[key] === text) || "printer";
     }
 
-    function receiptSourceId(value) {
-        const text = String(value || "").trim().toLowerCase();
-        if (text === "wmn_raw" || text === "raw" || text === "wmn raw print format" || text === "wmn raw") {
-            return "WMN Raw Print Format";
-        }
-        return "ERPNext Print Format";
+    function qzDestinationLabel(value) {
+        return QZ_DESTINATION_LABELS[qzDestinationId(value)];
+    }
+
+    function qzConnectorModeOptions() {
+        return Object.values(QZ_CONNECTOR_MODE_LABELS).join("\n");
     }
 
     function normalizeDialogConfig(values) {
@@ -233,7 +244,7 @@
             method: methodId(values?.method, false),
             fallback_method: methodId(values?.fallback_method, true),
             qz_connector_mode: qzConnectorModeId(values?.qz_connector_mode),
-            receipt_print_format_source: receiptSourceId(values?.receipt_print_format_source),
+            qz_destination: qzDestinationId(values?.qz_destination),
         });
     }
 
@@ -266,16 +277,34 @@
     }
 
     function validateQZPrinterSelection(values) {
+        const flavor = String(values?.qz_raw_flavor || "auto");
+        if (!["auto", "plain", "base64"].includes(flavor)) throw new Error("Invalid QZ RAW mode.");
+        const codepage = String(values?.escpos_codepage || "").trim();
+        if (codepage && (!/^\d+$/.test(codepage) || Number(codepage) > 255)) throw new Error("ESC/POS codepage must be 0–255.");
+        const symbology = String(values?.invoice_barcode_symbology || "auto");
+        if (!["auto", "code128_b", "code128_c", "code39"].includes(symbology)) throw new Error("Invalid invoice barcode type.");
         const method = methodId(values?.method, false);
         if (method !== "qz") return;
+        const destination = qzDestinationId(values?.qz_destination);
+        const effectiveFlavor = flavor === "auto" ? (destination === "tcp" ? "base64" : "plain") : flavor;
+        if (effectiveFlavor === "base64" && !/^(utf-?8)?$/i.test(String(values?.qz_encoding || "UTF8"))) {
+            throw new Error("QZ base64 RAW uses UTF-8; select plain for IBM864 or another encoding.");
+        }
 
         const mode = qzConnectorModeId(values?.qz_connector_mode);
         if (mode === "custom" && !String(values?.qz_connector_url || "").trim()) {
             throw new Error("QZ Connector URL is required in Custom URL mode.");
         }
 
-        const printerName = String(values?.qz_printer_name || "").trim();
-        if (!printerName) {
+        if (qzDestinationId(values?.qz_destination) === "tcp") {
+            if (!String(values?.qz_tcp_host || "").trim()) {
+                throw new Error("QZ TCP printer host is required.");
+            }
+            const port = Number(values?.qz_tcp_port);
+            if (!Number.isInteger(port) || port < 1 || port > 65535) {
+                throw new Error("QZ TCP printer port must be between 1 and 65535.");
+            }
+        } else if (!String(values?.qz_printer_name || "").trim()) {
             throw new Error("Select a QZ printer before saving or printing.");
         }
     }
@@ -308,7 +337,7 @@
                 Object.entries(info).forEach(([key, value]) => setDialogValue(dialog, key, value));
                 frappe.show_alert({ message: __("Serial printer paired."), indicator: "green" });
             }, true);
-        } else if (method === "qz") {
+        } else if (method === "qz" && qzDestinationId(dialog.get_value("qz_destination")) === "printer") {
             button(__("Detect QZ Printers"), async () => {
                 const list = await refreshQZPrinterOptions(dialog, { selectFirst: true });
                 frappe.show_alert({ message: __("Found {0} printers. Select the printer to use.", [list.length]), indicator: "green" });
@@ -351,7 +380,6 @@
                 { fieldtype: "Section Break", label: __("Receipt Lifecycle") },
                 { fieldname: "enable_auto_silent_print", label: __("Enable Auto Silent Print"), fieldtype: "Check", default: cfg.enable_auto_silent_print, description: __("Automatically prints the final receipt after a normal Complete Order.") },
                 { fieldname: "print_after_cashier_completion", label: __("Print Again After Cashier Completion"), fieldtype: "Check", default: cfg.print_after_cashier_completion, description: __("Controls the second print after a cashier completes an Awaiting Cashier invoice. The handoff print remains unchanged.") },
-                { fieldname: "receipt_print_format_source", label: __("Receipt Print Format Source"), fieldtype: "Select", reqd: 1, options: "ERPNext Print Format\nWMN Raw Print Format", default: cfg.receipt_print_format_source, description: __("WMN Windows Bridge and direct ESC/POS printers always receive RAW text. ERPNext Print Format is used for Browser Print and optional QZ PDF output.") },
                 { fieldtype: "Section Break", label: __("ESC/POS Receipt") },
                 { fieldname: "cut_paper", label: __("Cut Paper"), fieldtype: "Check", default: cfg.cut_paper },
                 { fieldname: "feed_lines", label: __("Feed Lines"), fieldtype: "Int", default: cfg.feed_lines },
@@ -365,6 +393,7 @@
                 { fieldtype: "Column Break" },
                 { fieldname: "invoice_barcode_module_width", label: __("ESC/POS Module Width"), fieldtype: "Int", default: cfg.invoice_barcode_module_width, depends_on: "eval:doc.show_invoice_barcode==1" },
                 { fieldname: "invoice_barcode_human_readable", label: __("Print Barcode Value"), fieldtype: "Check", default: cfg.invoice_barcode_human_readable, depends_on: "eval:doc.show_invoice_barcode==1" },
+                { fieldname: "invoice_barcode_symbology", label: __("RAW Barcode Type"), fieldtype: "Select", options: "auto\ncode128_b\ncode128_c\ncode39", default: cfg.invoice_barcode_symbology, depends_on: "eval:doc.show_invoice_barcode==1", description: __("Auto preserves the current Code128 behavior. Code128-C needs an even number of digits. Code39 supports limited symbols and may be wider.") },
 
                 { fieldtype: "Section Break", label: __("WMN Windows Bridge"), depends_on: "eval:doc.method=='WMN Windows Bridge'" },
                 { fieldname: "bridge_ws_url", label: __("Printer WebSocket URL"), fieldtype: "Data", default: cfg.bridge_ws_url, depends_on: "eval:doc.method=='WMN Windows Bridge'" },
@@ -387,9 +416,14 @@
                 { fieldtype: "Section Break", label: __("QZ Tray"), depends_on: "eval:doc.method=='QZ Tray'" },
                 { fieldname: "qz_connector_mode", label: __("QZ Connector Mode"), fieldtype: "Select", options: qzConnectorModeOptions(), default: qzConnectorModeLabel(cfg.qz_connector_mode), depends_on: "eval:doc.method=='QZ Tray'", description: __("Current / Legacy keeps the existing connector behavior. Managed Bundle uses the QZ client bundled with WMN. Auto tries Managed first and falls back to Legacy.") },
                 { fieldname: "qz_connector_url", label: __("QZ Connector URL"), fieldtype: "Data", default: cfg.qz_connector_url, depends_on: "eval:doc.method=='QZ Tray' && doc.qz_connector_mode=='Custom URL'", description: __("Used only in Custom URL mode.") },
-                { fieldname: "qz_printer_name", label: __("Printer Name"), fieldtype: "Select", options: ["", cfg.qz_printer_name].filter(Boolean).join("\n"), default: cfg.qz_printer_name, depends_on: "eval:doc.method=='QZ Tray'", description: __("Required for QZ Tray. Use Detect QZ Printers, then select the exact printer name.") },
+                { fieldname: "qz_destination", label: __("Printer Destination"), fieldtype: "Select", options: Object.values(QZ_DESTINATION_LABELS).join("\n"), default: qzDestinationLabel(cfg.qz_destination), depends_on: "eval:doc.method=='QZ Tray'" },
+                { fieldname: "qz_printer_name", label: __("Printer Name"), fieldtype: "Select", options: ["", cfg.qz_printer_name].filter(Boolean).join("\n"), default: cfg.qz_printer_name, depends_on: "eval:doc.method=='QZ Tray' && doc.qz_destination=='Installed Printer'", description: __("Use Detect QZ Printers, then select the exact printer name.") },
+                { fieldname: "qz_tcp_host", label: __("Printer TCP Address"), fieldtype: "Data", default: cfg.qz_tcp_host, depends_on: "eval:doc.method=='QZ Tray' && doc.qz_destination=='TCP/IP Host'", description: __("Printer or emulator address, for example 127.0.0.1. This is not the QZ Host.") },
+                { fieldname: "qz_tcp_port", label: __("Printer TCP Port"), fieldtype: "Int", default: cfg.qz_tcp_port, depends_on: "eval:doc.method=='QZ Tray' && doc.qz_destination=='TCP/IP Host'", description: __("Usually 9100; use the port configured on the printer or emulator.") },
                 { fieldname: "qz_host", label: __("QZ Host"), fieldtype: "Data", default: cfg.qz_host, depends_on: "eval:doc.method=='QZ Tray'", description: __("Leave empty for local QZ Tray.") },
                 { fieldname: "qz_encoding", label: __("QZ Raw Encoding"), fieldtype: "Data", default: cfg.qz_encoding, depends_on: "eval:doc.method=='QZ Tray'", description: __("Examples: UTF8, IBM864. This is used for RAW printing only and must be supported by the printer.") },
+                { fieldname: "qz_raw_flavor", label: __("QZ RAW Transfer"), fieldtype: "Select", options: "auto\nplain\nbase64", default: cfg.qz_raw_flavor, depends_on: "eval:doc.method=='QZ Tray'", description: __("Auto uses base64 for TCP and plain for installed printers. Base64 sends UTF-8 bytes and ignores other QZ text encodings.") },
+                { fieldname: "escpos_codepage", label: __("ESC/POS Codepage Number"), fieldtype: "Data", default: cfg.escpos_codepage, depends_on: "eval:doc.method=='QZ Tray'", description: __("Optional ESC t value (0-255). Example: 37 for IBM864 on supported Epson printers. Leave blank to keep the printer default.") },
 
                 { fieldtype: "Section Break" },
                 { fieldname: "connection_actions", fieldtype: "HTML" },
@@ -427,17 +461,21 @@
         dialog.set_value("method", methodLabel(cfg.method));
         dialog.set_value("fallback_method", cfg.fallback_method === "none" ? "No fallback" : methodLabel(cfg.fallback_method));
         dialog.set_value("qz_connector_mode", qzConnectorModeLabel(cfg.qz_connector_mode));
+        dialog.set_value("qz_destination", qzDestinationLabel(cfg.qz_destination));
         dialog.get_field("method").$input.on("change.wmn-print", () => {
             setTimeout(async () => {
                 renderActionButtons(dialog);
-                if (methodId(dialog.get_value("method"), false) === "qz") {
+                if (methodId(dialog.get_value("method"), false) === "qz" && qzDestinationId(dialog.get_value("qz_destination")) === "printer") {
                     try { await refreshQZPrinterOptions(dialog, { selectFirst: false }); } catch (e) {}
                 }
             }, 0);
         });
+        dialog.get_field("qz_destination").$input.on("change.wmn-print", () => {
+            setTimeout(() => renderActionButtons(dialog), 0);
+        });
         setTimeout(async () => {
             renderActionButtons(dialog);
-            if (methodId(dialog.get_value("method"), false) === "qz") {
+            if (methodId(dialog.get_value("method"), false) === "qz" && qzDestinationId(dialog.get_value("qz_destination")) === "printer") {
                 try { await refreshQZPrinterOptions(dialog, { selectFirst: false }); } catch (e) {}
             }
         }, 0);

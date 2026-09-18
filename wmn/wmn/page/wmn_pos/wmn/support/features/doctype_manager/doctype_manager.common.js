@@ -7,7 +7,9 @@
 
     const FORM_WATCH_INTERVAL = 350;
     const LIST_LIMIT = 50;
+    const MENU_CACHE_KEY = "wmn_doctype_manager_menu";
     const dialogScriptCache = new Map();
+    let menuRequestRevision = 0;
 
     const SECTION_LABELS = Object.freeze({
         Setup: __("Setup"),
@@ -112,10 +114,16 @@
             return;
         }
         if (action === "printer") {
-            if (typeof window.wmn_show_printer_settings_dialog === "function") {
-                window.wmn_show_printer_settings_dialog();
+            const service = window.WMN_POS?.Services?.Printing?.PrintService;
+            if (service?.showSettings) {
+                await service.showSettings();
+                return;
             }
-            return;
+            if (typeof window.wmn_show_printer_settings_dialog === "function") {
+                await window.wmn_show_printer_settings_dialog();
+                return;
+            }
+            throw new Error(__("Printer settings service is not loaded."));
         }
         if (action === "price-checker") {
             const feature = window.WMN_RETAIL_TOOLS?.PriceChecker?.Common;
@@ -134,6 +142,11 @@
         }
     }
 
+    function menuColor(value) {
+        const color = String(value || "").trim();
+        return /^#[0-9a-fA-F]{6}$/.test(color) ? color : "";
+    }
+
     function configuredIcon(item) {
         const iconName = String(item?.icon || "").trim();
         if (iconName && frappe.utils && typeof frappe.utils.icon === "function") {
@@ -148,9 +161,15 @@
         const permissionText = item.can_write || item.can_create
             ? __("Open list, add or edit")
             : __("Read only");
-        const hasCustomAppearance = Boolean(item.button_color || item.text_color);
+        const background = menuColor(item.button_color);
+        const foreground = menuColor(item.text_color);
+        const hasCustomAppearance = Boolean(background || foreground);
+        const style = [
+            background ? `--wmn-pos-menu-bg:${background}` : "",
+            foreground ? `--wmn-pos-menu-text:${foreground}` : "",
+        ].filter(Boolean).join(";");
         return `
-            <button type="button" class="wmn-pos-manager-button wmn-pos-manager-doctype${hasCustomAppearance ? " wmn-pos-manager-colored" : ""}" data-doctype="${escapeHtml(item.doctype)}">
+            <button type="button" class="wmn-pos-manager-button wmn-pos-manager-doctype${hasCustomAppearance ? " wmn-pos-manager-colored" : ""}" data-doctype="${escapeHtml(item.doctype)}"${style ? ` style="${style}"` : ""}>
                 ${configuredIcon(item)}
                 <span><strong>${escapeHtml(item.label || item.doctype)}</strong><small>${escapeHtml(permissionText)}</small></span>
             </button>`;
@@ -193,13 +212,31 @@
     async function openMenu(itemSelector) {
         ensureStyles();
         const adapter = getAdapter();
+        const revision = ++menuRequestRevision;
         let doctypes = [];
 
         try {
             doctypes = await adapter.getAvailableDoctypes();
+            if (revision !== menuRequestRevision) return null;
+            if (!isOffline() && window.wmnPOSOffline?.setSetting) {
+                try {
+                    await window.wmnPOSOffline.setSetting(MENU_CACHE_KEY, doctypes);
+                } catch (cacheError) {
+                    console.warn("WMN POS menu cache refresh failed", cacheError);
+                }
+            }
         } catch (error) {
+            if (revision !== menuRequestRevision) return null;
             console.error("WMN POS DocType permission load failed", error);
-            frappe.show_alert({ message: error?.message || __("Unable to load WMN POS menu."), indicator: "red" });
+            if (!isOffline()) {
+                doctypes = await window.wmnPOSOffline?.getSetting?.(MENU_CACHE_KEY) || [];
+            }
+            frappe.show_alert({
+                message: doctypes.length
+                    ? __("Showing the last saved POS menu because refresh failed.")
+                    : error?.message || __("Unable to load WMN POS menu."),
+                indicator: doctypes.length ? "orange" : "red",
+            });
         }
 
         const dialog = new frappe.ui.Dialog({

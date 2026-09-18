@@ -28,20 +28,6 @@ def _resolve_print_format(doctype, name, print_format=None):
     return ""
 
 
-def _resolve_wmn_print_format(print_format):
-    print_format = str(print_format or "").strip()
-    if not print_format:
-        return None
-
-    try:
-        return frappe.get_doc("WMN Print Format", print_format)
-    except Exception:
-        name = frappe.db.get_value("WMN Print Format", {"print_format": print_format}, "name")
-        if name:
-            return frappe.get_doc("WMN Print Format", name)
-    return None
-
-
 _CODE128_PATTERNS = (
     "212222", "222122", "222221", "121223", "121322", "131222", "122213", "122312", "132212", "221213",
     "221312", "231212", "112232", "122132", "122231", "113222", "123122", "123221", "223211", "221132",
@@ -312,13 +298,13 @@ def render_raw(doctype=None, name=None, print_format=None, doc=None, print_type=
     if not selected_format:
         frappe.throw(_("POS Profile Print Format is not configured."))
 
-    wmn_format = _resolve_wmn_print_format(selected_format)
-    if not wmn_format:
-        frappe.throw(_("WMN Print Format is not configured for {0}.").format(selected_format))
+    selected = frappe.get_doc("Print Format", selected_format)
+    if not cint(selected.get("raw_printing")):
+        frappe.throw(_("Raw Printing is not enabled in Print Format {0}.").format(selected_format))
 
-    template = str(wmn_format.get("raw_template_code") or "").strip()
+    template = str(selected.get("raw_commands") or "").strip()
     if not template:
-        frappe.throw(_("WMN Print Format {0} has no RAW Template Code.").format(wmn_format.name))
+        frappe.throw(_("Print Format {0} has no Raw Commands.").format(selected_format))
 
     document = frappe.get_doc(doctype, name)
     rendered = frappe.render_template(
@@ -335,8 +321,7 @@ def render_raw(doctype=None, name=None, print_format=None, doc=None, print_type=
     return {
         "raw_text": _raw_print_text(rendered),
         "print_format": selected_format,
-        "wmn_print_format": wmn_format.name,
-        "print_type": str(wmn_format.get("default_print_type") or print_type or "RECEIPT"),
+        "print_type": str(print_type or "RECEIPT"),
     }
 
 

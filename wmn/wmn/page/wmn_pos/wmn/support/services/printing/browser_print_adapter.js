@@ -67,7 +67,13 @@
         label: "Browser Print",
         capabilities: { raw: true, png: true, pdf: true, html: true },
         isSupported() { return typeof window.print === "function"; },
-        sendRaw(rawText) { return printHtml(rawToHtml(rawText)); },
+        sendRaw(rawText, settings, context) {
+            const barcode = window.WMN_POS?.Services?.Barcode?.InvoiceBarcode;
+            if (context && typeof context.raw_text === "string" && barcode?.browserRawHtml) {
+                return printHtml(barcode.browserRawHtml(context.raw_text, context.doc, settings));
+            }
+            return printHtml(rawToHtml(rawText));
+        },
         sendPng(base64) { return printImage(base64); },
         sendPdf(base64) { return printPdf(base64); },
         sendHtml(html) { return printHtml(html); },

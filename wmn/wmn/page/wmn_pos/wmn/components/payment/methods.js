@@ -215,6 +215,8 @@
 
         checkout() {
                     const result = super.checkout();
+                    this.$component?.addClass?.("wmn-complete-order-layout wmn-complete-order-online");
+                    this.$component?.attr?.("data-wmn-payment-layout", "online");
                     const doc = this.events?.get_frm?.()?.doc || {};
 
                     if (wmn_payment_is_zero_return(doc) && typeof wmn_prepare_zero_payment_return === "function") {
