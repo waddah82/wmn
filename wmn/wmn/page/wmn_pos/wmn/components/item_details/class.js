@@ -20,6 +20,10 @@
             return methods.FinalMethods.toggle_item_details_section.apply(this, args);
         }
 
+        validate_serial_batch_item(...args) {
+            return methods.FinalMethods.validate_serial_batch_item.apply(this, args);
+        }
+
         render_form(...args) {
             return methods.FinalMethods.render_form.apply(this, args);
         }

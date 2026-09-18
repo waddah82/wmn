@@ -365,6 +365,10 @@
                             get_frm: () => this.frm,
                             cart_item_clicked: (item) => {
                                 const item_row = this.get_item_from_frm ? this.get_item_from_frm(item) : item;
+                                if (!item_row || $.isEmptyObject(item_row) || !item_row.name) {
+                                    console.warn("WMN cart item not found for Item Details", item);
+                                    return;
+                                }
                                 this.wmn_ensure_item_stock_map_for_cart_rows();
                                 this.wmn_ensure_item_stock_map_for_item_details(item_row);
                                 this.wmn_sync_item_stock_map();
@@ -1028,7 +1032,11 @@
                     } catch (e) {}
 
                     try {
-                        if (this.item_details && this.item_details.toggle_item_details_section) {
+                        if (
+                            this.item_details &&
+                            this.item_details.toggle_item_details_section &&
+                            !this.item_details.__wmn_opening_item_name
+                        ) {
                             this.item_details.toggle_item_details_section(null);
                         }
                     } catch (e) {}
@@ -1175,7 +1183,9 @@
                             this.wmn_update_cart_fab?.();
                             this.cart?.update_totals_section?.(this.frm);
                             this.cart?.wmn_refresh_discount_breakdown?.(doc);
-                            this.item_details?.toggle_item_details_section?.(null);
+                            if (!this.item_details?.__wmn_opening_item_name) {
+                                this.item_details?.toggle_item_details_section?.(null);
+                            }
                             this.cart?.toggle_item_highlight?.();
                             this.frm?.dirty?.();
                             return true;
@@ -1388,33 +1398,40 @@
         async wmn_restore_online_batch_price_after_super(item_row, item) {
                         try {
                             if (!item_row || !item_row.doctype || !item_row.name || !item) return item_row;
-                            if (!item.__wmn_batch_dialog_done) return item_row;
+                            if (!item.__wmn_batch_dialog_done && !item.batch_no) return item_row;
 
-                            const rate = flt(item.rate || item.price_list_rate || 0);
-                            if (rate <= 0) return item_row;
+                            if (cint(item.has_batch_no || 0) || item.batch_no) {
+                                item_row.has_batch_no = 1;
+                            }
 
                             if (item.batch_no && item_row.batch_no !== item.batch_no) {
                                 await wmn_pos_set_value(item_row.doctype, item_row.name, "batch_no", item.batch_no);
+                                item_row.batch_no = item.batch_no;
                             }
 
                             if (item.warehouse && item_row.warehouse !== item.warehouse) {
                                 await wmn_pos_set_value(item_row.doctype, item_row.name, "warehouse", item.warehouse);
+                                item_row.warehouse = item.warehouse;
                             }
 
                             if (flt(item.qty || 0) > 0 && flt(item_row.qty || 0) !== flt(item.qty || 0)) {
                                 await wmn_pos_set_value(item_row.doctype, item_row.name, "qty", flt(item.qty || 0));
+                                item_row.qty = flt(item.qty || 0);
                             }
 
-                            if (flt(item_row.price_list_rate || 0) !== rate) {
-                                await wmn_pos_set_value(item_row.doctype, item_row.name, "price_list_rate", rate);
-                            }
+                            const rate = flt(item.rate || item.price_list_rate || 0);
+                            if (rate > 0) {
+                                if (flt(item_row.price_list_rate || 0) !== rate) {
+                                    await wmn_pos_set_value(item_row.doctype, item_row.name, "price_list_rate", rate);
+                                }
 
-                            if (flt(item_row.rate || 0) !== rate) {
-                                await wmn_pos_set_value(item_row.doctype, item_row.name, "rate", rate);
-                            }
+                                if (flt(item_row.rate || 0) !== rate) {
+                                    await wmn_pos_set_value(item_row.doctype, item_row.name, "rate", rate);
+                                }
 
-                            item_row.price_list_rate = rate;
-                            item_row.rate = rate;
+                                item_row.price_list_rate = rate;
+                                item_row.rate = rate;
+                            }
 
                             if (this.wmn_ensure_item_stock_map_for_item_details) {
                                 this.wmn_ensure_item_stock_map_for_item_details(item_row);

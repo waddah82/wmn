@@ -1084,7 +1084,7 @@
 
                         if (!$item_to_update.length) {
                             this.$cart_items_wrapper.append(
-                                `<div class="cart-item-wrapper" data-row-name="${escape(item_data.name)}"></div><div class="seperator"></div>`
+                                `<div class="cart-item-wrapper" data-row-name="${escape_html(item_data.name)}"></div><div class="seperator"></div>`
                             );
                             $item_to_update = this.get_cart_item(item_data);
                         }
