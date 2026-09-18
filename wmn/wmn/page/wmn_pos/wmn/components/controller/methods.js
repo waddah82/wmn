@@ -348,6 +348,9 @@
                 },
 
         wmn_handle_item_details_visibility(show_details) {
+                    if (!show_details && this.item_details?.__wmn_item_details_keep_open) {
+                        show_details = true;
+                    }
                     try {
                         // Item Details is a dialog in the WMN layout; keep the selector width stable.
                         this.item_selector?.resize_selector(false);
@@ -849,6 +852,14 @@
                         return Promise.resolve(item_row);
                     }
 
+                    if (
+                        this.item_details?.__wmn_item_details_keep_open &&
+                        item_row &&
+                        this.item_details.compare_with_current_item?.(item_row)
+                    ) {
+                        return Promise.resolve(item_row);
+                    }
+
                     this.wmn_ensure_item_stock_map_for_cart_rows();
                     this.wmn_ensure_item_stock_map_for_item_details(item_row);
                     this.wmn_sync_item_stock_map();
@@ -1306,7 +1317,7 @@
                     const wmn_uom_item = (args && args.item && args.item.__wmn_uom_selected)
                         ? Object.assign({}, args.item)
                         : null;
-                    const suppressItemDetails = !!(
+                    const suppressItemDetails = !this.wmn_is_existing_online_cart_row(args?.item) && !!(
                         args?.item?.__wmn_selection_dialog_done ||
                         args?.item?.__wmn_skip_item_details_for_batch_flow ||
                         (wmn_batch_item && args.item.__wmn_batch_dialog_done)
@@ -1314,12 +1325,17 @@
 
                     if (suppressItemDetails) {
                         this.__wmn_suppress_item_details_during_selection = true;
-                        try {
-                            if (this.item_details?.$component?.is(":visible") && this.item_details.toggle_item_details_section) {
+                        if (
+                            !this.item_details?.__wmn_item_details_keep_open &&
+                            !this.item_details?.__wmn_opening_item_name &&
+                            this.item_details?.$component?.is(":visible") &&
+                            this.item_details.toggle_item_details_section
+                        ) {
+                            try {
                                 await this.item_details.toggle_item_details_section(null);
+                            } catch (e) {
+                                console.warn("WMN item details close before batch selection skipped", e);
                             }
-                        } catch (e) {
-                            console.warn("WMN item details close before batch selection skipped", e);
                         }
                     }
 
@@ -3069,6 +3085,9 @@
                     },
 
         wmn_set_item_details_modal_open(show) {
+                        if (!show && this.item_details?.__wmn_item_details_keep_open) {
+                            show = true;
+                        }
                         if (!this.$wmn_item_details_layer) return;
                         this.$wmn_item_details_layer
                             .toggleClass("is-open", Boolean(show))
@@ -3100,14 +3119,16 @@
                         if (!this.$mamsek_shell || !this.item_selector?.$component || !this.cart?.$component) return;
                         const items_visible = this.item_selector.$component.css("display") !== "none";
                         const cart_visible = this.cart.$component.css("display") !== "none";
-                        const details_visible = this.item_details?.$component?.css("display") !== "none";
+                        const keepDetailsOpen = Boolean(this.item_details?.__wmn_item_details_keep_open);
+                        const details_visible = keepDetailsOpen || this.item_details?.$component?.css("display") !== "none";
                         const active = items_visible && cart_visible;
 
                         this.$mamsek_shell.toggleClass("wmn-cart-context-active", active);
                         if (!active) this.wmn_close_cart_drawer();
 
                         // Some ERPNext flows hide ItemDetails directly (for example Recent
-                        // Orders/Payment). Mirror that direct state into the modal layer.
+                        // Orders/Payment). Mirror that direct state into the modal layer,
+                        // but never drop a cart-opened Item Details dialog for batch items.
                         this.wmn_set_item_details_modal_open(Boolean(details_visible));
                         if (!details_visible && this.cart.$numpad_section) {
                             this.cart.$numpad_section.css("display", "none");

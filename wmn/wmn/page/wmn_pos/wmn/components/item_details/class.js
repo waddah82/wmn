@@ -20,6 +20,14 @@
             return methods.FinalMethods.toggle_item_details_section.apply(this, args);
         }
 
+        toggle_component(...args) {
+            return methods.FinalMethods.toggle_component.apply(this, args);
+        }
+
+        wmn_open_item_details_form(...args) {
+            return methods.FinalMethods.wmn_open_item_details_form.apply(this, args);
+        }
+
         validate_serial_batch_item(...args) {
             return methods.FinalMethods.validate_serial_batch_item.apply(this, args);
         }

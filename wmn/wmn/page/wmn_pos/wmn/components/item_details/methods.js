@@ -50,6 +50,7 @@
         }
 
         function wmn_item_details_modal_is_open(details) {
+            if (details?.__wmn_item_details_keep_open) return true;
             try {
                 const pos = window.cur_pos;
                 if (pos?.$wmn_item_details_layer?.hasClass("is-open")) return true;
@@ -90,6 +91,50 @@
                     window.requestAnimationFrame(() => window.setTimeout(focus, 0));
                 },
 
+        toggle_component(show) {
+                    if (!show && this.__wmn_item_details_keep_open) {
+                        show = true;
+                    }
+                    show ? this.$component.css("display", "flex") : this.$component.css("display", "none");
+                    try {
+                        window.cur_pos?.wmn_set_item_details_modal_open?.(Boolean(show));
+                    } catch (e) {}
+                },
+
+        async wmn_open_item_details_form(item) {
+                    this.doctype = item.doctype || this.doctype || (this.events.get_frm()?.doc?.doctype ? `${this.events.get_frm().doc.doctype} Item` : "");
+                    try {
+                        this.item_meta = frappe.get_meta(this.doctype);
+                    } catch (e) {
+                        this.item_meta = { fields: [] };
+                    }
+                    this.name = item.name;
+                    this.item_row = item;
+                    this.currency = this.events.get_frm().doc.currency;
+
+                    if (item.has_serial_no == null || item.has_batch_no == null) {
+                        try {
+                            const r = await frappe.db.get_value("Item", item.item_code, [
+                                "has_serial_no",
+                                "has_batch_no",
+                            ]);
+                            if (r && r.message) {
+                                item.has_serial_no = r.message.has_serial_no;
+                                item.has_batch_no = r.message.has_batch_no;
+                            }
+                        } catch (e) {
+                            console.warn("WMN Item tracking flags fetch skipped", e);
+                        }
+                    }
+
+                    this.current_item = item;
+                    this.render_dom(item);
+                    this.render_discount_dom(item);
+                    this.render_form(item);
+                    this.events.highlight_cart_item(item);
+                    this.wmn_focus_quantity_control();
+                },
+
         async toggle_item_details_section(item) {
                     const incomingName = item && item.name ? String(item.name) : "";
                     this.__wmn_opening_item_name = incomingName;
@@ -97,46 +142,49 @@
                     try {
                         const sameAsCurrent = Boolean(incomingName && this.compare_with_current_item(item));
                         const modalOpen = wmn_item_details_modal_is_open(this);
-                        const shouldShow = Boolean(incomingName) && !(sameAsCurrent && modalOpen);
+                        const online = !wmn_item_details_is_offline();
+                        // Online: never treat a second toggle of the same cart row as
+                        // close. Batch rows re-enter this method after paint and that
+                        // was closing the dialog by itself. Close only via null/X.
+                        const shouldShow = online
+                            ? Boolean(incomingName)
+                            : Boolean(incomingName) && !(sameAsCurrent && modalOpen);
 
-                        // ERPNext treats a second click on the current row as "close".
-                        // After the WMN batch dialog the row can already be current_item
-                        // while the modal layer is still closed, so a cart click must open.
                         if (shouldShow && sameAsCurrent && !modalOpen) {
                             this.current_item = {};
                         }
 
-                        if (!wmn_item_details_is_offline()) {
-                            try {
-                                await super.toggle_item_details_section(item);
-                            } catch (e) {
-                                console.warn("WMN Item Details open failed", e);
-                            }
+                        this.__wmn_item_details_keep_open = Boolean(shouldShow);
 
-                            if (shouldShow) {
-                                if (!this.current_item || String(this.current_item.name || "") !== incomingName) {
-                                    try {
-                                        this.doctype = item.doctype;
-                                        this.item_meta = frappe.get_meta(this.doctype);
-                                        this.name = item.name;
-                                        this.item_row = item;
-                                        this.currency = this.events.get_frm().doc.currency;
-                                        this.current_item = item;
-                                        this.render_dom(item);
-                                        this.render_discount_dom(item);
-                                        this.render_form(item);
-                                        this.events.highlight_cart_item(item);
-                                    } catch (e) {
-                                        console.warn("WMN Item Details render retry failed", e);
-                                    }
+                        if (online) {
+                            if (!shouldShow) {
+                                try {
+                                    await super.toggle_item_details_section(item);
+                                } catch (e) {
+                                    console.warn("WMN Item Details close failed", e);
                                 }
-                                this.events.toggle_item_selector(true);
-                                this.toggle_component(true);
-                                this.wmn_focus_quantity_control();
-                            } else if (!incomingName) {
+                                this.events.toggle_item_selector(false);
+                                this.toggle_component(false);
                                 this.name = undefined;
                                 this.item_row = null;
+                                this.current_item = {};
+                                return;
                             }
+
+                            // Do not call super.toggle on open: it shows the dialog, then
+                            // serial/batch validation or a later on_cart_update closes it.
+                            this.events.toggle_item_selector(true);
+                            this.toggle_component(true);
+                            if (!(sameAsCurrent && modalOpen)) {
+                                try {
+                                    await this.wmn_open_item_details_form(item);
+                                } catch (e) {
+                                    console.warn("WMN Item Details open failed", e);
+                                }
+                            }
+                            this.events.toggle_item_selector(true);
+                            this.toggle_component(true);
+                            this.__wmn_item_details_keep_open = true;
                             return;
                         }
 
@@ -173,7 +221,9 @@
                             }
                         }
                     } finally {
-                        this.__wmn_opening_item_name = "";
+                        if (this.__wmn_opening_item_name === incomingName) {
+                            this.__wmn_opening_item_name = "";
+                        }
                     }
                 },
 
@@ -253,7 +303,7 @@
                     } finally {
                         window.setTimeout(() => {
                             this.__wmn_applying_item_details_form = false;
-                        }, 0);
+                        }, 50);
                     }
                 },
 
@@ -598,6 +648,8 @@
     const FinalMethods = Object.create(null);
     FinalMethods.wmn_focus_quantity_control = UIMethods.wmn_focus_quantity_control || CoreMethods.wmn_focus_quantity_control;
     FinalMethods.toggle_item_details_section = UIMethods.toggle_item_details_section || CoreMethods.toggle_item_details_section;
+    FinalMethods.toggle_component = UIMethods.toggle_component || CoreMethods.toggle_component;
+    FinalMethods.wmn_open_item_details_form = UIMethods.wmn_open_item_details_form || CoreMethods.wmn_open_item_details_form;
     FinalMethods.validate_serial_batch_item = UIMethods.validate_serial_batch_item || CoreMethods.validate_serial_batch_item;
     FinalMethods.render_form = UIMethods.render_form || CoreMethods.render_form;
     FinalMethods.wmn_offline_form_updated = UIMethods.wmn_offline_form_updated || CoreMethods.wmn_offline_form_updated;
