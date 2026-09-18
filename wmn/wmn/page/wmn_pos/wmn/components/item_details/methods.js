@@ -205,39 +205,56 @@
                 },
 
         render_form(item) {
-                    if (!wmn_item_details_is_offline()) {
-                        return super.render_form(item);
-                    }
+                    const offline = wmn_item_details_is_offline();
+                    this.__wmn_applying_item_details_form = true;
+                    try {
+                        const fields_to_display = this.get_form_fields(item);
+                        this.$form_container.html("");
 
-                    const fields_to_display = this.get_form_fields(item);
-                    this.$form_container.html("");
+                        fields_to_display.forEach((fieldname) => {
+                            this.$form_container.append(`<div class="${fieldname}-control" data-fieldname="${fieldname}"></div>`);
 
-                    fields_to_display.forEach((fieldname) => {
-                        this.$form_container.append(`<div class="${fieldname}-control" data-fieldname="${fieldname}"></div>`);
+                            const source_meta = (this.item_meta && this.item_meta.fields || []).find((df) => df.fieldname === fieldname);
+                            const field_meta = offline
+                                ? wmn_safe_clone_df(source_meta, fieldname)
+                                : Object.assign(
+                                    { fieldname, label: fieldname, fieldtype: fieldname === "actual_qty" ? "Float" : "Data" },
+                                    source_meta || {}
+                                );
+                            if (fieldname === "discount_percentage") field_meta.label = __("Discount (%)");
+                            if (fieldname === "actual_qty") field_meta.read_only = 1;
+                            const me = this;
 
-                        const source_meta = (this.item_meta && this.item_meta.fields || []).find((df) => df.fieldname === fieldname);
-                        const field_meta = wmn_safe_clone_df(source_meta, fieldname);
-                        const me = this;
-
-                        this[`${fieldname}_control`] = frappe.ui.form.make_control({
-                            df: {
-                                ...field_meta,
-                                onchange: function () {
-                                    me.wmn_offline_form_updated(fieldname, this.value);
+                            this[`${fieldname}_control`] = frappe.ui.form.make_control({
+                                df: {
+                                    ...field_meta,
+                                    onchange: function () {
+                                        if (offline) {
+                                            me.wmn_offline_form_updated(fieldname, this.value);
+                                            return;
+                                        }
+                                        me.events.form_updated(me.current_item, fieldname, this.value);
+                                    },
                                 },
-                            },
-                            parent: this.$form_container.find(`.${fieldname}-control`),
-                            render_input: true,
+                                parent: this.$form_container.find(`.${fieldname}-control`),
+                                render_input: true,
+                            });
+
+                            const ctrl = this[`${fieldname}_control`];
+                            // set_input avoids Link validate/onchange, which online would
+                            // bounce back into on_cart_update and reopen the batch dialog.
+                            if (ctrl && ctrl.set_input) ctrl.set_input(item[fieldname] == null ? "" : item[fieldname]);
+                            else if (ctrl && ctrl.set_value) ctrl.set_value(item[fieldname]);
                         });
 
-                        const ctrl = this[`${fieldname}_control`];
-                        if (ctrl && ctrl.set_input) ctrl.set_input(item[fieldname] || "");
-                        else if (ctrl && ctrl.set_value) ctrl.set_value(item[fieldname]);
-                    });
-
-                    this.resize_serial_control(item);
-                    this.make_auto_serial_selection_btn(item);
-                    this.bind_custom_control_change_event();
+                        this.resize_serial_control(item);
+                        this.make_auto_serial_selection_btn(item);
+                        this.bind_custom_control_change_event();
+                    } finally {
+                        window.setTimeout(() => {
+                            this.__wmn_applying_item_details_form = false;
+                        }, 0);
+                    }
                 },
 
         async wmn_offline_form_updated(fieldname, value) {
@@ -374,6 +391,17 @@
                     if (!wmn_item_details_is_offline()) {
                         const result = super.bind_custom_control_change_event();
                         this.wmn_bind_supervisor_protected_controls();
+                        if (this.warehouse_control) {
+                            const me = this;
+                            const previousOnchange = this.warehouse_control.df.onchange;
+                            this.warehouse_control.df.onchange = function () {
+                                try {
+                                    return previousOnchange ? previousOnchange.apply(this, arguments) : undefined;
+                                } catch (e) {
+                                    console.warn("WMN warehouse change skipped", e);
+                                }
+                            };
+                        }
                         return result;
                     }
 

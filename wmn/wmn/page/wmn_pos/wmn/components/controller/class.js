@@ -160,6 +160,10 @@
             return methods.FinalMethods.wmn_offline_get_full_item.apply(this, args);
         }
 
+        wmn_is_existing_online_cart_row(...args) {
+            return methods.FinalMethods.wmn_is_existing_online_cart_row.apply(this, args);
+        }
+
         wmn_prepare_online_batch_args_before_super(...args) {
             return methods.FinalMethods.wmn_prepare_online_batch_args_before_super.apply(this, args);
         }

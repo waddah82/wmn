@@ -32105,39 +32105,56 @@ window.WMN_POS.Source.Controller = class {
                 },
 
         render_form(item) {
-                    if (!wmn_item_details_is_offline()) {
-                        return super.render_form(item);
-                    }
+                    const offline = wmn_item_details_is_offline();
+                    this.__wmn_applying_item_details_form = true;
+                    try {
+                        const fields_to_display = this.get_form_fields(item);
+                        this.$form_container.html("");
 
-                    const fields_to_display = this.get_form_fields(item);
-                    this.$form_container.html("");
+                        fields_to_display.forEach((fieldname) => {
+                            this.$form_container.append(`<div class="${fieldname}-control" data-fieldname="${fieldname}"></div>`);
 
-                    fields_to_display.forEach((fieldname) => {
-                        this.$form_container.append(`<div class="${fieldname}-control" data-fieldname="${fieldname}"></div>`);
+                            const source_meta = (this.item_meta && this.item_meta.fields || []).find((df) => df.fieldname === fieldname);
+                            const field_meta = offline
+                                ? wmn_safe_clone_df(source_meta, fieldname)
+                                : Object.assign(
+                                    { fieldname, label: fieldname, fieldtype: fieldname === "actual_qty" ? "Float" : "Data" },
+                                    source_meta || {}
+                                );
+                            if (fieldname === "discount_percentage") field_meta.label = __("Discount (%)");
+                            if (fieldname === "actual_qty") field_meta.read_only = 1;
+                            const me = this;
 
-                        const source_meta = (this.item_meta && this.item_meta.fields || []).find((df) => df.fieldname === fieldname);
-                        const field_meta = wmn_safe_clone_df(source_meta, fieldname);
-                        const me = this;
-
-                        this[`${fieldname}_control`] = frappe.ui.form.make_control({
-                            df: {
-                                ...field_meta,
-                                onchange: function () {
-                                    me.wmn_offline_form_updated(fieldname, this.value);
+                            this[`${fieldname}_control`] = frappe.ui.form.make_control({
+                                df: {
+                                    ...field_meta,
+                                    onchange: function () {
+                                        if (offline) {
+                                            me.wmn_offline_form_updated(fieldname, this.value);
+                                            return;
+                                        }
+                                        me.events.form_updated(me.current_item, fieldname, this.value);
+                                    },
                                 },
-                            },
-                            parent: this.$form_container.find(`.${fieldname}-control`),
-                            render_input: true,
+                                parent: this.$form_container.find(`.${fieldname}-control`),
+                                render_input: true,
+                            });
+
+                            const ctrl = this[`${fieldname}_control`];
+                            // set_input avoids Link validate/onchange, which online would
+                            // bounce back into on_cart_update and reopen the batch dialog.
+                            if (ctrl && ctrl.set_input) ctrl.set_input(item[fieldname] == null ? "" : item[fieldname]);
+                            else if (ctrl && ctrl.set_value) ctrl.set_value(item[fieldname]);
                         });
 
-                        const ctrl = this[`${fieldname}_control`];
-                        if (ctrl && ctrl.set_input) ctrl.set_input(item[fieldname] || "");
-                        else if (ctrl && ctrl.set_value) ctrl.set_value(item[fieldname]);
-                    });
-
-                    this.resize_serial_control(item);
-                    this.make_auto_serial_selection_btn(item);
-                    this.bind_custom_control_change_event();
+                        this.resize_serial_control(item);
+                        this.make_auto_serial_selection_btn(item);
+                        this.bind_custom_control_change_event();
+                    } finally {
+                        window.setTimeout(() => {
+                            this.__wmn_applying_item_details_form = false;
+                        }, 0);
+                    }
                 },
 
         async wmn_offline_form_updated(fieldname, value) {
@@ -32274,6 +32291,17 @@ window.WMN_POS.Source.Controller = class {
                     if (!wmn_item_details_is_offline()) {
                         const result = super.bind_custom_control_change_event();
                         this.wmn_bind_supervisor_protected_controls();
+                        if (this.warehouse_control) {
+                            const me = this;
+                            const previousOnchange = this.warehouse_control.df.onchange;
+                            this.warehouse_control.df.onchange = function () {
+                                try {
+                                    return previousOnchange ? previousOnchange.apply(this, arguments) : undefined;
+                                } catch (e) {
+                                    console.warn("WMN warehouse change skipped", e);
+                                }
+                            };
+                        }
                         return result;
                     }
 
@@ -38112,6 +38140,9 @@ window.WMN_POS.Source.Controller = class {
                             get_frm: () => this.frm,
                             toggle_item_selector: (minimize) => this.wmn_handle_item_details_visibility(minimize),
                             form_updated: (item, field, value) => {
+                                if (!item || !item.name || this.item_details?.__wmn_applying_item_details_form) {
+                                    return Promise.resolve();
+                                }
                                 const item_row = typeof wmn_pos_get_doc === "function"
                                     ? wmn_pos_get_doc(item.doctype, item.name)
                                     : frappe.model.get_doc(item.doctype, item.name);
@@ -39318,6 +39349,16 @@ window.WMN_POS.Source.Controller = class {
                         return Object.assign({}, offlineItem || {}, item || {});
                     },
 
+        wmn_is_existing_online_cart_row(item) {
+            const name = item && item.name;
+            if (!name) return false;
+            const rows = this.frm?.doc?.items || [];
+            const row = rows.find((candidate) => candidate && candidate.name === name);
+            if (!row || !row.item_code) return false;
+            if (item.item_code && String(row.item_code) !== String(item.item_code)) return false;
+            return true;
+        },
+
         async wmn_prepare_online_batch_args_before_super(args) {
             try {
                 if (!args || !args.item) return args;
@@ -39330,6 +39371,12 @@ window.WMN_POS.Source.Controller = class {
                 ) === 1;
 
                 if (!hasBatch) return args;
+
+                // Item Details / qty edits on a line already in the cart must not
+                // reopen the batch or UOM dialogs. Those dialogs are for adding.
+                if (this.wmn_is_existing_online_cart_row(args.item)) {
+                    return args;
+                }
 
                 const currentBatch = String(args.item.batch_no || "").trim();
                 const needsBatchDialog =
@@ -39393,17 +39440,20 @@ window.WMN_POS.Source.Controller = class {
                     args.item = selectedUomItem;
                 }
 
-                const availableBatchQty = flt(args.item.__wmn_selected_batch_available_qty || 0);
-                const selectedQty = flt(args.item.qty || args.value || 1);
-                const conversion = flt(args.item.conversion_factor || 1);
-                const requiredStockQty = selectedQty * conversion;
+                const knownBatchQty = args.item.__wmn_selected_batch_available_qty;
+                if (knownBatchQty != null && knownBatchQty !== "") {
+                    const availableBatchQty = flt(knownBatchQty || 0);
+                    const selectedQty = flt(args.item.qty || args.value || 1);
+                    const conversion = flt(args.item.conversion_factor || 1);
+                    const requiredStockQty = selectedQty * conversion;
 
-                if (!wmn_pos_allows_negative_stock(args.item, this) && availableBatchQty >= 0 && requiredStockQty > availableBatchQty) {
-                    frappe.show_alert({
-                        message: __("Quantity cannot exceed available batch quantity"),
-                        indicator: "orange",
-                    });
-                    return null;
+                    if (!wmn_pos_allows_negative_stock(args.item, this) && requiredStockQty > availableBatchQty) {
+                        frappe.show_alert({
+                            message: __("Quantity cannot exceed available batch quantity"),
+                            indicator: "orange",
+                        });
+                        return null;
+                    }
                 }
 
                 return args;
@@ -41167,6 +41217,7 @@ window.WMN_POS.Source.Controller = class {
     FinalMethods.wmn_get_child_doctype = UIMethods.wmn_get_child_doctype || CoreMethods.wmn_get_child_doctype;
     FinalMethods.wmn_recalculate_offline_totals = UIMethods.wmn_recalculate_offline_totals || CoreMethods.wmn_recalculate_offline_totals;
     FinalMethods.wmn_offline_get_full_item = UIMethods.wmn_offline_get_full_item || CoreMethods.wmn_offline_get_full_item;
+    FinalMethods.wmn_is_existing_online_cart_row = UIMethods.wmn_is_existing_online_cart_row || CoreMethods.wmn_is_existing_online_cart_row;
     FinalMethods.wmn_prepare_online_batch_args_before_super = UIMethods.wmn_prepare_online_batch_args_before_super || CoreMethods.wmn_prepare_online_batch_args_before_super;
     FinalMethods.wmn_apply_online_batch_after_cart_update = UIMethods.wmn_apply_online_batch_after_cart_update || CoreMethods.wmn_apply_online_batch_after_cart_update;
     FinalMethods.wmn_offline_on_cart_update = UIMethods.wmn_offline_on_cart_update || CoreMethods.wmn_offline_on_cart_update;
@@ -41384,6 +41435,10 @@ window.WMN_POS.Source.Controller = class {
 
         wmn_offline_get_full_item(...args) {
             return methods.FinalMethods.wmn_offline_get_full_item.apply(this, args);
+        }
+
+        wmn_is_existing_online_cart_row(...args) {
+            return methods.FinalMethods.wmn_is_existing_online_cart_row.apply(this, args);
         }
 
         wmn_prepare_online_batch_args_before_super(...args) {
