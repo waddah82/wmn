@@ -1,12 +1,14 @@
 import frappe
 from frappe import _
-from frappe.utils import cint, flt
+from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+from frappe.utils import cint
 
 
 SETTINGS_DOCTYPE = "WMN POS Profile Settings"
+PROFILE_RECEIPT_SOURCE_FIELD = "wmn_receipt_print_format_source"
+DEFAULT_RECEIPT_SOURCE = "WMN Raw Print Format"
 LEGACY_PROFILE_FIELDS = (
     "enable_auto_silent_print",
-    "wmn_silent_print_mode",
 )
 
 ALLOWED_FIELDS = {
@@ -18,9 +20,11 @@ ALLOWED_FIELDS = {
     "combined_discount_representation",
     "default_item_view",
     "show_item_cart_counter",
+    "search_row_nav",
+    "decrease_available_qty_in_cart",
     "enable_auto_silent_print",
-    "wmn_silent_print_mode",
     "print_after_cashier_completion",
+    "receipt_print_format_source",
     "printing_method",
     "fallback_method",
     "copies",
@@ -31,11 +35,17 @@ ALLOWED_FIELDS = {
     "invoice_barcode_height",
     "invoice_barcode_module_width",
     "invoice_barcode_human_readable",
+    "invoice_barcode_symbology",
     "qz_printer_name",
+    "qz_destination",
+    "qz_tcp_host",
+    "qz_tcp_port",
     "qz_connector_mode",
     "qz_connector_url",
     "qz_host",
     "qz_encoding",
+    "qz_raw_flavor",
+    "escpos_codepage",
     "bridge_ws_url",
     "webusb_vendor_id",
     "webusb_product_id",
@@ -54,6 +64,8 @@ ALLOWED_FIELDS = {
 CHECK_FIELDS = {
     "ignore_pricing_rule",
     "show_item_cart_counter",
+    "search_row_nav",
+    "decrease_available_qty_in_cart",
     "enable_auto_silent_print",
     "print_after_cashier_completion",
     "cut_paper",
@@ -67,6 +79,7 @@ INT_FIELDS = {
     "feed_lines",
     "invoice_barcode_height",
     "invoice_barcode_module_width",
+    "qz_tcp_port",
     "webserial_baud_rate",
     "webserial_data_bits",
     "webserial_stop_bits",
@@ -79,10 +92,13 @@ SELECT_VALUES = {
     "promotion_coupon_policy": {"Promotion Wins", "Coupon Wins", "Combine"},
     "pricing_rule_promotion_coupon_policy": {"Pricing Rule Wins", "Promotion Wins", "Coupon Wins", "Combine"},
     "combined_discount_representation": {"Amount Only", "Percentage Equivalent (Net Total)"},
-    "wmn_silent_print_mode": {"raw_text", "html2canvas", "pdfmake"},
+    "receipt_print_format_source": {"ERPNext Print Format", "WMN Raw Print Format"},
     "printing_method": {"legacy_bridge", "browser", "webusb", "webserial", "qz"},
     "fallback_method": {"none", "legacy_bridge", "browser", "webusb", "webserial", "qz"},
     "qz_connector_mode": {"legacy", "managed", "auto", "custom"},
+    "qz_destination": {"printer", "tcp"},
+    "qz_raw_flavor": {"auto", "plain", "base64"},
+    "invoice_barcode_symbology": {"auto", "code128_b", "code128_c", "code39"},
     "webserial_parity": {"none", "even", "odd"},
     "webserial_flow_control": {"none", "hardware"},
 }
@@ -128,23 +144,137 @@ def get_or_create_settings_doc(pos_profile, *, ignore_permissions=False):
     return doc
 
 
+def _normalize_receipt_source(value):
+    text = str(value or "").strip()
+    if text not in SELECT_VALUES["receipt_print_format_source"]:
+        return DEFAULT_RECEIPT_SOURCE
+    return text
+
+
+def _profile_has_receipt_source_field():
+    try:
+        return bool(frappe.get_meta("POS Profile").get_field(PROFILE_RECEIPT_SOURCE_FIELD))
+    except Exception:
+        return False
+
+
+def _write_profile_receipt_source(pos_profile, value):
+    if not pos_profile or not _profile_has_receipt_source_field():
+        return
+    value = _normalize_receipt_source(value)
+    current = frappe.db.get_value("POS Profile", pos_profile, PROFILE_RECEIPT_SOURCE_FIELD)
+    if current != value:
+        frappe.db.set_value(
+            "POS Profile",
+            pos_profile,
+            PROFILE_RECEIPT_SOURCE_FIELD,
+            value,
+            update_modified=False,
+        )
+
+
+def _receipt_source_custom_fields():
+    return {
+        "POS Profile": [
+            {
+                "fieldname": PROFILE_RECEIPT_SOURCE_FIELD,
+                "label": "Receipt Print Format Source",
+                "fieldtype": "Select",
+                "options": "ERPNext Print Format\nWMN Raw Print Format",
+                "default": DEFAULT_RECEIPT_SOURCE,
+                "insert_after": "print_format",
+                "description": (
+                    "WMN Windows Bridge and direct ESC/POS printers always receive RAW text. "
+                    "ERPNext Print Format is used for Browser Print and optional QZ PDF output."
+                ),
+            }
+        ]
+    }
+
+
+def ensure_pos_profile_receipt_source_field():
+    """Create the POS Profile field users open after migrate, and keep it in sync."""
+    if not frappe.db.exists("DocType", "POS Profile"):
+        return
+
+    create_custom_fields(_receipt_source_custom_fields(), update=True)
+    frappe.clear_cache(doctype="POS Profile")
+
+    if not _profile_has_receipt_source_field():
+        frappe.throw(
+            _("Missing {0} on POS Profile. Run bench migrate.").format(PROFILE_RECEIPT_SOURCE_FIELD)
+        )
+
+    if not frappe.db.exists("DocType", SETTINGS_DOCTYPE):
+        return
+
+    for row in frappe.get_all(SETTINGS_DOCTYPE, fields=["pos_profile", "receipt_print_format_source"], limit_page_length=0):
+        if not row.pos_profile:
+            continue
+        _write_profile_receipt_source(row.pos_profile, row.receipt_print_format_source)
+
+    default = DEFAULT_RECEIPT_SOURCE
+    frappe.db.sql(
+        f"""
+        update `tabPOS Profile`
+        set `{PROFILE_RECEIPT_SOURCE_FIELD}` = %s
+        where ifnull(`{PROFILE_RECEIPT_SOURCE_FIELD}`, '') = ''
+        """,
+        default,
+    )
+
+
+def sync_receipt_source_from_pos_profile(doc, method=None):
+    if not doc or doc.doctype != "POS Profile" or not doc.name:
+        return
+    if not _profile_has_receipt_source_field():
+        return
+
+    value = _normalize_receipt_source(doc.get(PROFILE_RECEIPT_SOURCE_FIELD))
+    doc.set(PROFILE_RECEIPT_SOURCE_FIELD, value)
+
+    name = _settings_doc_name(doc.name)
+    if name:
+        current = frappe.db.get_value(SETTINGS_DOCTYPE, name, "receipt_print_format_source")
+        if current != value:
+            frappe.db.set_value(SETTINGS_DOCTYPE, name, "receipt_print_format_source", value)
+        return
+
+    settings = get_or_create_settings_doc(doc.name, ignore_permissions=True)
+    if str(settings.get("receipt_print_format_source") or "") != value:
+        settings.receipt_print_format_source = value
+        settings.save(ignore_permissions=True)
+
+
 def settings_payload(pos_profile):
     name = _settings_doc_name(pos_profile)
     if not name:
+        profile_source = ""
+        if _profile_has_receipt_source_field():
+            profile_source = frappe.db.get_value("POS Profile", pos_profile, PROFILE_RECEIPT_SOURCE_FIELD) or ""
         return {
             "available": False,
             "pos_profile": pos_profile,
             "name": "",
-            "settings": {},
+            "settings": {
+                "receipt_print_format_source": _normalize_receipt_source(profile_source),
+            }
+            if profile_source
+            else {},
             "can_write": _can_write_pos_profile(pos_profile),
         }
 
     doc = frappe.get_doc(SETTINGS_DOCTYPE, name)
+    settings = {key: doc.get(key) for key in sorted(ALLOWED_FIELDS)}
+    if _profile_has_receipt_source_field():
+        profile_source = frappe.db.get_value("POS Profile", pos_profile, PROFILE_RECEIPT_SOURCE_FIELD)
+        if profile_source:
+            settings["receipt_print_format_source"] = _normalize_receipt_source(profile_source)
     return {
         "available": True,
         "pos_profile": pos_profile,
         "name": doc.name,
-        "settings": {key: doc.get(key) for key in sorted(ALLOWED_FIELDS)},
+        "settings": settings,
         "modified": str(doc.modified or ""),
         "can_write": _can_write_pos_profile(pos_profile),
     }
@@ -169,6 +299,8 @@ def save_settings_patch(pos_profile, values):
     for key, value in patch.items():
         doc.set(key, value)
     doc.save(ignore_permissions=True)
+    if "receipt_print_format_source" in patch:
+        _write_profile_receipt_source(pos_profile, patch["receipt_print_format_source"])
     frappe.clear_cache(doctype=SETTINGS_DOCTYPE)
     return settings_payload(pos_profile)
 
@@ -190,8 +322,6 @@ def migrate_legacy_pos_profile_settings():
         doc.pos_profile = row.name
         if "enable_auto_silent_print" in legacy_fields:
             doc.enable_auto_silent_print = cint(row.get("enable_auto_silent_print") or 0)
-        if "wmn_silent_print_mode" in legacy_fields and row.get("wmn_silent_print_mode"):
-            doc.wmn_silent_print_mode = row.get("wmn_silent_print_mode")
         doc.insert(ignore_permissions=True)
 
 

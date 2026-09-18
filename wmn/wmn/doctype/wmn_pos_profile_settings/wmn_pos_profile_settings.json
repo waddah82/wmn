@@ -9,6 +9,8 @@
   "section_1",
   "default_item_view",
   "show_item_cart_counter",
+  "search_row_nav",
+  "decrease_available_qty_in_cart",
   "ignore_pricing_rule",
   "commercial_discount_composition_section",
   "pricing_rule_promotion_policy",
@@ -20,8 +22,8 @@
   "payment_gateways",
   "section_2",
   "enable_auto_silent_print",
-  "wmn_silent_print_mode",
   "print_after_cashier_completion",
+  "receipt_print_format_source",
   "printing_method",
   "fallback_method",
   "copies",
@@ -33,12 +35,18 @@
   "invoice_barcode_height",
   "invoice_barcode_module_width",
   "invoice_barcode_human_readable",
+  "invoice_barcode_symbology",
   "section_4",
   "qz_printer_name",
+  "qz_destination",
+  "qz_tcp_host",
+  "qz_tcp_port",
   "qz_connector_mode",
   "qz_connector_url",
   "qz_host",
   "qz_encoding",
+  "qz_raw_flavor",
+  "escpos_codepage",
   "section_5",
   "bridge_ws_url",
   "section_6",
@@ -83,6 +91,20 @@
    "label": "Show Item Cart Quantity Counter",
    "fieldtype": "Check",
    "default": "0"
+  },
+  {
+   "fieldname": "search_row_nav",
+   "label": "Place Top Menu Beside Search",
+   "fieldtype": "Check",
+   "default": "0",
+   "description": "Hide the top POS navigation bar and show its buttons next to the item search field."
+  },
+  {
+   "fieldname": "decrease_available_qty_in_cart",
+   "label": "Decrease Available Quantity While In Cart",
+   "fieldtype": "Check",
+   "default": "1",
+   "description": "Reduce the displayed available quantity while items are in the current cart and restore it when they are removed."
   },
   {
    "fieldname": "ignore_pricing_rule",
@@ -155,18 +177,19 @@
    "default": "0"
   },
   {
-   "fieldname": "wmn_silent_print_mode",
-   "label": "Silent Print Mode",
-   "fieldtype": "Select",
-   "options": "raw_text\nhtml2canvas\npdfmake",
-   "default": "raw_text"
-  },
-  {
    "fieldname": "print_after_cashier_completion",
    "label": "Print Again After Cashier Completion",
    "fieldtype": "Check",
    "default": "0",
    "description": "When enabled, a cashier handoff invoice is printed again after final completion. The handoff print remains unchanged."
+  },
+  {
+   "fieldname": "receipt_print_format_source",
+   "label": "Receipt Print Format Source",
+   "fieldtype": "Select",
+   "options": "ERPNext Print Format\nWMN Raw Print Format",
+   "default": "WMN Raw Print Format",
+   "description": "WMN Windows Bridge and direct ESC/POS printers always receive RAW text. ERPNext Print Format is used for Browser Print and optional QZ PDF output."
   },
   {
    "fieldname": "printing_method",
@@ -236,6 +259,13 @@
    "default": "1"
   },
   {
+   "fieldname": "invoice_barcode_symbology",
+   "label": "RAW Barcode Type",
+   "fieldtype": "Select",
+   "options": "auto\ncode128_b\ncode128_c\ncode39",
+   "default": "auto"
+  },
+  {
    "fieldtype": "Section Break",
    "label": "QZ Tray",
    "fieldname": "section_4"
@@ -244,6 +274,24 @@
    "fieldname": "qz_printer_name",
    "label": "Printer Name",
    "fieldtype": "Data"
+  },
+  {
+   "fieldname": "qz_destination",
+   "label": "Printer Destination",
+   "fieldtype": "Select",
+   "options": "printer\ntcp",
+   "default": "printer"
+  },
+  {
+   "fieldname": "qz_tcp_host",
+   "label": "Printer TCP Address",
+   "fieldtype": "Data"
+  },
+  {
+   "fieldname": "qz_tcp_port",
+   "label": "Printer TCP Port",
+   "fieldtype": "Int",
+   "default": "9100"
   },
   {
    "fieldname": "qz_connector_mode",
@@ -267,6 +315,18 @@
    "label": "QZ Raw Encoding",
    "fieldtype": "Data",
    "default": "UTF8"
+  },
+  {
+   "fieldname": "qz_raw_flavor",
+   "label": "QZ RAW Transfer",
+   "fieldtype": "Select",
+   "options": "auto\nplain\nbase64",
+   "default": "auto"
+  },
+  {
+   "fieldname": "escpos_codepage",
+   "label": "ESC/POS Codepage Number",
+   "fieldtype": "Data"
   },
   {
    "fieldtype": "Section Break",
@@ -359,6 +419,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
+ "modified": "2026-09-14 18:30:00.000000",
  "module": "Wmn",
  "name": "WMN POS Profile Settings",
  "permissions": [
