@@ -39363,6 +39363,10 @@ window.WMN_POS.Source.Controller = class {
             try {
                 if (!args || !args.item) return args;
 
+                if (this.item_details?.__wmn_applying_item_details_form) {
+                    return args;
+                }
+
                 const itemData = args.item.item_data || {};
                 const hasBatch = cint(
                     args.item.has_batch_no ||
