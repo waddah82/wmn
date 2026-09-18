@@ -49,6 +49,19 @@
             return await window.wmnPOSOffline.getAvailableSerialsForItem(itemCode || "", warehouse || "", options);
         }
 
+        function wmn_item_details_modal_is_open(details) {
+            try {
+                const pos = window.cur_pos;
+                if (pos?.$wmn_item_details_layer?.hasClass("is-open")) return true;
+                if (pos?.$mamsek_shell?.hasClass("wmn-item-details-open")) return true;
+            } catch (e) {}
+            try {
+                const display = details?.$component?.css?.("display");
+                return Boolean(display && display !== "none");
+            } catch (e) {}
+            return false;
+        }
+
     const CoreMethods = {
         __proto__: Base.prototype,
 
@@ -78,39 +91,116 @@
                 },
 
         async toggle_item_details_section(item) {
-                    if (!wmn_item_details_is_offline()) {
-                        const result = await super.toggle_item_details_section(item);
-                        if (item && this.$component?.is(":visible")) this.wmn_focus_quantity_control();
-                        return result;
+                    const incomingName = item && item.name ? String(item.name) : "";
+                    this.__wmn_opening_item_name = incomingName;
+
+                    try {
+                        const sameAsCurrent = Boolean(incomingName && this.compare_with_current_item(item));
+                        const modalOpen = wmn_item_details_modal_is_open(this);
+                        const shouldShow = Boolean(incomingName) && !(sameAsCurrent && modalOpen);
+
+                        // ERPNext treats a second click on the current row as "close".
+                        // After the WMN batch dialog the row can already be current_item
+                        // while the modal layer is still closed, so a cart click must open.
+                        if (shouldShow && sameAsCurrent && !modalOpen) {
+                            this.current_item = {};
+                        }
+
+                        if (!wmn_item_details_is_offline()) {
+                            try {
+                                await super.toggle_item_details_section(item);
+                            } catch (e) {
+                                console.warn("WMN Item Details open failed", e);
+                            }
+
+                            if (shouldShow) {
+                                if (!this.current_item || String(this.current_item.name || "") !== incomingName) {
+                                    try {
+                                        this.doctype = item.doctype;
+                                        this.item_meta = frappe.get_meta(this.doctype);
+                                        this.name = item.name;
+                                        this.item_row = item;
+                                        this.currency = this.events.get_frm().doc.currency;
+                                        this.current_item = item;
+                                        this.render_dom(item);
+                                        this.render_discount_dom(item);
+                                        this.render_form(item);
+                                        this.events.highlight_cart_item(item);
+                                    } catch (e) {
+                                        console.warn("WMN Item Details render retry failed", e);
+                                    }
+                                }
+                                this.events.toggle_item_selector(true);
+                                this.toggle_component(true);
+                                this.wmn_focus_quantity_control();
+                            } else if (!incomingName) {
+                                this.name = undefined;
+                                this.item_row = null;
+                            }
+                            return;
+                        }
+
+                        const currentItemChanged = !this.compare_with_current_item(item);
+                        const hideItemDetails = !shouldShow;
+
+                        if (hideItemDetails || (currentItemChanged && this.name && this.name !== incomingName)) {
+                            await this.validate_serial_batch_item();
+                        }
+
+                        this.events.toggle_item_selector(!hideItemDetails);
+                        this.toggle_component(!hideItemDetails);
+
+                        if (item && shouldShow) {
+                            this.doctype = item.doctype;
+                            this.item_meta = typeof wmn_pos_get_meta === "function"
+                                ? wmn_pos_get_meta(this.doctype)
+                                : wmn_make_offline_item_meta(this.doctype);
+                            this.name = item.name;
+                            this.item_row = item;
+                            this.currency = this.events.get_frm().doc.currency;
+                            this.current_item = item;
+
+                            this.render_dom(item);
+                            this.render_discount_dom(item);
+                            this.render_form(item);
+                            this.events.highlight_cart_item(item);
+                            this.wmn_focus_quantity_control();
+                        } else {
+                            this.current_item = {};
+                            if (hideItemDetails) {
+                                this.name = undefined;
+                                this.item_row = null;
+                            }
+                        }
+                    } finally {
+                        this.__wmn_opening_item_name = "";
+                    }
+                },
+
+        validate_serial_batch_item() {
+                    const openingName = String(this.__wmn_opening_item_name || "");
+                    if (openingName && String(this.name || "") === openingName) {
+                        return;
                     }
 
-                    const currentItemChanged = !this.compare_with_current_item(item);
-                    const hideItemDetails = !Boolean(item) || !currentItemChanged;
+                    const doc = this.events?.get_frm?.()?.doc;
+                    const item_row = (doc?.items || []).find((row) => row && row.name === this.name);
+                    if (!item_row) return;
 
-                    if ((!hideItemDetails && currentItemChanged) || hideItemDetails) {
-                        await this.validate_serial_batch_item();
-                    }
+                    const serialized = item_row.has_serial_no;
+                    const batched = item_row.has_batch_no;
+                    const hasSelection = Boolean(
+                        item_row.serial_and_batch_bundle || item_row.serial_no || item_row.batch_no
+                    );
+                    if (hasSelection) return;
 
-                    this.events.toggle_item_selector(!hideItemDetails);
-                    this.toggle_component(!hideItemDetails);
-
-                    if (item && currentItemChanged) {
-                        this.doctype = item.doctype;
-                        this.item_meta = typeof wmn_pos_get_meta === "function"
-                            ? wmn_pos_get_meta(this.doctype)
-                            : wmn_make_offline_item_meta(this.doctype);
-                        this.name = item.name;
-                        this.item_row = item;
-                        this.currency = this.events.get_frm().doc.currency;
-                        this.current_item = item;
-
-                        this.render_dom(item);
-                        this.render_discount_dom(item);
-                        this.render_form(item);
-                        this.events.highlight_cart_item(item);
-                        this.wmn_focus_quantity_control();
-                    } else {
-                        this.current_item = {};
+                    if ((serialized && !hasSelection) || (batched && !hasSelection)) {
+                        frappe.show_alert({
+                            message: __("Item is removed since no serial / batch no selected."),
+                            indicator: "orange",
+                        });
+                        frappe.utils.play_sound("cancel");
+                        return this.events.remove_item_from_cart();
                     }
                 },
 
@@ -480,6 +570,7 @@
     const FinalMethods = Object.create(null);
     FinalMethods.wmn_focus_quantity_control = UIMethods.wmn_focus_quantity_control || CoreMethods.wmn_focus_quantity_control;
     FinalMethods.toggle_item_details_section = UIMethods.toggle_item_details_section || CoreMethods.toggle_item_details_section;
+    FinalMethods.validate_serial_batch_item = UIMethods.validate_serial_batch_item || CoreMethods.validate_serial_batch_item;
     FinalMethods.render_form = UIMethods.render_form || CoreMethods.render_form;
     FinalMethods.wmn_offline_form_updated = UIMethods.wmn_offline_form_updated || CoreMethods.wmn_offline_form_updated;
     FinalMethods.wmn_refresh_price_display = UIMethods.wmn_refresh_price_display || CoreMethods.wmn_refresh_price_display;
